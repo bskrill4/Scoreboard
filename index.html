@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scoreboard</title>
+  <meta name="theme-color" content="#0a0a0c">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="./" aria-label="Scoreboard home">SCORE<span>BOARD</span></a>
+
+    <nav class="leagues" aria-label="Sports">
+      <span class="league on">NBA</span>
+      <span class="league soon" title="Coming soon">NFL</span>
+      <span class="league soon" title="Coming soon">MLB</span>
+      <span class="league soon" title="Coming soon">NHL</span>
+    </nav>
+
+    <div class="slate" id="slate"></div>
+
+    <div class="replay" id="replay" hidden>
+      <span class="replay-tag">Replay</span>
+      <span id="replayClock"></span>
+      <span class="speeds" id="speeds"></span>
+      <button type="button" id="skip">+10 min</button>
+      <a href="./">Exit</a>
+    </div>
+    <a class="replay-link" id="replayLink" href="?replay">Replay last night</a>
+
+    <div class="delay">
+      <div class="delay-head">
+        <label for="delay">Stream delay</label>
+        <span id="delayStatus" class="delay-status">Live</span>
+      </div>
+      <input id="delay" type="range" min="0" max="6" step="1" value="0" aria-describedby="delayStatus">
+      <div class="ticks" id="ticks" aria-hidden="true"></div>
+    </div>
+  </header>
+
+  <div class="notice" id="notice" hidden></div>
+  <main id="board" class="board" aria-live="off"></main>
+  <footer class="foot">
+    Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability while the player was on the court.
+    Click any game to pin it to the top.
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/watch.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
