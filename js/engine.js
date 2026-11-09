@@ -37,10 +37,10 @@
 
   // Fallback when the feed has no win probability: final margin from any point
   // is roughly normal with sd ≈ 13.5 * sqrt(fraction of game remaining).
-  function modelWP(homeMargin, elapsed) {
-    const total = Math.max(REG_GAME, elapsed + 1);
+  function modelWP(homeMargin, elapsed, reg = REG_GAME) {
+    const total = Math.max(reg, elapsed + 1);
     const remaining = Math.max(total - elapsed, 0.5);
-    const sd = 13.5 * Math.sqrt(remaining / REG_GAME) + 0.01;
+    const sd = 13.5 * Math.sqrt(remaining / reg) + 0.01;
     return 1 / (1 + Math.exp((-1.702 * homeMargin) / sd));
   }
 
@@ -125,7 +125,8 @@
       ts.push(t);
     }
 
-    return { homeId, awayId, roster, plays, ts, hasFeedWP, _n: -1, _view: null, _final: null };
+    const complete = plays.length > 0 && plays[plays.length - 1].type === 'End Game';
+    return { homeId, awayId, roster, plays, ts, hasFeedWP, complete, _n: -1, _view: null, _final: null };
   }
 
   function upperBound(arr, x) {
@@ -263,5 +264,5 @@
     return view;
   }
 
-  SB.engine = { buildTape, viewAt, periodLabel, REG_GAME };
+  SB.engine = { buildTape, viewAt, periodLabel, parseClock, modelWP, REG_GAME, QUARTER: REG_PERIOD, OT: OT_PERIOD };
 })();

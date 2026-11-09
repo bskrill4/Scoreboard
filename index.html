@@ -16,7 +16,7 @@
 
     <nav class="leagues" aria-label="Sports">
       <span class="league on">NBA</span>
-      <span class="league soon" title="Coming soon">NFL</span>
+      <span class="league on">NFL</span>
       <span class="league soon" title="Coming soon">MLB</span>
       <span class="league soon" title="Coming soon">NHL</span>
     </nav>
@@ -45,12 +45,13 @@
   <div class="notice" id="notice" hidden></div>
   <main id="board" class="board" aria-live="off"></main>
   <footer class="foot">
-    Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability while the player was on the court.
+    Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability credited to a player: while on the court in the NBA, on plays they were part of in the NFL.
     Click any game to pin it to the top.
   </footer>
 
   <script src="js/api.js"></script>
   <script src="js/engine.js"></script>
+  <script src="js/engine-nfl.js"></script>
   <script src="js/watch.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/main.js"></script>

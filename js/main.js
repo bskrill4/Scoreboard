@@ -62,6 +62,33 @@
   const timeLabel = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   // ---------- models ----------
+  const SPORTS = {
+    nba: { engine: SB.engine, reg: SB.engine.REG_GAME, quarter: SB.engine.QUARTER, ot: SB.engine.OT },
+    nfl: { engine: SB.nfl, reg: SB.nfl.REG_GAME, quarter: SB.nfl.QUARTER, ot: SB.nfl.OT },
+  };
+
+  function seasonLeadersNFL(comp) {
+    const out = [];
+    const abbr = new Map(comp.competitors.map((c) => [String(c.team.id), c.team.abbreviation]));
+    const seen = new Set();
+    for (const cat of comp.leaders || []) {
+      for (const l of cat.leaders || []) {
+        const id = String(l.athlete.id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        out.push({
+          id,
+          name: l.athlete.displayName,
+          last: (l.athlete.shortName || l.athlete.displayName).replace(/^\S+\.\s+/, ''),
+          headshot: l.athlete.headshot || '',
+          teamAbbr: abbr.get(String(l.team?.id)) || '',
+          label: l.displayValue || '',
+        });
+      }
+    }
+    return out.slice(0, 5);
+  }
+
   function seasonLeaders(comp) {
     const out = [];
     for (const c of comp.competitors) {
@@ -101,9 +128,16 @@
     });
     const evState = replay ? 'post' : ev.status.type.state;
     const start = Date.parse(ev.date);
-    const odds = comp.odds?.[0];
+    const sport = SPORTS[ev._league];
     const g = {
       id: ev.id,
+      league: ev._league,
+      reg: sport.reg,
+      quarter: sport.quarter,
+      ot: sport.ot,
+      drive: null,
+      downText: '',
+      poss: null,
       start,
       away: team(ac, acss),
       home: team(hc, hcss),
@@ -119,15 +153,13 @@
       vol: 0,
       minWP: 1,
       maxWP: 0,
-      spread: odds?.spread ?? null,
-      spreadText: odds?.details || '',
       broadcast: comp.broadcast || '',
-      seasonLeaders: evState === 'pre' ? seasonLeaders(comp) : [],
+      seasonLeaders: evState !== 'pre' ? [] : ev._league === 'nfl' ? seasonLeadersNFL(comp) : seasonLeaders(comp),
     };
 
     const tape = tapes.get(ev.id);
     if (tape && tape.plays.length) {
-      const v = SB.engine.viewAt(tape, T, evState === 'post');
+      const v = sport.engine.viewAt(tape, T, evState === 'post');
       if (v.state === 'pre') {
         g.away.score = g.home.score = 0;
       } else {
@@ -144,7 +176,10 @@
           vol: v.vol,
           minWP: v.minWP,
           maxWP: v.maxWP,
+          drive: v.drive || null,
+          downText: v.downText || '',
         });
+        if (v.drive && !v.drive.ended) g.poss = v.drive.teamId === g.home.id ? 'home' : 'away';
         g.away.score = v.awayScore;
         g.home.score = v.homeScore;
         for (const p of g.players) p.star = stars.has(p.id);
@@ -176,7 +211,8 @@
     const gb = group(b);
     const ga = group(a);
     if (gb !== ga) return gb < ga;
-    return b.index > a.index + margin;
+    // Only live games jitter; upcoming and finished games sort strictly.
+    return b.index > a.index + (gb === 0 ? margin : 0);
   }
 
   function arrange(models) {
@@ -217,7 +253,7 @@
     $('slate').innerHTML = models.length
       ? `<b class="${live ? 'hot' : ''}">${live} live</b><span>${pre} upcoming</span><span>${fin} final</span>`
       : '';
-    if (!models.length) showNotice(`No NBA games on the slate. <a href="?replay">Replay last night's games</a>`);
+    if (!models.length) showNotice(`No games on the slate. <a href="?replay">Replay last night's games</a>`);
 
     const status = $('delayStatus');
     if (holdAt != null) status.textContent = `Holding at ${new Date(holdAt).toLocaleTimeString()}`;
@@ -242,15 +278,39 @@
   }
 
   // ---------- polling ----------
+  // A "sports day" runs 6am to 6am, so a late game stays on the night it started.
+  const sportsDay = (ms) => new Date(ms - 6 * 3600 * 1000).toDateString();
+
+  // The NFL feed returns the whole week; the board only wants today's games.
+  function onSlate(ev) {
+    if (replay || ev._league !== 'nfl') return true;
+    return ev.status.type.state === 'in' || sportsDay(Date.parse(ev.date)) === sportsDay(Date.now());
+  }
+
   async function pollScoreboard() {
-    try {
-      const data = await SB.api.scoreboard(replay?.date);
-      events = data.events || [];
+    const results = await Promise.allSettled(SB.api.leagues.map((l) => SB.api.scoreboard(replay?.date, l)));
+    let any = false;
+    const next = [];
+    results.forEach((r, i) => {
+      const league = SB.api.leagues[i];
+      if (r.status === 'fulfilled') {
+        any = true;
+        for (const ev of r.value.events || []) {
+          ev._league = league;
+          if (onSlate(ev)) next.push(ev);
+        }
+      } else {
+        console.error(r.reason);
+        // Keep showing this league's last known games through a failed poll.
+        next.push(...events.filter((ev) => ev._league === league));
+      }
+    });
+    if (any) {
+      events = next;
       loaded = true;
       showNotice('');
-    } catch (e) {
-      console.error(e);
-      if (!loaded) showNotice("Can't reach the score feed — retrying…");
+    } else if (!loaded) {
+      showNotice("Can't reach the score feed — retrying…");
     }
   }
 
@@ -264,8 +324,7 @@
     if (state === 'in') return Date.now() - meta.last >= SUMMARY_EVERY;
     if (state === 'post') {
       // Finals are fetched until the tape includes the closing play.
-      const complete = tape && tape.plays.length && tape.plays[tape.plays.length - 1].type === 'End Game';
-      return !complete && meta.tries < 4 && Date.now() - meta.last >= SUMMARY_EVERY;
+      return !(tape && tape.complete) && meta.tries < 4 && Date.now() - meta.last >= SUMMARY_EVERY;
     }
     return false;
   }
@@ -279,7 +338,7 @@
         meta.last = Date.now();
         if (ev.status.type.state !== 'in') meta.tries++;
         try {
-          const tape = SB.engine.buildTape(await SB.api.summary(ev.id));
+          const tape = SPORTS[ev._league].engine.buildTape(await SB.api.summary(ev.id, ev._league));
           if (tape) tapes.set(ev.id, tape);
         } catch (e) {
           console.error(e);
@@ -370,7 +429,12 @@
 
   // ---------- go ----------
   initControls();
-  SB.api.stars().then((m) => (stars = m)).catch((e) => console.warn('No star list', e));
+  for (const league of SB.api.leagues) {
+    SB.api
+      .stars(league)
+      .then((m) => m.forEach((v, k) => stars.set(k, v)))
+      .catch((e) => console.warn('No star list for', league, e));
+  }
   pollLoop();
 
   let lastFrame = performance.now();

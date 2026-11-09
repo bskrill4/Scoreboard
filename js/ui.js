@@ -54,7 +54,10 @@
   // ---------- formatting ----------
   const fmtWPA = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}`;
   const pct = (x) => `${Math.round(x * 100)}%`;
-  const statLine = (p) => `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST`;
+  const statLine = (p) => p.line ?? `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST`;
+  const shortStat = (p) => p.short ?? `${p.pts} PTS`;
+  const signed = (x, digits = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}`;
+  const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
 
   function headshot(p, cls = '') {
     const src = p.headshot ? ` src="${esc(p.headshot)}"` : '';
@@ -70,7 +73,7 @@
 
   function statusPill(g) {
     const dot = g.state === 'live' ? '<i class="dot"></i>' : '';
-    return `<span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
+    return `<span class="lg">${g.league.toUpperCase()}</span><span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
   }
 
   function wpBar(g) {
@@ -89,7 +92,7 @@
     const cls = showScore && g.state === 'final' && t.score < other.score ? 'lost' : '';
     return `<div class="team ${cls}">
       <img class="logo" src="${esc(t.logo)}" alt="">
-      <span class="abbr">${esc(t.abbr)}</span>
+      <span class="abbr">${esc(t.abbr)}${g.state === 'live' && g.poss === side ? '<i class="poss" title="Has the ball"></i>' : ''}</span>
       <span class="rec">${esc(t.record)}</span>
       <span class="score" data-side="${side}">${showScore ? t.score : ''}</span>
     </div>`;
@@ -98,15 +101,14 @@
   function tileFoot(g) {
     if (g.state === 'sync') return `<div class="g-foot dim">Holding back for your stream delay…</div>`;
     if (g.state === 'pre') {
-      const bits = [g.spreadText, g.broadcast].filter(Boolean).map(esc).join(' · ');
-      return `<div class="g-foot dim">${bits || 'Tip-off ' + esc(g.statusText)}</div>`;
+      return `<div class="g-foot dim">${esc(g.broadcast || `${g.league === 'nfl' ? 'Kickoff' : 'Tip-off'} ${g.statusText}`)}</div>`;
     }
     const top = g.players.slice().sort((a, b) => b.wpa - a.wpa)[0];
     if (!top) return `<div class="g-foot dim">&nbsp;</div>`;
     return `<div class="g-foot">
       ${headshot(top, 'sm')}
       <span class="who">${esc(top.last)}</span>
-      <span class="line">${top.pts} PTS</span>
+      <span class="line">${esc(shortStat(top))}</span>
       <span class="wpa ${top.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(top.wpa)}<small>WPA</small></span>
     </div>`;
   }
@@ -115,7 +117,7 @@
     const wpLabels =
       g.wp == null || g.state === 'final'
         ? ''
-        : `<div class="wplabels"><span>${pct(1 - g.wp)}</span><span>win prob</span><span>${pct(g.wp)}</span></div>`;
+        : `<div class="wplabels"><span>${pct(1 - g.wp)}</span><span>${esc(g.downText || 'win prob')}</span><span>${pct(g.wp)}</span></div>`;
     return `
       <div class="g-top">
         ${statusPill(g)}
@@ -130,13 +132,13 @@
   // ---------- hero ----------
   function chartHTML(g) {
     if (!g.series.length) {
-      const msg = g.state === 'sync' ? 'Holding back for your stream delay…' : 'Win probability starts at tip-off';
+      const msg = g.state === 'sync' ? 'Holding back for your stream delay…' : `Win probability starts at ${g.league === 'nfl' ? 'kickoff' : 'tip-off'}`;
       return `<div class="chart empty"><span>${msg}</span></div>`;
     }
     const W = 600;
     const H = 180;
-    const reg = SB.engine.REG_GAME;
-    const total = g.elapsed <= reg ? reg : reg + Math.ceil((g.elapsed - reg) / 300) * 300;
+    const reg = g.reg;
+    const total = g.elapsed <= reg ? reg : reg + Math.ceil((g.elapsed - reg) / g.ot) * g.ot;
     const x = (e) => ((e / total) * W).toFixed(1);
     const y = (wp) => (wp * H).toFixed(1); // away on top, home on the bottom
     let d = `M0 ${y(g.series[0][1])}`;
@@ -146,7 +148,7 @@
     d += ` L${lastX} ${y(cur)}`;
     const area = `${d} L${lastX} ${H / 2} L0 ${H / 2} Z`;
     let grid = '';
-    for (let q = 720; q < total; q += q < reg ? 720 : 300) grid += `<line x1="${x(q)}" x2="${x(q)}" y1="0" y2="${H}" class="q"/>`;
+    for (let q = g.quarter; q < total; q += q < reg ? g.quarter : g.ot) grid += `<line x1="${x(q)}" x2="${x(q)}" y1="0" y2="${H}" class="q"/>`;
     const id = `c${g.id}`;
     return `<div class="chart">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
@@ -181,7 +183,7 @@
     }
     const rows = sorted.slice(0, 5);
     const coldest = sorted[sorted.length - 1];
-    if (sorted.length > 5 && coldest.wpa < 0) rows.push(coldest);
+    if (g.league === 'nba' && sorted.length > 5 && coldest.wpa < 0) rows.push(coldest);
     const max = Math.max(0.05, ...rows.map((p) => Math.abs(p.wpa)));
     return rows
       .map((p, i) => {
@@ -223,6 +225,87 @@
     };
     const html = side(g.away) + side(g.home);
     return html || '<div class="empty-note">On-court fives appear at tip-off</div>';
+  }
+
+  // ---------- football: the current drive ----------
+  function sparkHTML(series) {
+    if (series.length < 2) return '<span class="spark"></span>';
+    const W = 100;
+    const H = 22;
+    const lo = Math.min(0, ...series);
+    const hi = Math.max(0, ...series);
+    const span = hi - lo || 1;
+    const x = (i) => ((i / (series.length - 1)) * W).toFixed(1);
+    const y = (v) => (H - 2 - ((v - lo) / span) * (H - 4)).toFixed(1);
+    const d = series.map((v, i) => `${i ? 'L' : 'M'}${x(i)} ${y(v)}`).join(' ');
+    const up = series[series.length - 1] >= 0;
+    return `<svg class="spark ${up ? 'pos' : 'neg'}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <line x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}" class="zero"/>
+      <path d="${d}"/>
+    </svg>`;
+  }
+
+  function fieldHTML(g) {
+    const d = g.drive;
+    let lines = '';
+    for (let y = 10; y < 100; y += 10) {
+      lines += `<i class="yl" style="left:${y}%"></i><span class="yn" style="left:${y}%">${y <= 50 ? y : 100 - y}</span>`;
+    }
+    const zone = (t, side) => `<div class="ez ${side}" style="--c:${t.css}"><span>${esc(t.abbr)}</span></div>`;
+
+    let marks = '';
+    if (d) {
+      const rowH = Math.min(100 / Math.max(d.rows.length, 1), 11);
+      marks = d.rows
+        .map((r, i) => {
+          const left = Math.min(r.x0, r.x1);
+          const width = Math.abs(r.x1 - r.x0);
+          const dir = r.x1 >= r.x0 ? 'r' : 'l';
+          return `<i class="pb ${r.kind} ${dir}" title="${esc(r.text)}" style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%;top:${(i * rowH).toFixed(
+            2
+          )}%;height:${(rowH * 0.62).toFixed(2)}%"></i>`;
+        })
+        .join('');
+      if (d.firstX != null) marks += `<i class="fd" style="left:${d.firstX.toFixed(1)}%"></i>`;
+      if (d.ballX != null) {
+        marks += `<i class="los" style="left:${d.ballX.toFixed(1)}%"></i>`;
+        const row = Math.max(d.rows.length - 1, 0);
+        marks += `<i class="ball" style="left:${d.ballX.toFixed(1)}%;top:${(row * rowH + rowH * 0.31).toFixed(2)}%"></i>`;
+      }
+    }
+    const empty = d ? '' : `<span class="f-empty">${g.state === 'sync' ? 'Holding back for your stream delay…' : 'The drive chart starts at kickoff'}</span>`;
+    return `<div class="field">
+      ${zone(g.away, 'l')}${zone(g.home, 'r')}
+      <div class="turf">${lines}<div class="rows">${marks}</div></div>
+      ${empty}
+    </div>`;
+  }
+
+  function driveStatsHTML(g) {
+    const d = g.drive;
+    if (!d) return '';
+    const team = d.teamId === g.home.id ? g.home : g.away;
+    const heading = g.state === 'final' ? 'Final drive' : d.ended ? 'Last drive' : 'Current drive';
+    const playsText = `${d.plays} play${d.plays === 1 ? '' : 's'}`;
+    const sub = d.result ? `${playsText} · ${d.result}` : playsText;
+    const cls = (v) => (v >= 0 ? 'pos' : 'neg');
+    return `<div class="dstats">
+      <div class="dcell dteam">
+        <img src="${esc(team.logo)}" alt="">
+        <span><small>${heading}</small><b>${esc(team.abbr)}</b><em>${esc(sub)}</em></span>
+      </div>
+      <div class="dcell"><small>Time</small><b>${mmss(d.time)}</b></div>
+      <div class="dcell"><small>Yards</small><b class="${cls(d.yards)}">${signed(d.yards)}</b>${sparkHTML(d.yardSeries)}</div>
+      <div class="dcell"><small>WPA</small><b class="${cls(d.wpa)}">${signed(d.wpa * 100, 1)}</b>${sparkHTML(d.wpaSeries)}</div>
+    </div>`;
+  }
+
+  function driveHTML(g) {
+    const text = g.lastPlay || (g.state === 'pre' ? `Kickoff at ${g.statusText}` : '');
+    return `<h3>Last play</h3>
+      <p class="lastplay-text" title="${esc(g.lastPlay)}">${esc(text)}</p>
+      ${fieldHTML(g)}
+      ${driveStatsHTML(g)}`;
   }
 
   function swingsHTML(g) {
@@ -270,10 +353,22 @@
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
       : `<span class="pin">Top game</span>`;
+    const startWord = g.league === 'nfl' ? 'Kickoff' : 'Tip-off';
     const mid =
       g.state === 'pre'
-        ? `<b>${esc(g.statusText)}</b><small>${esc([g.spreadText, g.broadcast].filter(Boolean).join(' · ') || 'Tip-off')}</small>`
-        : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(g.lastPlay)}</small>`;
+        ? `<b>${esc(g.statusText)}</b><small>${esc(g.broadcast || startWord)}</small>`
+        : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(g.league === 'nfl' ? g.downText : g.lastPlay)}</small>`;
+    const leadersTitle = g.players.length
+      ? g.league === 'nfl'
+        ? 'Top performers <small>WPA on plays they were part of</small>'
+        : 'WPA leaders <small>win probability added while on court</small>'
+      : 'Players to watch';
+    const middle =
+      g.league === 'nfl'
+        ? `<section class="h-col">${driveHTML(g)}</section>
+           <section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>`
+        : `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
+           <section class="h-col"><h3>On court</h3><div class="court">${courtHTML(g)}</div></section>`;
     return `
       <div class="g-top">
         ${statusPill(g)}
@@ -294,14 +389,7 @@
           ${swingsHTML(g)}
           ${partsHTML(g)}
         </section>
-        <section class="h-col">
-          <h3>${g.players.length ? 'WPA leaders <small>win probability added while on court</small>' : 'Players to watch'}</h3>
-          <div class="leaders">${leadersHTML(g)}</div>
-        </section>
-        <section class="h-col">
-          <h3>On court</h3>
-          <div class="court">${courtHTML(g)}</div>
-        </section>
+        ${middle}
       </div>`;
   }
 

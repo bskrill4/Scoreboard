@@ -441,3 +441,70 @@ small { font-size: inherit; }
   .h-name .full { display: none; }
   .h-name .short { display: inline; }
 }
+
+/* ---------------- league tag and possession ---------------- */
+.lg { font-size: 10px; font-weight: 900; letter-spacing: .1em; color: var(--dim); padding-right: 6px; border-right: 1px solid var(--line); }
+.team .poss { display: inline-block; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--yellow); vertical-align: 2px; }
+
+/* ---------------- football: last play, field, drive stats ---------------- */
+.lastplay-text {
+  margin: 0 0 8px;
+  min-height: 2.7em;
+  font-size: 13px;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.field { position: relative; height: 170px; border: 1px solid var(--line); border-radius: 10px; background: #0d1a13; overflow: hidden; }
+.ez { position: absolute; top: 0; bottom: 0; width: 8.333%; display: grid; place-items: center; background: color-mix(in srgb, var(--c) 62%, #0a0a0c); }
+.ez.l { left: 0; }
+.ez.r { right: 0; }
+.ez span { writing-mode: vertical-rl; font-weight: 900; font-size: 13px; letter-spacing: .16em; color: #fff; }
+.ez.l span { transform: rotate(180deg); }
+
+.turf { position: absolute; top: 0; bottom: 0; left: 8.333%; right: 8.333%; }
+.yl { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255, 255, 255, .1); }
+.yn { position: absolute; bottom: 3px; transform: translateX(-50%); font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, .4); font-variant-numeric: tabular-nums; }
+.rows { position: absolute; top: 8px; bottom: 22px; left: 0; right: 0; }
+
+.pb { position: absolute; min-width: 3px; border-radius: 2px; background: var(--yellow); transition: left .4s, width .4s, top .4s; }
+.pb.gain, .pb.td { background: var(--yellow); }
+.pb.td { box-shadow: 0 0 10px rgba(255, 214, 10, .7); }
+.pb.loss, .pb.to { background: var(--red); }
+.pb.flat { width: 4px !important; background: #7c7c8a; }
+.pb.pen { background: repeating-linear-gradient(135deg, #b9b9c6 0 3px, transparent 3px 6px); }
+.pb.kick { background: rgba(255, 255, 255, .28); }
+
+.los, .fd { position: absolute; top: -8px; bottom: -22px; width: 2px; margin-left: -1px; transition: left .4s; }
+.los { background: rgba(255, 255, 255, .75); }
+.fd { background: var(--yellow); opacity: .85; }
+.ball { position: absolute; width: 14px; height: 9px; margin: -4.5px 0 0 -7px; border-radius: 50%; background: #fff; border: 2px solid var(--yellow); transition: left .4s, top .4s; }
+.f-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-weight: 600; font-size: 13px; }
+
+.dstats { display: grid; grid-template-columns: auto .7fr 1fr 1fr; gap: 14px; margin-top: 10px; }
+.dcell { min-width: 0; display: flex; flex-direction: column; }
+.dcell small { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.dcell b { font-size: 20px; font-weight: 900; font-stretch: 85%; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.dcell b.pos { color: var(--yellow); }
+.dcell b.neg { color: var(--red); }
+.dteam { flex-direction: row; align-items: center; gap: 8px; }
+.dteam img { width: 34px; height: 34px; object-fit: contain; flex: none; }
+.dteam span { display: flex; flex-direction: column; min-width: 0; }
+.dteam b { font-size: 15px; }
+.dteam em { font-style: normal; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.spark { display: block; width: 100%; height: 22px; margin-top: 2px; }
+.spark path { fill: none; stroke-width: 2; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.spark.pos path { stroke: var(--yellow); }
+.spark.neg path { stroke: var(--red); }
+.spark .zero { stroke: #55556a; stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+
+/* every tile is the same size, whatever its sport or state */
+.game:not(.is-hero) { min-height: 224px; }
+
+@media (max-width: 680px) {
+  .replay { flex-wrap: wrap; margin-left: 0; }
+}
