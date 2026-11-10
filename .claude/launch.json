@@ -4,7 +4,7 @@
     {
       "name": "scoreboard",
       "runtimeExecutable": "ruby",
-      "runtimeArgs": ["-run", "-e", "httpd", ".", "-p", "5173"],
+      "runtimeArgs": ["server.rb", "5173"],
       "port": 5173
     }
   ]

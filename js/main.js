@@ -17,7 +17,6 @@
 
   const SCOREBOARD_EVERY = 10000;
   const SUMMARY_EVERY = 8000;
-  const HERO_STICKINESS = 4; // index points a challenger needs to take the top spot
   const SWAP_STICKINESS = 2; // index points needed to trade places in the grid
 
   // ---------- replay mode: ?replay[=YYYYMMDD][&speed=30][&skip=minutes] ----------
@@ -43,6 +42,14 @@
   let prevOrder = [];
   let loaded = false;
 
+  // Sports switched off in the top bar (remembered per browser).
+  let hiddenLeagues = new Set();
+  try {
+    const saved = JSON.parse(localStorage.getItem('sb.hidden') || '[]');
+    if (Array.isArray(saved)) hiddenLeagues = new Set(saved.filter((l) => SB.api.leagues.includes(l)));
+  } catch (e) {}
+  const shown = (ev) => !hiddenLeagues.has(ev._league);
+
   try {
     const saved = Number(localStorage.getItem('sb.delay'));
     if (saved > 0 && saved < HOLD) delayIdx = saved;
@@ -65,6 +72,7 @@
   const SPORTS = {
     nba: { engine: SB.engine, reg: SB.engine.REG_GAME, quarter: SB.engine.QUARTER, ot: SB.engine.OT },
     nfl: { engine: SB.nfl, reg: SB.nfl.REG_GAME, quarter: SB.nfl.QUARTER, ot: SB.nfl.OT },
+    ncaam: { engine: SB.ncaam, reg: SB.ncaam.REG_GAME, quarter: SB.ncaam.QUARTER, ot: SB.ncaam.OT },
   };
 
   function seasonLeadersNFL(comp) {
@@ -123,6 +131,7 @@
       name: c.team.shortDisplayName || c.team.name,
       logo: c.team.logoDark || c.team.logo,
       record: c.records?.[0]?.summary || '',
+      rank: c.curatedRank?.current <= 25 ? c.curatedRank.current : null, // AP Top 25 (college)
       score: Number(c.score) || 0,
       css,
     });
@@ -207,6 +216,9 @@
   // ---------- ordering ----------
   const group = (g) => (g.state === 'live' ? 0 : g.state === 'final' ? 2 : 1);
 
+  // Halftime and the breaks after Q1/Q3 (feed text or the scoreboard's own wording).
+  const onBreak = (g) => g.state === 'live' && /^(HALFTIME|END (Q[13]|OF (1ST|3RD)))\b/.test(g.statusText || '');
+
   function better(b, a, margin) {
     const gb = group(b);
     const ga = group(a);
@@ -233,19 +245,28 @@
     prevOrder = order;
 
     if (pinnedId && !byId.has(pinnedId)) pinnedId = null;
-    const best = order[0];
     if (pinnedId) heroId = pinnedId;
-    else if (!heroId || !byId.has(heroId) || better(byId.get(best), byId.get(heroId), HERO_STICKINESS)) heroId = best;
+    else {
+      // The top spot has no grace margin: any game with a higher index takes it.
+      // The current top game only keeps it on a tie.
+      // Games sitting in a break (halftime, end of Q1/Q3) can't hold it at all,
+      // unless every game on the board is in one.
+      const pool = order.map((id) => byId.get(id)).filter((m) => !onBreak(m));
+      const cands = pool.length ? pool : order.map((id) => byId.get(id));
+      let top = cands.includes(byId.get(heroId)) ? byId.get(heroId) : cands[0];
+      for (const m of cands) if (better(m, top, 0)) top = m;
+      heroId = top ? top.id : null;
+    }
 
     return [heroId, ...order.filter((id) => id !== heroId)].filter(Boolean).map((id) => byId.get(id));
   }
 
   // ---------- render ----------
-  function tick() {
+  function tick(toTop = false) {
     if (!loaded) return;
     const T = cutoff();
-    const models = arrange(events.map((ev) => buildModel(ev, T)));
-    SB.ui.render(models, { heroId, pinnedId });
+    const models = arrange(events.filter(shown).map((ev) => buildModel(ev, T)));
+    SB.ui.render(models, { heroId, pinnedId, toTop });
 
     const live = models.filter((m) => m.state === 'live').length;
     const pre = models.filter((m) => m.state === 'pre' || m.state === 'sync').length;
@@ -253,7 +274,18 @@
     $('slate').innerHTML = models.length
       ? `<b class="${live ? 'hot' : ''}">${live} live</b><span>${pre} upcoming</span><span>${fin} final</span>`
       : '';
-    if (!models.length) showNotice(`No games on the slate. <a href="?replay">Replay last night's games</a>`);
+    if (!models.length) {
+      const day = viewDay();
+      const off = [...hiddenLeagues].map((l) => l.toUpperCase()).join(', ');
+      if (hiddenLeagues.size === SB.api.leagues.length) showNotice('Every sport is switched off. Tap a sport above to bring it back.');
+      else {
+        const msg =
+          day === todayDay() && !replay
+          ? `No games today. <a href="?replay">Replay last night's games</a>`
+          : `No games ${dayName(day) === 'Tomorrow' || dayName(day) === 'Yesterday' ? dayName(day).toLowerCase() : `on ${dayName(day)}`}.`;
+        showNotice(off ? `${msg} <span class="dim">(${off} switched off)</span>` : msg);
+      }
+    } else showNotice('');
 
     const status = $('delayStatus');
     if (holdAt != null) status.textContent = `Holding at ${new Date(holdAt).toLocaleTimeString()}`;
@@ -277,18 +309,78 @@
     if (html && n.innerHTML !== html) n.innerHTML = html;
   }
 
-  // ---------- polling ----------
-  // A "sports day" runs 6am to 6am, so a late game stays on the night it started.
-  const sportsDay = (ms) => new Date(ms - 6 * 3600 * 1000).toDateString();
+  // ---------- days ----------
+  // A "sports day" runs 6am to 6am, so a late game stays on the night it started
+  // and the board turns over to the next day's slate at 6am.
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const parseDay = (s) => new Date(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, Number(s.slice(6, 8)));
+  const todayDay = () => ymd(new Date(Date.now() - 6 * 3600 * 1000));
+  const shiftDay = (s, n) => {
+    const d = parseDay(s);
+    d.setDate(d.getDate() + n);
+    return ymd(d);
+  };
 
-  // The NFL feed returns the whole week; the board only wants today's games.
-  function onSlate(ev) {
-    if (replay || ev._league !== 'nfl') return true;
-    return ev.status.type.state === 'in' || sportsDay(Date.parse(ev.date)) === sportsDay(Date.now());
+  // null = follow today (and roll over with it); otherwise a day the user picked.
+  let pickedDay = /^\d{8}$/.test(params.get('day') || '') ? params.get('day') : null;
+  let loadedDay = null;
+  const viewDay = () => (replay ? replay.date : pickedDay || todayDay());
+
+  function dayName(day) {
+    const t = todayDay();
+    if (day === t) return 'Today';
+    if (day === shiftDay(t, -1)) return 'Yesterday';
+    if (day === shiftDay(t, 1)) return 'Tomorrow';
+    return parseDay(day).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
   }
 
+  function drawDays() {
+    const day = viewDay();
+    const name = dayName(day);
+    const date = parseDay(day).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+    const isToday = day === todayDay();
+    const label = $('dayLabel');
+    const html = `<b>${name}</b>${name === date ? '' : `<small>${date}</small>`}`;
+    if (label.innerHTML !== html) label.innerHTML = html;
+    label.disabled = isToday;
+    label.title = isToday ? '' : 'Back to today';
+    $('days').classList.toggle('away', !isToday);
+  }
+
+  // Switch the board to whatever day it should show now. True if it changed.
+  function syncDay() {
+    if (pickedDay && pickedDay === todayDay()) pickedDay = null; // caught up with today
+    const day = viewDay();
+    if (day === loadedDay) return false;
+    loadedDay = day;
+    events = [];
+    loaded = false;
+    heroId = null;
+    pinnedId = null;
+    prevOrder = [];
+    if (!replay) history.replaceState(null, '', pickedDay ? `?day=${pickedDay}` : location.pathname);
+    drawDays();
+    return true;
+  }
+
+  function goToDay(day) {
+    pickedDay = day === todayDay() ? null : day;
+    if (!syncDay()) return;
+    lastBoard = Date.now();
+    pollScoreboard().then(() => {
+      tick();
+      pollSummaries();
+    });
+  }
+
+  // ---------- polling ----------
+  let lastBoard = 0;
+
   async function pollScoreboard() {
-    const results = await Promise.allSettled(SB.api.leagues.map((l) => SB.api.scoreboard(replay?.date, l)));
+    const day = loadedDay;
+    const results = await Promise.allSettled(SB.api.leagues.map((l) => SB.api.scoreboard(day, l)));
+    if (day !== loadedDay) return; // the user changed days while this was in flight
     let any = false;
     const next = [];
     results.forEach((r, i) => {
@@ -297,7 +389,9 @@
         any = true;
         for (const ev of r.value.events || []) {
           ev._league = league;
-          if (onSlate(ev)) next.push(ev);
+          // College: only games with a Top 25 team (ESPN's default slate, made explicit).
+          if (league === 'ncaam' && !ev.competitions[0].competitors.some((c) => c.curatedRank?.current <= 25)) continue;
+          next.push(ev);
         }
       } else {
         console.error(r.reason);
@@ -330,7 +424,7 @@
   }
 
   async function pollSummaries() {
-    const todo = events.filter(wantsSummary);
+    const todo = events.filter((ev) => shown(ev) && wantsSummary(ev)); // nothing for hidden sports
     await Promise.all(
       todo.map(async (ev) => {
         const meta = fetchMeta.get(ev.id);
@@ -354,8 +448,9 @@
   }
 
   async function pollLoop() {
-    let lastBoard = 0;
     for (;;) {
+      if (syncDay()) lastBoard = 0; // 6am rollover (or first load)
+      else drawDays(); // relabel at 6am ("Tomorrow" becomes "Today")
       if (!document.hidden) {
         if (!replay ? Date.now() - lastBoard >= SCOREBOARD_EVERY : !events.length) {
           await pollScoreboard();
@@ -368,6 +463,16 @@
   }
 
   // ---------- controls ----------
+  function drawLeagues() {
+    for (const b of document.querySelectorAll('#leagues button[data-league]')) {
+      const on = !hiddenLeagues.has(b.dataset.league);
+      const name = b.textContent.trim();
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', String(on));
+      b.title = on ? `Hide ${name} games` : `Show ${name} games`;
+    }
+  }
+
   function setDelay(idx) {
     const before = cutoff();
     if (idx === HOLD) holdAt = before === Infinity ? baseNow() : before;
@@ -392,6 +497,7 @@
     setDelay(delayIdx);
 
     $('board').addEventListener('click', (e) => {
+      let toTop = false;
       if (e.target.closest('[data-action="unpin"]')) {
         pinnedId = null;
         heroId = null;
@@ -399,12 +505,32 @@
         const card = e.target.closest('.game');
         if (!card || card.classList.contains('is-hero')) return;
         pinnedId = card.dataset.id;
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        toTop = true;
       }
-      tick();
+      tick(toTop);
     });
 
+    $('leagues').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-league]');
+      if (!b) return;
+      const l = b.dataset.league;
+      if (hiddenLeagues.has(l)) hiddenLeagues.delete(l);
+      else hiddenLeagues.add(l);
+      try {
+        localStorage.setItem('sb.hidden', JSON.stringify([...hiddenLeagues]));
+      } catch (err) {}
+      drawLeagues();
+      tick();
+      if (!hiddenLeagues.has(l)) pollSummaries().then(() => tick()); // catch up a sport turned back on
+    });
+    drawLeagues();
+
+    $('dayPrev').addEventListener('click', () => goToDay(shiftDay(viewDay(), -1)));
+    $('dayNext').addEventListener('click', () => goToDay(shiftDay(viewDay(), 1)));
+    $('dayLabel').addEventListener('click', () => goToDay(todayDay()));
+
     if (replay) {
+      $('days').hidden = true;
       $('replay').hidden = false;
       $('replayLink').hidden = true;
       const speeds = [1, 10, 30, 120];

@@ -79,8 +79,26 @@ small { font-size: inherit; }
   letter-spacing: .06em;
   color: var(--dim);
 }
+button.league { background: none; border: 2px solid var(--line); padding: 2px 8px; transition: background .15s, color .15s, border-color .15s; }
+button.league:hover { border-color: var(--yellow); }
 .league.on { background: var(--text); color: var(--bg); }
+button.league.on { border-color: var(--text); }
+button.league.on:hover { border-color: var(--yellow); }
+button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-decoration-thickness: 2px; }
 .league.soon { opacity: .45; }
+.league small { font-size: 9px; letter-spacing: .04em; opacity: .7; }
+
+/* Day switcher: ‹ Today › */
+.days { display: flex; align-items: center; gap: 2px; padding: 2px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 999px; }
+.days button { background: none; border: 0; border-radius: 999px; font-weight: 800; }
+.days .arrow { width: 28px; height: 28px; font-size: 20px; line-height: 1; padding-bottom: 2px; transition: background .15s, color .15s; }
+.days .arrow:hover { background: var(--yellow); color: var(--yellow-ink); }
+.day-label { display: flex; flex-direction: column; align-items: center; min-width: 104px; padding: 1px 8px; line-height: 1.15; }
+.day-label b { font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
+.day-label small { font-size: 10px; font-weight: 700; color: var(--dim); }
+.day-label:disabled { cursor: default; }
+.days.away .day-label b { color: var(--yellow); }
+.days.away .day-label:hover small { color: var(--text); }
 
 .slate { display: flex; gap: 12px; font-size: 12px; font-weight: 600; color: var(--dim); text-transform: uppercase; letter-spacing: .06em; }
 .slate b.hot { color: var(--red); }
@@ -158,6 +176,7 @@ small { font-size: inherit; }
 .ticks button.on { color: var(--yellow); }
 
 .notice { margin: 20px 24px 0; padding: 14px 18px; background: var(--panel); border: 2px dashed var(--line); border-radius: var(--radius); font-weight: 600; }
+.notice .dim { color: var(--dim); }
 
 /* ---------------- board ---------------- */
 .board {
@@ -199,6 +218,32 @@ small { font-size: inherit; }
   margin-bottom: 8px;
 }
 
+/* Reorders morph card by card; the rest of the page stays live underneath. */
+:root { view-transition-name: none; }
+::view-transition-group(*) {
+  z-index: 1;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--panel);
+  animation-duration: .75s;
+  animation-timing-function: cubic-bezier(.3, 0, .15, 1);
+}
+/* Content stays at its real size and the card opens or closes around it. */
+::view-transition-old(*),
+::view-transition-new(*) {
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+  animation-duration: .45s;
+}
+::view-transition-group(hero-in) { z-index: 2; box-shadow: 7px 7px 0 var(--yellow); overflow: clip; overflow-clip-margin: 0; }
+::view-transition-group(hero-out) { z-index: 0; }
+/* The two cards changing shape swap content in turn, not double-exposed. */
+::view-transition-old(hero-in),
+::view-transition-old(hero-out) { animation-duration: .22s; }
+::view-transition-new(hero-in),
+::view-transition-new(hero-out) { animation-delay: .2s; animation-duration: .45s; }
+
 @keyframes rise { from { opacity: 0; transform: translateY(14px) scale(.98); } }
 @keyframes fade { from { opacity: 0; } }
 
@@ -234,6 +279,7 @@ small { font-size: inherit; }
 }
 .chip.hot { background: var(--yellow); color: var(--yellow-ink); }
 .chip.info { border: 1px solid #55556a; color: #d9d9e3; }
+.chip.red { background: var(--red); color: #fff; }
 .chip.cold { background: var(--panel-2); color: var(--dim); }
 
 .widx {
@@ -279,6 +325,8 @@ small { font-size: inherit; }
 .team { display: grid; grid-template-columns: 32px auto 1fr auto; align-items: center; gap: 10px; }
 .team .logo { width: 32px; height: 32px; object-fit: contain; }
 .team .abbr { font-weight: 800; font-size: 18px; font-stretch: 90%; }
+/* AP Top 25 rank (college) */
+.rk { margin-right: 4px; font-size: .62em; font-weight: 800; color: var(--yellow); vertical-align: .18em; font-stretch: 100%; }
 .team .rec { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
 .score {
   font-weight: 900;
@@ -372,6 +420,38 @@ small { font-size: inherit; }
 .chart .edge { position: absolute; left: 6px; width: 22px; height: 22px; object-fit: contain; opacity: .9; }
 .chart .edge.top { top: 6px; }
 .chart .edge.bot { bottom: 6px; }
+/* Hovering a player: their minutes (NBA) or plays (NFL) light up on the chart. */
+.chart .wpline { transition: opacity .2s; }
+.chart.focus .wpline { opacity: .3; }
+.chart.focus .wpline.lit { opacity: 1; stroke-width: 3; }
+.chart .stint rect { fill: rgba(255, 214, 10, .1); }
+.chart .mom-ticks line { stroke: rgba(255, 214, 10, .22); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.chart .stint-tag {
+  position: absolute; bottom: 4px; padding-top: 2px;
+  border-top: 2px solid currentColor;
+  font-size: 10px; font-weight: 800; text-align: center; font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; pointer-events: none;
+  animation: fade .2s ease both;
+}
+.chart .stint-tag.pos, .chart .focus-cap em.pos { color: var(--yellow); }
+.chart .stint-tag.neg, .chart .focus-cap em.neg { color: #9a9aaa; }
+.chart .mom {
+  position: absolute; width: var(--s); height: var(--s); margin: calc(var(--s) / -2) 0 0 calc(var(--s) / -2);
+  border-radius: 50%; border: 2px solid var(--bg, #0a0a0c); pointer-events: none;
+  animation: fade .2s ease both;
+}
+.chart .mom.pos { background: var(--yellow); }
+.chart .mom.neg { background: #8a8a9a; }
+.chart .focus-cap {
+  position: absolute; top: 6px; right: 8px; padding: 3px 8px; border-radius: 6px;
+  background: rgba(10, 10, 12, .85); font-size: 11px; color: var(--dim); white-space: nowrap;
+  pointer-events: none; animation: fade .2s ease both;
+}
+.chart .focus-cap b { color: var(--text); font-weight: 800; }
+.chart .focus-cap em { font-style: normal; font-weight: 800; }
+.chart.focus .now { opacity: .4; }
+.lrow[data-pid], .crow[data-pid] { border-radius: 8px; transition: background .15s; }
+.lrow.hl, .crow.hl { background: rgba(255, 214, 10, .08); box-shadow: 0 0 0 4px rgba(255, 214, 10, .08); }
 .chart.empty { display: grid; place-items: center; color: var(--dim); font-weight: 600; font-size: 13px; border-style: dashed; }
 
 .swings { display: flex; flex-direction: column; gap: 4px; margin-top: 10px; }

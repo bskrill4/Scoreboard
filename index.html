@@ -14,11 +14,18 @@
   <header class="bar">
     <a class="brand" href="./" aria-label="Scoreboard home">SCORE<span>BOARD</span></a>
 
-    <nav class="leagues" aria-label="Sports">
-      <span class="league on">NBA</span>
-      <span class="league on">NFL</span>
+    <nav class="leagues" id="leagues" aria-label="Sports">
+      <button type="button" class="league on" data-league="nba" aria-pressed="true" title="Hide NBA games">NBA</button>
+      <button type="button" class="league on" data-league="nfl" aria-pressed="true" title="Hide NFL games">NFL</button>
+      <button type="button" class="league on" data-league="ncaam" aria-pressed="true" title="Hide NCAAM Top 25 games">NCAAM <small>Top 25</small></button>
       <span class="league soon" title="Coming soon">MLB</span>
       <span class="league soon" title="Coming soon">NHL</span>
+    </nav>
+
+    <nav class="days" id="days" aria-label="Day">
+      <button type="button" class="arrow" id="dayPrev" aria-label="Previous day">‹</button>
+      <button type="button" class="day-label" id="dayLabel"></button>
+      <button type="button" class="arrow" id="dayNext" aria-label="Next day">›</button>
     </nav>
 
     <div class="slate" id="slate"></div>

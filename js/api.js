@@ -20,7 +20,15 @@
         ['receiving.receivingYards', 12, [[6, 0.5], [Infinity, 0.3]]],
       ],
     },
+    // Men's college basketball. ESPN's default slate is games with a Top 25 team.
+    ncaam: {
+      site: 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball',
+      stats: 'https://site.web.api.espn.com/apis/common/v3/sports/basketball/mens-college-basketball',
+      core: 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball',
+      starLists: [['offensive.avgPoints', 40, [[10, 0.7], [Infinity, 0.4]]]],
+    },
   };
+  LEAGUES.nba.core = 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba';
 
   async function getJSON(url) {
     const res = await fetch(url);
@@ -28,8 +36,26 @@
     return res.json();
   }
 
+  // Career triple-doubles per athlete (NBA or college), fetched once on first ask.
+  // undefined = not asked yet / loading, null = unavailable, number = count.
+  const careerTD = new Map();
+  function tripleDoubles(id, league = 'nba') {
+    if (!careerTD.has(id)) {
+      careerTD.set(id, undefined);
+      getJSON(`${LEAGUES[league].core}/athletes/${id}/statistics`)
+        .then((data) => {
+          let n = 0; // no stat row = never had one
+          for (const c of data.splits?.categories || []) for (const s of c.stats || []) if (s.name === 'tripleDouble') n = s.value || 0;
+          careerTD.set(id, n);
+        })
+        .catch(() => careerTD.set(id, null));
+    }
+    return careerTD.get(id);
+  }
+
   SB.api = {
     leagues: Object.keys(LEAGUES),
+    tripleDoubles,
 
     // date: 'YYYYMMDD' or undefined for the current slate.
     scoreboard(date, league = 'nba') {

@@ -339,6 +339,7 @@
       ballX,
       firstX,
       ytg: ended ? null : ytg,
+      ballTeam: ended ? null : ballTeam, // who has it at that spot (ytg is from their side)
     };
   }
 
@@ -384,10 +385,12 @@
       for (const c of p.credits) {
         if (!players.has(c.id)) {
           const r = tape.roster.get(c.id);
-          players.set(c.id, { ...r, ...ZERO, wpa: 0, on: false, played: true });
+          players.set(c.id, { ...r, ...ZERO, wpa: 0, on: false, played: true, moments: [] });
         }
         const pl = players.get(c.id);
         pl.wpa += offDelta * c.share;
+        // Each play they were part of, for the chart highlight on hover.
+        pl.moments.push({ t: p.elapsed, wp: p.wp, wpa: offDelta * c.share });
         for (const k in c.stats) pl[k] += c.stats[k];
       }
 

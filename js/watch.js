@@ -14,6 +14,8 @@
   const SPORT = {
     nba: { marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
     nfl: { marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
+    // College: shorter game, bigger talent gaps; rankings beat early-season records.
+    ncaam: { marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
   };
 
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -28,10 +30,19 @@
     return (w + prior) / (w + l + 2 * prior);
   }
 
+  // College: the AP rank says more than a 3-0 record against cupcakes.
+  // #1 ≈ .95, #25 ≈ .57; unranked teams top out at .45.
+  function strength(g, side) {
+    const cfg = SPORT[g.league];
+    const t = g[side];
+    const rec = teamStrength(t.record, cfg.recordPrior);
+    if (!cfg.useRank) return rec;
+    return t.rank ? 0.95 - (t.rank - 1) * 0.016 : Math.min(rec, 0.45);
+  }
+
   function quality(g) {
-    const prior = SPORT[g.league].recordPrior;
-    const a = teamStrength(g.away.record, prior);
-    const h = teamStrength(g.home.record, prior);
+    const a = strength(g, 'away');
+    const h = strength(g, 'home');
     // Reward two good teams more than one great team and one bad one.
     const blended = 0.6 * Math.min(a, h) + 0.4 * Math.max(a, h);
     return clamp01((blended - 0.3) / 0.4);
@@ -41,7 +52,7 @@
     const cfg = SPORT[g.league];
     if (g.state === 'pre') {
       // Before kickoff, similar records are the best guess at a close game.
-      const gap = Math.abs(teamStrength(g.away.record, cfg.recordPrior) - teamStrength(g.home.record, cfg.recordPrior));
+      const gap = Math.abs(strength(g, 'away') - strength(g, 'home'));
       return clamp01((1 - clamp01(gap / 0.4)) * 0.4);
     }
     const margin = Math.abs(g.home.score - g.away.score);
@@ -77,6 +88,25 @@
     return { score: clamp01(total / 2.5), names: names.slice(0, 2).map((n) => n.last) };
   }
 
+  // Triple-double watch: two categories already in double figures and the third
+  // within one play (3 points, or 1 rebound or assist). Once it's done it stops
+  // counting. Rarer is better: a first career triple-double outranks Luka's 90th.
+  const TD_NEAR = { pts: 7, reb: 9, ast: 9 };
+  function tripleDoubleWatch(g, p) {
+    if (g.state !== 'live') return { score: 0 };
+    const cats = ['pts', 'reb', 'ast'];
+    const done = cats.filter((k) => p[k] >= 10);
+    if (done.length !== 2) return { score: 0 };
+    const left = cats.find((k) => p[k] < 10);
+    if (p[left] < TD_NEAR[left]) return { score: 0 };
+
+    const career = SB.api.tripleDoubles(p.id, g.league); // undefined while loading, null if unavailable
+    if (career === 0) return { score: 0.9, label: `${p.last} near 1st triple-double` };
+    // About 0.75 with one career triple-double, sliding toward 0.3 for players who get them all the time.
+    const score = career == null ? 0.55 : 0.3 + 0.55 / (1 + career / 5);
+    return { score, label: `Triple-double watch: ${p.last}` };
+  }
+
   function performanceNBA(g) {
     let best = { score: 0, label: '' };
     const progress = progressOf(g);
@@ -89,12 +119,8 @@
         [score, label] = [0.6, `${p.last} on 50 pace`];
       else if (p.pts >= 30) [score, label] = [0.5, `${p.last} ${p.pts} PTS`];
 
-      const cats = [p.pts, p.reb, p.ast].sort((a, b) => b - a);
-      if (cats[2] >= 10) {
-        if (score < 0.7) [score, label] = [0.7, `${p.last} triple-double`];
-      } else if (g.state === 'live' && cats[1] >= 8 && cats[2] >= 6) {
-        if (score < 0.55) [score, label] = [0.55, `Triple-double watch: ${p.last}`];
-      }
+      const td = tripleDoubleWatch(g, p);
+      if (td.score > score) [score, label] = [td.score, td.label];
       if (score > best.score) best = { score, label };
     }
     return best;
@@ -126,7 +152,7 @@
     const t = tension(g);
     const q = quality(g);
     const s = starPower(g, stars);
-    const perf = g.league === 'nfl' ? performanceNFL(g) : performanceNBA(g);
+    const perf = g.league === 'nfl' ? performanceNFL(g) : performanceNBA(g); // NBA rules cover college too
     const vol = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
 
     const index = Math.round(
@@ -145,11 +171,16 @@
     const blowout = g.state === 'live' && progress > 0.5 && margin >= cfg.blowout;
     if (blowout) reasons.push({ text: 'Blowout', tone: 'cold' });
     if (g.state === 'live') {
+      // Red zone: inside the opponent's 20. First so it's the one a tile shows.
+      const d = g.drive;
+      if (d && !d.ended && d.ytg != null && d.ytg <= 20) {
+        const team = d.ballTeam === g.home.id ? g.home : d.ballTeam === g.away.id ? g.away : null;
+        if (team) reasons.unshift({ text: `${team.abbr} in the red zone`, tone: 'red' });
+      }
       if (g.period > 4) reasons.push({ text: 'Overtime', tone: 'hot' });
       else if (progress >= 0.85 && margin <= cfg.clutchMargin) reasons.push({ text: 'Clutch time', tone: 'hot' });
       if (margin === 0 && g.elapsed > 0) reasons.push({ text: 'Tied', tone: 'hot' });
       else if (margin <= cfg.oneScore && progress > 0.5) reasons.push({ text: cfg.oneScoreLabel, tone: 'hot' });
-      if (g.drive && !g.drive.ended && g.drive.ytg != null && g.drive.ytg <= 20 && !blowout) reasons.push({ text: 'Red zone', tone: 'hot' });
       const comeback = (g.minWP < 0.12 && g.wp > 0.4) || (g.maxWP > 0.88 && g.wp < 0.6);
       if (comeback) reasons.push({ text: 'Comeback brewing', tone: 'hot' });
       if (vol > 0.7) reasons.push({ text: 'Wild swings', tone: 'hot' });
@@ -166,5 +197,5 @@
     };
   }
 
-  SB.watch = { rate, WEIGHTS, SPORT };
+  SB.watch = { rate, tripleDoubleWatch, WEIGHTS, SPORT };
 })();

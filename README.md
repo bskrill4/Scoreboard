@@ -1,13 +1,13 @@
 # Scoreboard
 
-A live multi-game scoreboard that puts the most watchable game on top. NBA and NFL share one ranked board; other sports later.
+A live multi-game scoreboard that puts the most watchable game on top. NBA, NFL and NCAAM Top 25 games share one ranked board; other sports later.
 
 ## Run it
 
 No build step and no dependencies. Either open `index.html` in a browser, or serve the folder:
 
 ```bash
-ruby -run -e httpd . -p 5173
+ruby server.rb
 ```
 
 Then visit http://localhost:5173.

@@ -73,7 +73,7 @@
 
   function statusPill(g) {
     const dot = g.state === 'live' ? '<i class="dot"></i>' : '';
-    return `<span class="lg">${g.league.toUpperCase()}</span><span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
+    return `<span class="lg">${g.league === 'ncaam' ? 'NCAAM' : g.league.toUpperCase()}</span><span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
   }
 
   function wpBar(g) {
@@ -92,7 +92,7 @@
     const cls = showScore && g.state === 'final' && t.score < other.score ? 'lost' : '';
     return `<div class="team ${cls}">
       <img class="logo" src="${esc(t.logo)}" alt="">
-      <span class="abbr">${esc(t.abbr)}${g.state === 'live' && g.poss === side ? '<i class="poss" title="Has the ball"></i>' : ''}</span>
+      <span class="abbr">${t.rank ? `<small class="rk">${t.rank}</small>` : ''}${esc(t.abbr)}${g.state === 'live' && g.poss === side ? '<i class="poss" title="Has the ball"></i>' : ''}</span>
       <span class="rec">${esc(t.record)}</span>
       <span class="score" data-side="${side}">${showScore ? t.score : ''}</span>
     </div>`;
@@ -130,6 +130,9 @@
   }
 
   // ---------- hero ----------
+  const WP_PAD = 6; // chart units (of 180)
+  const wpTop = (wp) => (((WP_PAD + wp * (180 - 2 * WP_PAD)) / 180) * 100).toFixed(2);
+
   function chartHTML(g) {
     if (!g.series.length) {
       const msg = g.state === 'sync' ? 'Holding back for your stream delay…' : `Win probability starts at ${g.league === 'nfl' ? 'kickoff' : 'tip-off'}`;
@@ -140,7 +143,9 @@
     const reg = g.reg;
     const total = g.elapsed <= reg ? reg : reg + Math.ceil((g.elapsed - reg) / g.ot) * g.ot;
     const x = (e) => ((e / total) * W).toFixed(1);
-    const y = (wp) => (wp * H).toFixed(1); // away on top, home on the bottom
+    // Away on top, home on the bottom, with a little headroom so a lopsided
+    // game (99%+ all night) still shows its line instead of hugging the border.
+    const y = (wp) => (WP_PAD + wp * (H - 2 * WP_PAD)).toFixed(1);
     let d = `M0 ${y(g.series[0][1])}`;
     for (const [e, wp] of g.series) d += ` L${x(e)} ${y(wp)}`;
     const lastX = x(g.elapsed);
@@ -150,22 +155,92 @@
     let grid = '';
     for (let q = g.quarter; q < total; q += q < reg ? g.quarter : g.ot) grid += `<line x1="${x(q)}" x2="${x(q)}" y1="0" y2="${H}" class="q"/>`;
     const id = `c${g.id}`;
-    return `<div class="chart">
+    const hl = focusHTML(g, total, W, H, d, id);
+    return `<div class="chart${hl ? ' focus' : ''}">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <clipPath id="${id}t"><rect x="0" y="0" width="${W}" height="${H / 2}"/></clipPath>
           <clipPath id="${id}b"><rect x="0" y="${H / 2}" width="${W}" height="${H / 2}"/></clipPath>
+          ${hl ? hl.defs : ''}
         </defs>
+        ${hl ? hl.under : ''}
         ${grid}
         <path d="${area}" fill="${g.away.css}" opacity=".28" clip-path="url(#${id}t)"/>
         <path d="${area}" fill="${g.home.css}" opacity=".28" clip-path="url(#${id}b)"/>
         <line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" class="mid"/>
         <path d="${d}" class="wpline"/>
+        ${hl ? hl.over : ''}
       </svg>
-      <i class="now" style="left:${((g.elapsed / total) * 100).toFixed(2)}%;top:${(cur * 100).toFixed(2)}%"></i>
+      <i class="now" style="left:${((g.elapsed / total) * 100).toFixed(2)}%;top:${wpTop(cur)}%"></i>
       <img class="edge top" src="${esc(g.away.logo)}" alt="">
       <img class="edge bot" src="${esc(g.home.logo)}" alt="">
+      ${hl ? hl.html : ''}
     </div>`;
+  }
+
+  // ---------- hover a player: when they made their WPA ----------
+  let focus = null; // { game, pid } while the pointer is on a player row
+  const isFocus = (g, p) => (focus && focus.game === g.id && focus.pid === p.id ? ' hl' : '');
+
+  // NBA: shade each stint on the floor, relight the line inside it and tag it
+  // with the WPA banked there. NFL: a dot on the line at every play they were in.
+  function focusHTML(g, total, W, H, d, id) {
+    if (!focus || focus.game !== g.id) return null;
+    const p = g.players.find((pl) => pl.id === focus.pid);
+    if (!p) return null;
+    const pct = (e) => Math.min(100, (e / total) * 100);
+    const x = (e) => ((Math.min(e, total) / total) * W).toFixed(1);
+    const cls = (v) => (v >= 0 ? 'pos' : 'neg');
+    const name = esc(p.last || p.name);
+
+    if (p.stints) {
+      const stints = p.stints.filter((s) => s.e > s.s);
+      const rects = stints.map((s) => `<rect x="${x(s.s)}" y="0" width="${(x(s.e) - x(s.s)).toFixed(1)}" height="${H}"/>`).join('');
+      const tags = stints
+        .filter((s) => pct(s.e) - pct(s.s) >= 6 && Math.abs(s.wpa) >= 0.005)
+        .map((s) => `<span class="stint-tag ${cls(s.wpa)}" style="left:${pct(s.s).toFixed(2)}%;width:${(pct(s.e) - pct(s.s)).toFixed(2)}%">${fmtWPA(s.wpa)}</span>`)
+        .join('');
+      const mins = Math.round(stints.reduce((t, s) => t + s.e - s.s, 0) / 60);
+      return {
+        defs: `<clipPath id="${id}f">${rects}</clipPath>`,
+        under: `<g class="stint">${rects}</g>`,
+        over: `<path d="${d}" class="wpline lit" clip-path="url(#${id}f)"/>`,
+        html: `${tags}<span class="focus-cap"><b>${name}</b> ${mins} min on court · <em class="${cls(p.wpa)}">${fmtWPA(p.wpa)}</em></span>`,
+      };
+    }
+
+    const moments = p.moments || [];
+    const big = Math.max(0.01, ...moments.map((m) => Math.abs(m.wpa)));
+    const ticks = moments.map((m) => `<line x1="${x(m.t)}" x2="${x(m.t)}" y1="0" y2="${H}"/>`).join('');
+    const dots = moments
+      .map((m) => {
+        const size = (5 + (Math.abs(m.wpa) / big) * 9).toFixed(1);
+        return `<i class="mom ${cls(m.wpa)}" style="left:${pct(m.t).toFixed(2)}%;top:${wpTop(m.wp)}%;--s:${size}px"></i>`;
+      })
+      .join('');
+    const plays = `${moments.length} play${moments.length === 1 ? '' : 's'}`;
+    return {
+      defs: '',
+      under: `<g class="mom-ticks">${ticks}</g>`,
+      over: '',
+      html: `${dots}<span class="focus-cap"><b>${name}</b> ${plays} · <em class="${cls(p.wpa)}">${fmtWPA(p.wpa)}</em></span>`,
+    };
+  }
+
+  function bindFocus(root) {
+    root.addEventListener('mouseover', (e) => {
+      const row = e.target.closest('[data-pid]');
+      const card = row && row.closest('.game.is-hero');
+      setFocus(card ? { game: card.dataset.id, pid: row.dataset.pid } : null);
+    });
+    root.addEventListener('mouseleave', () => setFocus(null));
+  }
+
+  function setFocus(next) {
+    const same = (focus && next && focus.game === next.game && focus.pid === next.pid) || (!focus && !next);
+    if (same) return;
+    focus = next;
+    if (lastPaint && !morphing) paint(lastPaint[0], lastPaint[1], false);
   }
 
   function leadersHTML(g) {
@@ -183,14 +258,14 @@
     }
     const rows = sorted.slice(0, 5);
     const coldest = sorted[sorted.length - 1];
-    if (g.league === 'nba' && sorted.length > 5 && coldest.wpa < 0) rows.push(coldest);
+    if (g.league !== 'nfl' && sorted.length > 5 && coldest.wpa < 0) rows.push(coldest);
     const max = Math.max(0.05, ...rows.map((p) => Math.abs(p.wpa)));
     return rows
       .map((p, i) => {
         const team = p.teamId === g.home.id ? g.home : g.away;
         const w = ((Math.abs(p.wpa) / max) * 100).toFixed(0);
         const cold = i === 5 ? ' cold' : '';
-        return `<div class="lrow${cold}">
+        return `<div class="lrow${cold}${isFocus(g, p)}" data-pid="${esc(p.id)}">
           ${headshot(p)}
           <span class="who"><b>${p.star ? '★ ' : ''}${esc(p.name)}</b><small>${esc(team.abbr)} · ${statLine(p)}${
           p.on ? ' · <em>on court</em>' : ''
@@ -213,7 +288,7 @@
         <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
         ${five
           .map(
-            (p) => `<div class="crow">
+            (p) => `<div class="crow${isFocus(g, p)}" data-pid="${esc(p.id)}">
               ${headshot(p, 'sm')}
               <span class="who">${p.star ? '★ ' : ''}${esc(p.last)}</span>
               <span class="line">${p.pts}<small>P</small> ${p.reb}<small>R</small> ${p.ast}<small>A</small></span>
@@ -315,7 +390,7 @@
         const t = s.delta > 0 ? g.home : g.away;
         return `<div class="swing" style="--tc:${t.css}">
           <b>${esc(t.abbr)} +${Math.abs(s.delta * 100).toFixed(0)}%</b>
-          <span>${esc(SB.engine.periodLabel(s.period))} ${esc(s.clock)} · ${esc(s.text)}</span>
+          <span>${esc((g.league === 'ncaam' ? SB.ncaam : SB.engine).periodLabel(s.period))} ${esc(s.clock)} · ${esc(s.text)}</span>
         </div>`;
       })
       .join('')}</div>`;
@@ -342,7 +417,7 @@
     const showScore = g.state === 'live' || g.state === 'final';
     return `<div class="h-team ${side}">
       <img class="logo" src="${esc(t.logo)}" alt="">
-      <div class="h-name"><b><span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}${
+      <div class="h-name"><b>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}${
       g.wp != null && g.state === 'live' ? ` · ${pct(side === 'home' ? g.wp : 1 - g.wp)} to win` : ''
     }</small></div>
       <span class="score" data-side="${side}" style="--tc:${t.css}">${showScore ? t.score : ''}</span>
@@ -441,13 +516,89 @@
     }
   }
 
-  function render(models, opts) {
-    board = board || document.getElementById('board');
-    const key = `${models.map((m) => m.id).join(',')}|${opts.heroId}`;
-    const moved = key !== lastKey;
-    const first = new Map();
-    if (moved && lastKey) for (const [id, el] of els) first.set(id, el.getBoundingClientRect());
+  let morphing = false;
+  let lastPaint = null;
 
+  // The browser snapshots the board, we rearrange it, and each card morphs in
+  // position and size from its old slot to its new one while its old and new
+  // content cross-fade. Needs the View Transitions API and a visible tab.
+  function canMorph() {
+    return (
+      typeof document.startViewTransition === 'function' &&
+      document.visibilityState === 'visible' &&
+      !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+  }
+
+  function morph(models, opts) {
+    morphing = true;
+    // The two cards trading the top spot get their own choreography in the CSS.
+    const out = board.querySelector('.game.is-hero');
+    const inc = els.get(opts.heroId);
+    const roles = out === inc ? [] : [[out, 'hero-out'], [inc, 'hero-in']].filter(([el]) => el);
+    for (const [el, name] of roles) el.style.viewTransitionName = name;
+
+    const t = document.startViewTransition(() => {
+      paint(models, opts, false);
+      if (opts.toTop) window.scrollTo(0, 0);
+    });
+    t.ready.catch(() => {}); // a cancelled transition (tab hidden, resize) is fine
+    t.finished.catch(() => {}).then(() => {
+      for (const [el] of roles) el.style.viewTransitionName = `g${el.dataset.id}`;
+      morphing = false;
+    });
+  }
+
+  // Cards glide to their new slots; used where morphing isn't available.
+  function slide(models, opts) {
+    const first = new Map();
+    for (const [id, el] of els) first.set(id, el.getBoundingClientRect());
+    paint(models, opts, true);
+
+    // FLIP: jump each card back to where it was, then let it glide home.
+    const moves = [];
+    for (const [id, el] of els) {
+      const a = first.get(id);
+      if (!a) continue;
+      const b = el.getBoundingClientRect();
+      const dx = a.left - b.left;
+      const dy = a.top - b.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      moves.push(el);
+    }
+    if (moves.length) {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          for (const el of moves) {
+            el.style.transition = 'transform .6s cubic-bezier(.2,.9,.25,1)';
+            el.style.transform = '';
+          }
+        })
+      );
+    }
+    if (opts.toTop) window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function render(models, opts) {
+    if (!board) {
+      board = document.getElementById('board');
+      bindFocus(board);
+    }
+    const key = boardKey(models, opts);
+    if (key === lastKey || !lastKey) return paint(models, opts, false);
+    // Let a running morph finish; the next tick picks up the new order.
+    if (morphing) return;
+    if (canMorph()) morph(models, opts);
+    else slide(models, opts);
+  }
+
+  const boardKey = (models, opts) => `${models.map((m) => m.id).join(',')}|${opts.heroId}`;
+
+  function paint(models, opts, fadeContent) {
+    lastPaint = [models, opts];
+    lastKey = boardKey(models, opts);
     const seen = new Set();
     models.forEach((g, i) => {
       seen.add(g.id);
@@ -456,10 +607,11 @@
         el = document.createElement('article');
         el.className = 'game enter';
         el.dataset.id = g.id;
+        el.style.viewTransitionName = `g${g.id}`;
         els.set(g.id, el);
       }
       const isHero = g.id === opts.heroId;
-      if (el.classList.contains('is-hero') !== isHero && el._html) {
+      if (fadeContent && el.classList.contains('is-hero') !== isHero && el._html) {
         el.classList.remove('swap');
         void el.offsetWidth;
         el.classList.add('swap');
@@ -478,33 +630,6 @@
         els.delete(id);
       }
     }
-
-    if (first.size) {
-      // FLIP: jump each card back to where it was, then let it glide home.
-      const moves = [];
-      for (const [id, el] of els) {
-        const a = first.get(id);
-        if (!a) continue;
-        const b = el.getBoundingClientRect();
-        const dx = a.left - b.left;
-        const dy = a.top - b.top;
-        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
-        el.style.transition = 'none';
-        el.style.transform = `translate(${dx}px, ${dy}px)`;
-        moves.push(el);
-      }
-      if (moves.length) {
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => {
-            for (const el of moves) {
-              el.style.transition = 'transform .6s cubic-bezier(.2,.9,.25,1)';
-              el.style.transform = '';
-            }
-          })
-        );
-      }
-    }
-    lastKey = key;
   }
 
   SB.ui = { render, teamColors, esc };
