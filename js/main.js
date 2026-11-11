@@ -734,6 +734,11 @@
     });
     $('players').addEventListener('click', (e) => {
       if (openPlayerFrom(e)) return; // a player's name, even inside a play row
+      const when = e.target.closest('[data-when]');
+      if (when) {
+        SB.ui.setPlaysWhen(when.dataset.when);
+        return tick();
+      }
       const play = e.target.closest('[data-game][data-gleague]');
       if (play) return showGame(play.dataset.day || loadedDay, play.dataset.game, play.dataset.gleague);
       const b = e.target.closest('[data-metric]');

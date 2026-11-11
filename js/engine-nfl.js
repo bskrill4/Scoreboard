@@ -386,7 +386,12 @@
 
       const offDelta = p.off === tape.homeId ? p.delta : -p.delta;
       if (p.credits.length && p.delta)
-        impPlays.push({ play: p, v: p.delta * p.weight, credits: p.credits.map((c) => ({ id: c.id, v: offDelta * c.share * p.weight })) });
+        impPlays.push({
+          play: p,
+          v: p.delta * p.weight,
+          swing: p.delta,
+          credits: p.credits.map((c) => ({ id: c.id, v: offDelta * c.share * p.weight, s: offDelta * c.share })),
+        });
       for (const c of p.credits) {
         if (!players.has(c.id)) {
           const r = tape.roster.get(c.id);
@@ -435,7 +440,7 @@
     }
 
     swings.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
-    impPlays.sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
+    impPlays.sort((x, y) => Math.abs(y.swing) - Math.abs(x.swing)); // single plays: by swing (see engine.js)
     for (const p of players.values()) Object.assign(p, statLines(p));
 
     const drive = last ? driveView(tape, n, lastReal, last) : null;

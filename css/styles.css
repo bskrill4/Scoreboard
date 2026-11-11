@@ -906,3 +906,21 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
   .ptable.plays td.pt { min-width: 220px; }
 }
 .potd .by .shot { width: 28px; height: 28px; }
+
+/* Rankings › Plays "When" filter */
+.when { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+.when button {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.when button:hover { color: var(--text); }
+.when button.on { border-color: var(--yellow); color: var(--yellow); }

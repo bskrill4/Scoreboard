@@ -451,9 +451,9 @@
       return `<div class="swings">${g.impSwings
         .slice(0, 3)
         .map((s) => {
-          const t = s.v > 0 ? g.home : g.away;
+          const t = s.swing > 0 ? g.home : g.away;
           return `<div class="swing" style="--tc:${t.css}">
-            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.v))} IMP</b>
+            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} IMP</b>
             <span>${esc(playWhen(g, s.play))} · <em class="sc">${esc(scoreAt(g, s.play))}</em> · ${esc(s.play.text)}</span>
           </div>`;
         })
@@ -475,17 +475,17 @@
   // biggest Impact plays, sized by value. Hover (or focus) one for the play.
   function impBubblesHTML(g, total) {
     if (metric !== 'imp' || !g.impSwings?.length || blurred.has(g.id)) return ''; // Hide score hides plays too
-    const big = Math.max(0.001, ...g.impSwings.map((s) => Math.abs(s.v)));
+    const big = Math.max(0.001, ...g.impSwings.map((s) => Math.abs(s.swing)));
     return g.impSwings
       .map((s) => {
-        const t = s.v > 0 ? g.home : g.away;
+        const t = s.swing > 0 ? g.home : g.away;
         const left = Math.min(98.5, Math.max(1.5, (s.play.elapsed / total) * 100)); // in from the edges so its tip fits
         const top = Number(wpTop(s.play.wp));
-        const size = (10 + (Math.abs(s.v) / big) * 12).toFixed(1);
+        const size = (10 + (Math.abs(s.swing) / big) * 12).toFixed(1);
         const who = s.credits
           .map((c) => {
             const pl = g.players.find((p) => p.id === c.id);
-            return pl ? `${esc(pl.last || pl.name)} <em class="${c.v >= 0 ? 'pos' : 'neg'}">${fmtWPA(c.v)}</em>` : '';
+            return pl ? `${esc(pl.last || pl.name)} <em class="${c.s >= 0 ? 'pos' : 'neg'}">${fmtWPA(c.s)}</em>` : '';
           })
           .filter(Boolean)
           .join(' · ');
@@ -499,7 +499,7 @@
             ? ' sr'
             : ' sl';
         return `<i class="bub" tabindex="0" style="left:${left.toFixed(2)}%;top:${top}%;--s:${size}px;--tc:${t.css}">
-          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.v))} IMP</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
+          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} IMP</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
           <span class="tip-t">${esc(s.play.text)}</span>${who ? `<small>${who}</small>` : ''}</span>
         </i>`;
       })
@@ -827,7 +827,7 @@
 
     const html = `${head}${body}
       <p class="players-note"><b>Impact</b> (beta) credits each play's win-probability swing only to the players responsible for it (shooter and assister, the player who turned it over or fouled, the rebounder or stopper; a free-throw trip is split between the fouler and the shooter), then divides it by the square root of the play's leverage, so a blowout or a heavy underdog's game still counts and a thriller doesn't count five times over. Because it's all in win probability, it ranks every sport on one list.
-      <b>WPA</b> is the classic number: in basketball every player on the floor shares each swing, in football the players named on the play. Basketball and football WPA aren't on the same scale. A play's WPA is its raw swing for the team it helped.</p>`;
+      <b>WPA</b> is the classic number: in basketball every player on the floor shares each swing, in football the players named on the play. Basketball and football WPA aren't on the same scale. A play's WPA is its raw swing for the team it helped. <b>Single plays</b> are ranked by their Impact swing: the free-throw and spike corrections without the leverage divide, which exists to make player totals fair across games and on one play would shrink clutch swings and inflate early ones. Win probability already makes a late play in a close game bigger than an early one, and a play after the game is decided nearly worthless, so there's no extra time factor; use When to compare early plays with each other.</p>`;
     if (html !== playersHTMLCache) {
       playersHTMLCache = html;
       root.innerHTML = html;
@@ -875,6 +875,16 @@
     }`;
   }
 
+  // Rankings › Plays "When" filter: early plays ranked against early plays.
+  const WHEN = {
+    all: { label: 'All', crown: 'Play of the Day' },
+    first: { label: '1st half', crown: 'Biggest 1st-half play' },
+    second: { label: '2nd half & OT', crown: 'Biggest 2nd-half play' },
+  };
+  let playsWhen = 'all';
+  const setPlaysWhen = (w) => (playsWhen = WHEN[w] ? w : 'all');
+  const inWhen = (g, p) => playsWhen === 'all' || (playsWhen === 'first') === p.elapsed < g.reg / 2;
+
   // Every credited play from every game, from the side of the team it helped:
   // its Impact (leverage-adjusted, after the feed corrections) and its WPA (the
   // raw swing; a free-throw trip's is the whole trip's).
@@ -883,8 +893,9 @@
     for (const g of games) {
       for (const s of g.impPlays || []) {
         const raw = s.play.rawDelta ?? s.play.delta;
-        const homeHelped = s.v ? s.v > 0 : raw > 0;
-        rows.push({ g, s, team: homeHelped ? g.home : g.away, imp: Math.abs(s.v), wpa: homeHelped ? raw : -raw });
+        const homeHelped = s.swing ? s.swing > 0 : raw > 0;
+        if (!inWhen(g, s.play)) continue;
+        rows.push({ g, s, team: homeHelped ? g.home : g.away, imp: Math.abs(s.swing), wpa: homeHelped ? raw : -raw });
       }
     }
     rows.sort((a, b) => (metric === 'imp' ? b.imp - a.imp : b.wpa - a.wpa));
@@ -896,7 +907,7 @@
           const pl = g.players.find((p) => p.id === c.id);
           if (!pl) return '';
           const team = pl.teamId === g.home.id ? g.home : g.away;
-          return `<span class="by" ${playerAttrs(g, pl, team)}>${headshot(pl, 'sm')}<span><b>${esc(pl.last || pl.name)}</b><em class="${c.v >= 0 ? 'pos' : 'neg'}">${fmtWPA(c.v)}</em></span></span>`;
+          return `<span class="by" ${playerAttrs(g, pl, team)}>${headshot(pl, 'sm')}<span><b>${esc(pl.last || pl.name)}</b><em class="${c.s >= 0 ? 'pos' : 'neg'}">${fmtWPA(c.s)}</em></span></span>`;
         })
         .join('');
     const gameAttrs = (g) =>
@@ -905,7 +916,7 @@
     const crown = top[0];
     const crownHTML = crown
       ? `<div class="potd potd-play" style="--tc:${crown.team.css}" ${gameAttrs(crown.g)}>
-          <span class="potd-k">Play of the Day${soFar}</span>
+          <span class="potd-k">${WHEN[playsWhen].crown}${soFar}</span>
           <img class="potd-logo" src="${esc(crown.team.logo)}" alt="">
           <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
             <small>${LEAGUE_NAME[crown.g.league]} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
@@ -925,7 +936,10 @@
         </tr>`
       )
       .join('');
-    return `${crownHTML}${
+    const whenSeg = `<div class="when" role="group" aria-label="When">${Object.entries(WHEN)
+      .map(([k, w]) => `<button type="button" data-when="${k}" class="${playsWhen === k ? 'on' : ''}" aria-pressed="${playsWhen === k}">${w.label}</button>`)
+      .join('')}</div>`;
+    return `${whenSeg}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable plays">
             <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th></tr></thead>
@@ -935,5 +949,5 @@
     }`;
   }
 
-  SB.ui = { render, renderPlayers, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric };
+  SB.ui = { render, renderPlayers, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

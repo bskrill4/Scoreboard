@@ -295,7 +295,10 @@
 
       const series = [];
       const swings = [];
-      const impPlays = []; // credited plays: { play, v (home side, leverage-adjusted), credits: [{ id, v }] }
+      // Credited plays: { play, v: Impact (home side, leverage-adjusted, what player totals add up),
+      //   swing: the corrected swing (home side, no leverage divide: how single plays are ranked),
+      //   credits: [{ id, v (Impact), s (share of the swing, their side) }] }
+      const impPlays = [];
       let leadChanges = 0;
       let lastLeader = 0;
       let minWP = 1;
@@ -330,7 +333,8 @@
             pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p });
             credited.push({ id: c.id, v });
           }
-          if (credited.length) impPlays.push({ play: p, v: p.impDelta * p.weight, credits: credited });
+          if (credited.length)
+            impPlays.push({ play: p, v: p.impDelta * p.weight, swing: p.impDelta, credits: credited.map((c) => ({ ...c, s: c.v / p.weight })) });
         }
 
         if (p.isSub) {
@@ -400,7 +404,9 @@
       }
 
       swings.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
-      impPlays.sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
+      // Single plays rank by corrected swing: the leverage divide is for fair player totals, and on
+      // one play it would shrink clutch swings and inflate early ones (see README, Impact).
+      impPlays.sort((x, y) => Math.abs(y.swing) - Math.abs(x.swing));
 
       const view = {
         impSwings: impPlays.slice(0, 8),

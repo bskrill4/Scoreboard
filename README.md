@@ -41,6 +41,12 @@ a **free-throw trip** (foul through last free throw) counts as one unit, split b
 and the shooter (credited) for its expected value, plus the shooter's makes above or below it, since the
 NBA feed prices FTs in at the foul and college prices them on the make; and a **one-row spike** that the
 next non-scoring row undoes within 20s is netted out. Knobs: `IMPACT`, `SPIKE_SEC`, `ftPct` in `js/engine.js`.
+The √leverage divide is for **player totals** only. **Single plays** (Rankings › Plays, the chart bubbles)
+rank by their corrected swing: checked on 37 games (Nov 8–10), early swings in competitive games are honest
+(NBA: no reversal afterwards; neither feed is "lumpy"), the feeds already value an early basket below a late
+one, and plays after a game is decided barely move, so no extra time-in-game factor is applied. Dividing a
+single play by √leverage had pushed 18 first-half plays into the top 50 (6 without it). Rankings › Plays has
+a When filter (1st half / 2nd half & OT) for comparing early plays with each other.
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by Impact or WPA, with their
 counting stats and a Player of the Day; **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
