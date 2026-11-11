@@ -119,6 +119,112 @@
     return out;
   }
 
+  // College: players on the NBA draft board (js/prospects.js) count as stars,
+  // whether they show up in the box score or before tip-off. Pregame, a prospect
+  // who isn't a team leader is found on the roster and added to the players to watch.
+  function tagProspects(g) {
+    if (g.state === 'pre') {
+      for (const t of [g.away, g.home]) {
+        for (const a of SB.api.roster(t.id, g.league) || []) {
+          const id = String(a.id);
+          if (g.seasonLeaders.some((l) => l.id === id) || !SB.prospects.lookup(a.displayName, t.location)) continue;
+          g.seasonLeaders.unshift({
+            id,
+            name: a.displayName,
+            last: a.lastName || a.displayName,
+            headshot: a.headshot?.href || '',
+            teamAbbr: t.abbr,
+            label: [a.experience?.displayValue, a.position?.abbreviation].filter(Boolean).join(' · '),
+          });
+        }
+      }
+    }
+    const teamOf = (p) =>
+      p.teamId != null
+        ? p.teamId === g.home.id ? g.home : p.teamId === g.away.id ? g.away : null
+        : p.teamAbbr === g.home.abbr ? g.home : p.teamAbbr === g.away.abbr ? g.away : null;
+    for (const p of [...g.players, ...g.seasonLeaders]) {
+      const pr = SB.prospects.lookup(p.name, teamOf(p)?.location);
+      if (!pr) continue;
+      p.prospect = pr.rank;
+      p.star = true;
+      const cur = stars.get(p.id);
+      if (!cur?.prospect) stars.set(p.id, { weight: Math.max(cur?.weight || 0, pr.weight), name: p.name, prospect: pr.rank });
+    }
+  }
+
+  // ESPN's play-by-play can stall for minutes while its scoreboard stays live.
+  // At zero stream delay, if the scoreboard is clearly ahead of the last play,
+  // show its score and clock instead of freezing on the stale play. (With a
+  // delay set we stay on the play-by-play: the scoreboard is "now", which
+  // would spoil the stream.)
+  const LAG_SEC = 30;
+
+  // Game seconds elapsed from a period number and the seconds left in it.
+  function elapsedAt(sport, period, clock) {
+    if (!period) return 0;
+    const regPeriods = Math.round(sport.reg / sport.quarter);
+    return period <= regPeriods
+      ? (period - 1) * sport.quarter + (sport.quarter - clock)
+      : sport.reg + (period - regPeriods - 1) * sport.ot + (sport.ot - clock);
+  }
+
+  // Scoreboard history per game: what the scoreboard said at each poll, stamped
+  // with when we saw it. Games ESPN covers without play-by-play (smaller
+  // college games) have no timestamped plays, so this is how the stream delay
+  // still works for them: show the scoreboard as it stood `delay` seconds ago.
+  const sbHistory = new Map(); // event id -> [{ t, away, home, period, clock, detail, state }]
+  function recordScoreboard(ev) {
+    const state = ev.status.type.state;
+    if (state === 'pre') return;
+    const comp = ev.competitions[0];
+    const score = (side) => Number(comp.competitors.find((c) => c.homeAway === side).score) || 0;
+    const snap = {
+      t: Date.now(),
+      away: score('away'),
+      home: score('home'),
+      period: ev.status.period || 0,
+      clock: Number(ev.status.clock) || 0,
+      detail: (ev.status.type.shortDetail || '').toUpperCase(),
+      state,
+    };
+    const list = sbHistory.get(ev.id) || [];
+    const last = list[list.length - 1];
+    if (last && last.detail === snap.detail && last.away === snap.away && last.home === snap.home && last.state === snap.state) return;
+    list.push(snap);
+    if (list.length > 600) list.shift();
+    sbHistory.set(ev.id, list);
+  }
+  function scoreboardAt(id, T) {
+    const list = sbHistory.get(id) || [];
+    let found = null;
+    for (const s of list) {
+      if (s.t > T) break;
+      found = s;
+    }
+    return found;
+  }
+
+  function scoreboardFallback(g, ev, ac, hc, sport) {
+    const period = ev.status.period || 0;
+    const clock = Number(ev.status.clock) || 0; // seconds left in the period
+    const elapsed = elapsedAt(sport, period, clock);
+    const away = Number(ac.score) || 0;
+    const home = Number(hc.score) || 0;
+    const ahead = elapsed - g.elapsed > LAG_SEC || away + home > g.away.score + g.home.score;
+    if (!ahead) return;
+    g.away.score = away;
+    g.home.score = home;
+    g.period = period;
+    g.elapsed = Math.max(g.elapsed, elapsed);
+    g.statusText = (ev.status.type.shortDetail || '').toUpperCase();
+    g.lastPlay = 'Play-by-play delayed · score from the scoreboard';
+    g.downText = '';
+    g.poss = null; // NFL: the drive on the tape is stale too
+    g.drive = null;
+    g.pbpLag = true;
+  }
+
   function buildModel(ev, T) {
     const comp = ev.competitions[0];
     const hc = comp.competitors.find((c) => c.homeAway === 'home');
@@ -129,6 +235,7 @@
       id: String(c.team.id),
       abbr: c.team.abbreviation,
       name: c.team.shortDisplayName || c.team.name,
+      location: c.team.location || '',
       logo: c.team.logoDark || c.team.logo,
       record: c.records?.[0]?.summary || '',
       rank: c.curatedRank?.current <= 25 ? c.curatedRank.current : null, // AP Top 25 (college)
@@ -192,20 +299,40 @@
         g.away.score = v.awayScore;
         g.home.score = v.homeScore;
         for (const p of g.players) p.star = stars.has(p.id);
+        if (evState === 'in' && T === Infinity) scoreboardFallback(g, ev, ac, hc, sport);
       }
     } else if (evState !== 'pre') {
-      if (T !== Infinity) {
-        // No play-by-play yet, so we can't rewind — show nothing rather than spoil.
+      // No plays to replay: either the play-by-play hasn't loaded yet, or ESPN
+      // doesn't cover this game play by play (it came back empty).
+      g.noPbp = !!tape;
+      // At Live, the scoreboard as it is now; with a stream delay, as it was
+      // `delay` seconds ago (from our own record of past polls).
+      const snap = T === Infinity ? null : scoreboardAt(ev.id, T);
+      if (T !== Infinity && !snap) {
+        // Nothing old enough yet, so we can't rewind — show nothing rather than spoil.
         g.state = 'sync';
         g.statusText = 'Syncing';
         g.away.score = g.home.score = 0;
       } else {
-        g.state = evState === 'in' ? 'live' : 'final';
-        g.statusText = (ev.status.type.shortDetail || '').toUpperCase();
-        g.period = ev.status.period || 0;
+        const s = snap || {
+          away: Number(ac.score) || 0,
+          home: Number(hc.score) || 0,
+          period: ev.status.period || 0,
+          clock: Number(ev.status.clock) || 0,
+          detail: (ev.status.type.shortDetail || '').toUpperCase(),
+          state: evState,
+        };
+        g.state = s.state === 'in' ? 'live' : 'final';
+        g.statusText = s.detail;
+        g.period = s.period;
+        g.elapsed = elapsedAt(sport, s.period, s.clock);
+        g.away.score = s.away;
+        g.home.score = s.home;
+        if (g.noPbp) g.lastPlay = 'No play-by-play from ESPN for this game';
       }
     }
 
+    if (g.league === 'ncaam') tagProspects(g);
     const rated = SB.watch.rate(g, stars);
     g.index = rated.index;
     g.reasons = rated.reasons;
@@ -391,6 +518,7 @@
           ev._league = league;
           // College: only games with a Top 25 team (ESPN's default slate, made explicit).
           if (league === 'ncaam' && !ev.competitions[0].competitors.some((c) => c.curatedRank?.current <= 25)) continue;
+          recordScoreboard(ev);
           next.push(ev);
         }
       } else {
@@ -433,7 +561,9 @@
         if (ev.status.type.state !== 'in') meta.tries++;
         try {
           const tape = SPORTS[ev._league].engine.buildTape(await SB.api.summary(ev.id, ev._league));
-          if (tape) tapes.set(ev.id, tape);
+          // ESPN's CDN sometimes answers with an older copy; never step a game backwards.
+          const prev = tapes.get(ev.id);
+          if (tape && !(prev && tape.plays.length < prev.plays.length)) tapes.set(ev.id, tape);
         } catch (e) {
           console.error(e);
         } finally {
@@ -498,7 +628,9 @@
 
     $('board').addEventListener('click', (e) => {
       let toTop = false;
-      if (e.target.closest('[data-action="unpin"]')) {
+      if (e.target.closest('[data-action="blur"]')) {
+        SB.ui.toggleBlur(e.target.closest('.game').dataset.id);
+      } else if (e.target.closest('[data-action="unpin"]')) {
         pinnedId = null;
         heroId = null;
       } else {

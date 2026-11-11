@@ -53,9 +53,24 @@
     return careerTD.get(id);
   }
 
+  // Team rosters, fetched once per team on first ask (same contract as above:
+  // undefined while loading, [] if unavailable, else ESPN athlete objects).
+  const rosters = new Map();
+  function roster(teamId, league) {
+    const key = `${league}:${teamId}`;
+    if (!rosters.has(key)) {
+      rosters.set(key, undefined);
+      getJSON(`${LEAGUES[league].site}/teams/${teamId}/roster`)
+        .then((d) => rosters.set(key, d.athletes || []))
+        .catch(() => rosters.set(key, []));
+    }
+    return rosters.get(key);
+  }
+
   SB.api = {
     leagues: Object.keys(LEAGUES),
     tripleDoubles,
+    roster,
 
     // date: 'YYYYMMDD' or undefined for the current slate.
     scoreboard(date, league = 'nba') {
@@ -64,8 +79,10 @@
     },
 
     // Play-by-play, per-play win probability, and box score for one game.
+    // The cache-buster (changes every 5s) skips stale copies on ESPN's CDN,
+    // which can lag the live game by several minutes.
     summary(eventId, league = 'nba') {
-      return getJSON(`${LEAGUES[league].site}/summary?event=${eventId}`);
+      return getJSON(`${LEAGUES[league].site}/summary?event=${eventId}&_=${Math.floor(Date.now() / 5000)}`);
     },
 
     // The league's statistical leaders, used as the "star" list for the watchability index.

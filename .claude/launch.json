@@ -6,6 +6,12 @@
       "runtimeExecutable": "ruby",
       "runtimeArgs": ["server.rb", "5173"],
       "port": 5173
+    },
+    {
+      "name": "scoreboard-python",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["server.py", "5173"],
+      "port": 5173
     }
   ]
 }

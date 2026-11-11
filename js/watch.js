@@ -64,13 +64,40 @@
     return clamp01(close * late);
   }
 
+  // Upset alert (ranked leagues): an unranked team within UPSET.margin of a top-
+  // UPSET.topRank team in the second half. Adds up to UPSET.bonus to the index —
+  // more for a higher-ranked favorite and later in the game — and fades out over
+  // UPSET.fade more points as either side pulls away, so an underdog blowout drops.
+  const UPSET = { topRank: 10, margin: 5, fade: 4, bonus: 0.15 };
+  function upset(g) {
+    const cfg = SPORT[g.league];
+    const none = { score: 0, alert: false };
+    if (!cfg.useRank || g.state !== 'live') return none;
+    const progress = progressOf(g);
+    if (progress < 0.5) return none;
+    const { home, away } = g;
+    const fav = home.rank && !away.rank ? home : away.rank && !home.rank ? away : null;
+    if (!fav || fav.rank > UPSET.topRank) return none;
+    const dog = fav === home ? away : home;
+    const gap = Math.abs(dog.score - fav.score);
+    const close = gap <= UPSET.margin ? 1 : clamp01(1 - (gap - UPSET.margin) / UPSET.fade);
+    const rankWeight = 1 - ((fav.rank - 1) / (UPSET.topRank - 1)) * 0.4; // #1 → 1, #10 → .6
+    const late = g.period > 4 ? 1 : 0.6 + 0.8 * (progress - 0.5); // halftime .6 → final horn 1
+    return { score: close * rankWeight * late, alert: gap <= UPSET.margin };
+  }
+
   function starPower(g, stars) {
     let total = 0;
     const names = [];
+    let prospect = null; // highest-ranked draft prospect in the game (college)
+    const seeProspect = (p, s) => {
+      if (s.prospect && (!prospect || s.prospect < prospect.rank)) prospect = { rank: s.prospect, last: p.last };
+    };
     if (g.players.length) {
       for (const p of g.players) {
         const s = stars.get(p.id);
         if (!s) continue;
+        seeProspect(p, s);
         // NBA: on the floor right now counts double. NFL has no substitution data.
         const mult = g.state === 'final' || p.on || g.league === 'nfl' ? 1 : 0.5;
         total += s.weight * mult;
@@ -80,12 +107,13 @@
       for (const l of g.seasonLeaders) {
         const s = stars.get(l.id);
         if (!s) continue;
+        seeProspect(l, s);
         total += s.weight;
         names.push({ last: l.last, w: s.weight });
       }
     }
     names.sort((a, b) => b.w - a.w);
-    return { score: clamp01(total / 2.5), names: names.slice(0, 2).map((n) => n.last) };
+    return { score: clamp01(total / 2.5), names: names.slice(0, 2).map((n) => n.last), prospect };
   }
 
   // Triple-double watch: two categories already in double figures and the third
@@ -154,6 +182,7 @@
     const s = starPower(g, stars);
     const perf = g.league === 'nfl' ? performanceNFL(g) : performanceNBA(g); // NBA rules cover college too
     const vol = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
+    const up = upset(g);
 
     const index = Math.round(
       100 *
@@ -161,7 +190,8 @@
           WEIGHTS.volatility * vol +
           WEIGHTS.quality * q +
           WEIGHTS.stars * s.score +
-          WEIGHTS.performance * perf.score)
+          WEIGHTS.performance * perf.score +
+          UPSET.bonus * up.score)
     );
 
     // Reasons, strongest first. tone: hot (yellow), info (outline), cold (dim).
@@ -177,6 +207,7 @@
         const team = d.ballTeam === g.home.id ? g.home : d.ballTeam === g.away.id ? g.away : null;
         if (team) reasons.unshift({ text: `${team.abbr} in the red zone`, tone: 'red' });
       }
+      if (up.alert) reasons.push({ text: 'Upset alert', tone: 'red' });
       if (g.period > 4) reasons.push({ text: 'Overtime', tone: 'hot' });
       else if (progress >= 0.85 && margin <= cfg.clutchMargin) reasons.push({ text: 'Clutch time', tone: 'hot' });
       if (margin === 0 && g.elapsed > 0) reasons.push({ text: 'Tied', tone: 'hot' });
@@ -187,15 +218,17 @@
     }
     if (g.state === 'final' && margin <= cfg.wire) reasons.push({ text: 'Down to the wire', tone: 'hot' });
     if (perf.label) reasons.push({ text: perf.label, tone: 'hot' });
+    // Lottery-level draft prospect (top 14 on the board).
+    if (s.prospect && s.prospect.rank <= 14) reasons.push({ text: `#${s.prospect.rank} prospect ${s.prospect.last}`, tone: 'info' });
     if (s.score >= 0.4 && s.names.length) reasons.push({ text: `★ ${s.names.join(' + ')}`, tone: 'info' });
     if (q >= 0.7) reasons.push({ text: 'Heavyweight matchup', tone: 'info' });
 
     return {
       index: Math.max(0, Math.min(99, index)),
       reasons,
-      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score },
+      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score },
     };
   }
 
-  SB.watch = { rate, tripleDoubleWatch, WEIGHTS, SPORT };
+  SB.watch = { rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();

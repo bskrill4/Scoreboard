@@ -104,7 +104,7 @@
       return `<div class="g-foot dim">${esc(g.broadcast || `${g.league === 'nfl' ? 'Kickoff' : 'Tip-off'} ${g.statusText}`)}</div>`;
     }
     const top = g.players.slice().sort((a, b) => b.wpa - a.wpa)[0];
-    if (!top) return `<div class="g-foot dim">&nbsp;</div>`;
+    if (!top) return `<div class="g-foot dim">${g.noPbp ? 'No play-by-play from ESPN' : '&nbsp;'}</div>`;
     return `<div class="g-foot">
       ${headshot(top, 'sm')}
       <span class="who">${esc(top.last)}</span>
@@ -135,7 +135,12 @@
 
   function chartHTML(g) {
     if (!g.series.length) {
-      const msg = g.state === 'sync' ? 'Holding back for your stream delay…' : `Win probability starts at ${g.league === 'nfl' ? 'kickoff' : 'tip-off'}`;
+      const msg =
+        g.state === 'sync'
+          ? 'Holding back for your stream delay…'
+          : g.noPbp
+          ? 'ESPN has no play-by-play for this game, so no win probability'
+          : `Win probability starts at ${g.league === 'nfl' ? 'kickoff' : 'tip-off'}`;
       return `<div class="chart empty"><span>${msg}</span></div>`;
     }
     const W = 600;
@@ -246,12 +251,13 @@
   function leadersHTML(g) {
     const sorted = g.players.slice().sort((a, b) => b.wpa - a.wpa);
     if (!sorted.length) {
-      if (!g.seasonLeaders.length) return '<div class="empty-note">Lineups appear at tip-off</div>';
+      if (!g.seasonLeaders.length)
+        return `<div class="empty-note">${g.noPbp ? 'No player stats without play-by-play' : 'Lineups appear at tip-off'}</div>`;
       return g.seasonLeaders
         .map(
           (p) => `<div class="lrow">
             ${headshot(p)}
-            <span class="who"><b>${esc(p.name)}</b><small>${esc(p.teamAbbr)} · ${esc(p.label)}</small></span>
+            <span class="who"><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p)}</b><small>${esc(p.teamAbbr)} · ${esc(p.label)}</small></span>
           </div>`
         )
         .join('');
@@ -267,7 +273,7 @@
         const cold = i === 5 ? ' cold' : '';
         return `<div class="lrow${cold}${isFocus(g, p)}" data-pid="${esc(p.id)}">
           ${headshot(p)}
-          <span class="who"><b>${p.star ? '★ ' : ''}${esc(p.name)}</b><small>${esc(team.abbr)} · ${statLine(p)}${
+          <span class="who"><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p)}</b><small>${esc(team.abbr)} · ${statLine(p)}${
           p.on ? ' · <em>on court</em>' : ''
         }</small></span>
           <span class="wpa ${p.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa)}</span>
@@ -275,6 +281,13 @@
         </div>`;
       })
       .join('');
+  }
+
+  // "#8 prospect" after a college player on the NBA draft big board (js/prospects.js).
+  function prospectTag(p, short) {
+    if (!p.prospect) return '';
+    const title = `No. ${p.prospect} on the ${SB.prospects.year} NBA draft big board`;
+    return ` <small class="pros" title="${title}">#${p.prospect}${short ? '' : ' prospect'}</small>`;
   }
 
   function courtHTML(g) {
@@ -290,7 +303,7 @@
           .map(
             (p) => `<div class="crow${isFocus(g, p)}" data-pid="${esc(p.id)}">
               ${headshot(p, 'sm')}
-              <span class="who">${p.star ? '★ ' : ''}${esc(p.last)}</span>
+              <span class="who">${p.star ? '★ ' : ''}${esc(p.last)}${prospectTag(p, true)}</span>
               <span class="line">${p.pts}<small>P</small> ${p.reb}<small>R</small> ${p.ast}<small>A</small></span>
               <span class="wpa ${p.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa)}</span>
             </div>`
@@ -299,7 +312,7 @@
       </div>`;
     };
     const html = side(g.away) + side(g.home);
-    return html || '<div class="empty-note">On-court fives appear at tip-off</div>';
+    return html || `<div class="empty-note">${g.noPbp ? 'No lineups without play-by-play' : 'On-court fives appear at tip-off'}</div>`;
   }
 
   // ---------- football: the current drive ----------
@@ -412,9 +425,16 @@
       .join('')}</div>`;
   }
 
-  function heroTeam(g, side) {
+  function heroTeam(g, side, hide) {
     const t = g[side];
     const showScore = g.state === 'live' || g.state === 'final';
+    if (hide) {
+      return `<div class="h-team ${side}">
+      <img class="logo" src="${esc(t.logo)}" alt="">
+      <div class="h-name"><b>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}</small></div>
+      <span class="score hidden" data-side="${side}" style="--tc:${t.css}" aria-label="Score hidden">–</span>
+    </div>`;
+    }
     return `<div class="h-team ${side}">
       <img class="logo" src="${esc(t.logo)}" alt="">
       <div class="h-name"><b>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}${
@@ -424,14 +444,31 @@
     </div>`;
   }
 
+  // Games whose score, clock and plays are hidden while they're the top game
+  // (for when you're watching it). Remembered for this page load only, so a
+  // game that drops down the board and comes back is still hidden. The values
+  // aren't rendered at all, so nothing shows through and nothing animates.
+  const blurred = new Set();
+  const toggleBlur = (id) => (blurred.has(id) ? blurred.delete(id) : blurred.add(id));
+
+  function blurSwitch(g) {
+    const on = blurred.has(g.id);
+    return `<button type="button" class="blur-switch${on ? ' on' : ''}" data-action="blur" role="switch" aria-checked="${on}" title="${
+      on ? 'Show' : 'Hide'
+    } the score, clock and plays"><i></i>Hide score</button>`;
+  }
+
   function heroHTML(g, opts) {
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
       : `<span class="pin">Top game</span>`;
     const startWord = g.league === 'nfl' ? 'Kickoff' : 'Tip-off';
+    const hide = g.state !== 'pre' && blurred.has(g.id);
     const mid =
       g.state === 'pre'
         ? `<b>${esc(g.statusText)}</b><small>${esc(g.broadcast || startWord)}</small>`
+        : hide
+        ? `<b class="hidden">${g.state === 'final' ? 'Final' : 'Live'}</b><small>Score hidden</small>`
         : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(g.league === 'nfl' ? g.downText : g.lastPlay)}</small>`;
     const leadersTitle = g.players.length
       ? g.league === 'nfl'
@@ -446,22 +483,23 @@
            <section class="h-col"><h3>On court</h3><div class="court">${courtHTML(g)}</div></section>`;
     return `
       <div class="g-top">
-        ${statusPill(g)}
+        ${hide ? statusPill({ ...g, statusText: g.state === 'final' ? 'Final' : 'Live' }) : statusPill(g)}
         ${pin}
+        ${g.state === 'pre' ? '' : blurSwitch(g)}
         <span class="chips">${chips(g.reasons, 4)}</span>
         <span class="widx" title="Watchability index"><small>Watch index</small>${g.index}</span>
       </div>
       <div class="h-score">
-        ${heroTeam(g, 'away')}
+        ${heroTeam(g, 'away', hide)}
         <div class="h-mid">${mid}</div>
-        ${heroTeam(g, 'home')}
+        ${heroTeam(g, 'home', hide)}
       </div>
       <div class="g-wp">${wpBar(g)}</div>
       <div class="h-body">
         <section class="h-col">
           <h3>Win probability</h3>
           ${chartHTML(g)}
-          ${swingsHTML(g)}
+          ${hide ? '' : swingsHTML(g)}
           ${partsHTML(g)}
         </section>
         ${middle}
@@ -489,6 +527,22 @@
     }
   }
 
+  // Top card: when its chips don't all fit, drop the outline (info) and dim
+  // (cold) ones, last first, so the yellow and red ones show in full instead
+  // of every chip getting cut off.
+  function fitChips(el) {
+    const row = el.querySelector('.chips');
+    if (!row) return;
+    const all = [...row.children];
+    for (const c of all) c.hidden = false;
+    const cut = () => all.some((c) => !c.hidden && c.scrollWidth > c.clientWidth + 1);
+    const droppable = all.filter((c) => c.classList.contains('info') || c.classList.contains('cold')).reverse();
+    for (const c of droppable) {
+      if (!cut()) break;
+      c.hidden = true;
+    }
+  }
+
   function patch(el, html) {
     if (el._html === html) return;
     el._html = html;
@@ -509,7 +563,7 @@
     for (const side of ['away', 'home']) {
       if (prev[side] === g[side].score) continue;
       const node = el.querySelector(`.score[data-side="${side}"]`);
-      if (!node) continue;
+      if (!node || node.classList.contains('hidden')) continue; // no tell-tale flash while hidden
       node.classList.remove('pop');
       void node.offsetWidth; // restart the animation
       node.classList.add('pop');
@@ -622,6 +676,7 @@
       el.style.setProperty('--home', g.home.css);
       if (board.children[i] !== el) board.insertBefore(el, board.children[i] || null);
       patch(el, isHero ? heroHTML(g, { pinned: opts.pinnedId === g.id }) : tileHTML(g));
+      if (isHero) fitChips(el);
       popScores(el, g);
     });
     for (const [id, el] of els) {
@@ -632,5 +687,5 @@
     }
   }
 
-  SB.ui = { render, teamColors, esc };
+  SB.ui = { render, teamColors, esc, toggleBlur };
 })();

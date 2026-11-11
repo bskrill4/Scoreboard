@@ -280,6 +280,7 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .chip.hot { background: var(--yellow); color: var(--yellow-ink); }
 .chip.info { border: 1px solid #55556a; color: #d9d9e3; }
 .chip.red { background: var(--red); color: #fff; }
+.pros { display: inline-block; margin-left: 4px; padding: 0 5px; border: 1px solid currentColor; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--yellow); vertical-align: 1px; white-space: nowrap; }
 .chip.cold { background: var(--panel-2); color: var(--dim); }
 
 .widx {
@@ -319,6 +320,50 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
   white-space: nowrap;
 }
 .pin.on { border-color: var(--yellow); color: var(--yellow); }
+
+/* "Hide score" switch on the top game: swaps its score, clock and plays for placeholders. */
+.blur-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.blur-switch i {
+  position: relative;
+  width: 26px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--line);
+  transition: background .2s;
+}
+.blur-switch i::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dim);
+  transition: transform .2s, background .2s;
+}
+.blur-switch.on { color: var(--yellow); }
+.blur-switch.on i { background: var(--yellow); }
+.blur-switch.on i::after { transform: translateX(12px); background: var(--yellow-ink); }
+.blur-switch:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; border-radius: 4px; }
+
+.h-team .score.hidden { color: var(--dim); opacity: .4; text-shadow: none; }
+.h-mid b.hidden { color: var(--dim); }
 
 /* tile teams */
 .g-teams { display: flex; flex-direction: column; gap: 6px; }
