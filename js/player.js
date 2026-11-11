@@ -7,8 +7,8 @@
   const SB = (window.SB = window.SB || {});
   const esc = (s) => SB.ui.esc(s);
 
-  const ENGINE = { nba: () => SB.engine, ncaam: () => SB.ncaam, nfl: () => SB.nfl };
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM' };
+  const ENGINE = { nba: () => SB.engine, ncaam: () => SB.ncaam, nfl: () => SB.nfl, nhl: () => SB.nhl };
+  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', nhl: 'NHL' };
   const DAYS = 7;
 
   // ---- days: a "sports day" runs 6am to 6am, like the board ----

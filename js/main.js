@@ -73,6 +73,7 @@
     nba: { engine: SB.engine, reg: SB.engine.REG_GAME, quarter: SB.engine.QUARTER, ot: SB.engine.OT },
     nfl: { engine: SB.nfl, reg: SB.nfl.REG_GAME, quarter: SB.nfl.QUARTER, ot: SB.nfl.OT },
     ncaam: { engine: SB.ncaam, reg: SB.ncaam.REG_GAME, quarter: SB.ncaam.QUARTER, ot: SB.ncaam.OT },
+    nhl: { engine: SB.nhl, reg: SB.nhl.REG_GAME, quarter: SB.nhl.QUARTER, ot: SB.nhl.OT },
   };
 
   function seasonLeadersNFL(comp) {
@@ -97,12 +98,13 @@
     return out.slice(0, 5);
   }
 
-  function seasonLeaders(comp) {
+  // Basketball lists per-game averages; hockey lists season totals (points, goals).
+  function seasonLeaders(comp, cats = /PerGame$/) {
     const out = [];
     for (const c of comp.competitors) {
       const seen = new Set();
       for (const cat of c.leaders || []) {
-        if (!/PerGame$/.test(cat.name)) continue;
+        if (!cats.test(cat.name)) continue;
         const l = cat.leaders?.[0];
         if (!l || seen.has(l.athlete.id) || seen.size >= 2) continue;
         seen.add(l.athlete.id);
@@ -112,7 +114,7 @@
           last: (l.athlete.shortName || l.athlete.displayName).replace(/^\S+\.\s+/, ''),
           headshot: l.athlete.headshot || '',
           teamAbbr: c.team.abbreviation,
-          label: `${Number(l.value).toFixed(1)} ${cat.abbreviation || cat.shortDisplayName || ''}`.trim(),
+          label: `${Number.isInteger(Number(l.value)) ? Number(l.value) : Number(l.value).toFixed(1)} ${cat.abbreviation || cat.shortDisplayName || ''}`.trim(),
         });
       }
     }
@@ -294,7 +296,14 @@
       minWP: 1,
       maxWP: 0,
       broadcast: comp.broadcast || '',
-      seasonLeaders: evState !== 'pre' ? [] : ev._league === 'nfl' ? seasonLeadersNFL(comp) : seasonLeaders(comp),
+      seasonLeaders:
+        evState !== 'pre'
+          ? []
+          : ev._league === 'nfl'
+          ? seasonLeadersNFL(comp)
+          : ev._league === 'nhl'
+          ? seasonLeaders(comp, /^(points|goals)$/)
+          : seasonLeaders(comp),
     };
 
     const tape = tapes.get(ev.id);
@@ -320,6 +329,7 @@
           maxWP: v.maxWP,
           drive: v.drive || null,
           downText: v.downText || '',
+          ice: v.ice || null,
         });
         if (v.drive && !v.drive.ended) g.poss = v.drive.teamId === g.home.id ? 'home' : 'away';
         g.away.score = v.awayScore;
@@ -374,7 +384,9 @@
   const group = (g) => (g.state === 'live' ? 0 : g.state === 'final' ? 2 : 1);
 
   // Halftime and the breaks after Q1/Q3 (feed text or the scoreboard's own wording).
-  const onBreak = (g) => g.state === 'live' && /^(HALFTIME|END (Q[13]|OF (1ST|3RD)))\b/.test(g.statusText || '');
+  // Hockey: the two intermissions (END 1ST, END 2ND) count too.
+  const onBreak = (g) =>
+    g.state === 'live' && (/^(HALFTIME|END (Q[13]|OF (1ST|3RD)))\b/.test(g.statusText || '') || (g.league === 'nhl' && /^END (1ST|2ND)$/.test(g.statusText || '')));
 
   function better(b, a, margin) {
     const gb = group(b);

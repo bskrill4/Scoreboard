@@ -64,6 +64,7 @@
   // ---------- formatting ----------
   const fmtWPA = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}`;
   const pct = (x) => `${Math.round(x * 100)}%`;
+  const startWord = (g) => (g.league === 'nfl' ? 'Kickoff' : g.league === 'nhl' ? 'Puck drop' : 'Tip-off');
   const statLine = (p) => p.line ?? `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST`;
   const shortStat = (p) => p.short ?? `${p.pts} PTS`;
   const signed = (x, digits = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}`;
@@ -111,7 +112,7 @@
   function tileFoot(g) {
     if (g.state === 'sync') return `<div class="g-foot dim">Holding back for your stream delay…</div>`;
     if (g.state === 'pre') {
-      return `<div class="g-foot dim">${esc(g.broadcast || `${g.league === 'nfl' ? 'Kickoff' : 'Tip-off'} ${g.statusText}`)}</div>`;
+      return `<div class="g-foot dim">${esc(g.broadcast || `${startWord(g)} ${g.statusText}`)}</div>`;
     }
     const top = g.players.slice().sort((a, b) => val(b) - val(a))[0];
     if (!top) return `<div class="g-foot dim">${g.noPbp ? 'No play-by-play from ESPN' : '&nbsp;'}</div>`;
@@ -150,7 +151,7 @@
           ? 'Holding back for your stream delay…'
           : g.noPbp
           ? 'ESPN has no play-by-play for this game, so no win probability'
-          : `Win probability starts at ${g.league === 'nfl' ? 'kickoff' : 'tip-off'}`;
+          : `Win probability starts at ${startWord(g).toLowerCase()}`;
       return `<div class="chart empty"><span>${msg}</span></div>`;
     }
     const W = 600;
@@ -338,6 +339,53 @@
     return html || `<div class="empty-note">${g.noPbp ? 'No lineups without play-by-play' : 'On-court fives appear at tip-off'}</div>`;
   }
 
+  // ---------- hockey: on ice ----------
+  // Team shots, power plays, hits and faceoffs side by side, a banner while a
+  // power play is on, and each team's goalie in net with his line.
+  function iceHTML(g) {
+    const ice = g.ice;
+    if (!ice) return `<div class="empty-note">Shots, power plays and goalies appear at puck drop</div>`;
+    const fo = ice.away.fow + ice.home.fow;
+    const rows = [
+      ['Shots', ice.away.sog, ice.home.sog, ice.away.sog, ice.home.sog],
+      ['Power play', `${ice.away.ppg}/${ice.away.ppo}`, `${ice.home.ppg}/${ice.home.ppo}`, ice.away.ppg, ice.home.ppg],
+      ['Hits', ice.away.hits, ice.home.hits, ice.away.hits, ice.home.hits],
+      ['Faceoffs', fo ? pct(ice.away.fow / fo) : '–', fo ? pct(ice.home.fow / fo) : '–', ice.away.fow, ice.home.fow],
+    ];
+    const bar = (a, h) => {
+      const t = a + h || 1;
+      return `<span class="ice-bar"><i style="width:${((a / t) * 100).toFixed(1)}%;background:${g.away.css}"></i><i style="width:${((h / t) * 100).toFixed(1)}%;background:${g.home.css}"></i></span>`;
+    };
+    const pp = ice.pp && g.state === 'live' ? (ice.pp.team === g.home.id ? g.home : g.away) : null;
+    const banner = pp
+      ? `<div class="ice-pp" style="--tc:${pp.css}"><b>${esc(pp.abbr)} power play${ice.pp.two ? ' · 5 on 3' : ''}</b><span>${esc(g.downText.replace(/^\S+ PP /, ''))} left</span></div>`
+      : '';
+    const goalie = (side) => {
+      const t = g[side];
+      const p = g.players.find((x) => x.id === ice.goalies[side]);
+      if (!p) return '';
+      return `<div class="crow${isFocus(g, p)}" ${playerAttrs(g, p, t)}>
+        ${headshot(p, 'sm')}
+        <span class="who"><img class="ice-logo" src="${esc(t.logo)}" alt="">${esc(p.last)}</span>
+        <span class="line">${esc(p.line)}</span>
+        <span class="wpa ${val(p) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(p))}</span>
+      </div>`;
+    };
+    return `<div class="ice">
+      ${banner}
+      <div class="ice-head"><span><img src="${esc(g.away.logo)}" alt="">${esc(g.away.abbr)}</span><span>${esc(g.home.abbr)}<img src="${esc(g.home.logo)}" alt=""></span></div>
+      ${rows
+        .map(
+          ([label, a, h, av, hv]) => `<div class="ice-row">
+            <b>${a}</b><span class="ice-l">${label}${bar(av, hv)}</span><b>${h}</b>
+          </div>`
+        )
+        .join('')}
+      <div class="ice-gh">In net</div>
+      <div class="ice-goalies">${goalie('away')}${goalie('home')}</div>
+    </div>`;
+  }
+
   // ---------- football: the current drive ----------
   function sparkHTML(series) {
     if (series.length < 2) return '<span class="spark"></span>';
@@ -419,7 +467,8 @@
       ${driveStatsHTML(g)}`;
   }
 
-  const playWhen = (g, p) => `${(g.league === 'ncaam' ? SB.ncaam : SB.engine).periodLabel(p.period)} ${p.clock}`;
+  const ENGINES = { ncaam: () => SB.ncaam, nhl: () => SB.nhl };
+  const playWhen = (g, p) => `${(ENGINES[g.league] ? ENGINES[g.league]() : SB.engine).periodLabel(p.period)} ${p.clock}`;
   // The score right after the play, e.g. "MSU 70–68 DUKE".
   const scoreAt = (g, p) => `${g.away.abbr} ${p.away}–${p.home} ${g.home.abbr}`;
   const focusedPlayer = (g) => (focus && focus.game === g.id ? g.players.find((p) => p.id === focus.pid) || null : null);
@@ -559,11 +608,10 @@
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
       : `<span class="pin">Top game</span>`;
-    const startWord = g.league === 'nfl' ? 'Kickoff' : 'Tip-off';
     const hide = g.state !== 'pre' && blurred.has(g.id);
     const mid =
       g.state === 'pre'
-        ? `<b>${esc(g.statusText)}</b><small>${esc(g.broadcast || startWord)}</small>`
+        ? `<b>${esc(g.statusText)}</b><small>${esc(g.broadcast || startWord(g))}</small>`
         : hide
         ? `<b class="hidden">${g.state === 'final' ? 'Final' : 'Live'}</b><small>Score hidden</small>`
         : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(g.league === 'nfl' ? g.downText : g.lastPlay)}</small>`;
@@ -572,7 +620,7 @@
       ? 'Players to watch'
       : metric === 'imp'
       ? 'Impact leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
-      : g.league === 'nfl'
+      : g.league === 'nfl' || g.league === 'nhl'
       ? 'Top performers <small>WPA on plays they were part of</small>'
       : 'WPA leaders <small>win probability added while on court</small>';
     const courtTitle = g.state === 'final' ? 'Starting lineup' : 'On court';
@@ -580,6 +628,9 @@
       g.league === 'nfl'
         ? `<section class="h-col">${driveHTML(g)}</section>
            <section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>`
+        : g.league === 'nhl'
+        ? `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
+           <section class="h-col"><h3>On ice</h3>${iceHTML(g)}</section>`
         : `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
            <section class="h-col"><h3>${courtTitle}</h3><div class="court">${courtHTML(g)}</div></section>`;
     return `
@@ -791,7 +842,7 @@
   // ---------- Player of the Day page ----------
   // Every player from every game on the board (all sports), ranked by the
   // chosen metric. The #1 row is the day's (so far) Player of the Day.
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM' };
+  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', nhl: 'NHL' };
   let playersHTMLCache = '';
 
   function gameLabel(g) {

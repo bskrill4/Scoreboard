@@ -27,6 +27,12 @@
       core: 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball',
       starLists: [['offensive.avgPoints', 40, [[10, 0.7], [Infinity, 0.4]]]],
     },
+    // NHL. No win probability in the feed: js/engine-nhl.js models it.
+    nhl: {
+      site: 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl',
+      stats: 'https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl',
+      starLists: [['offensive.points', 30, [[10, 1], [Infinity, 0.6]]]],
+    },
   };
   LEAGUES.nba.core = 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba';
 

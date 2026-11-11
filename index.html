@@ -25,8 +25,8 @@
       <button type="button" class="league on" data-league="nba" aria-pressed="true" title="Hide NBA games">NBA</button>
       <button type="button" class="league on" data-league="nfl" aria-pressed="true" title="Hide NFL games">NFL</button>
       <button type="button" class="league on" data-league="ncaam" aria-pressed="true" title="Hide NCAAM Top 25 games">NCAAM <small>Top 25</small></button>
+      <button type="button" class="league on" data-league="nhl" aria-pressed="true" title="Hide NHL games">NHL</button>
       <span class="league soon" title="Coming soon">MLB</span>
-      <span class="league soon" title="Coming soon">NHL</span>
     </nav>
 
     <nav class="days" id="days" aria-label="Day">
@@ -61,7 +61,7 @@
   <main id="board" class="board" aria-live="off"></main>
   <section id="players" class="players" hidden aria-label="Rankings"></section>
   <footer class="foot">
-    Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability credited to a player: while on the court in the NBA, on plays they were part of in the NFL.
+    Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability credited to a player: while on the court in the NBA, on plays they were part of in the NFL and NHL (NHL win probability is our own model; ESPN doesn't publish one).
     Click any game to pin it to the top.
   </footer>
 
@@ -69,6 +69,7 @@
   <script src="js/prospects.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/engine-nfl.js"></script>
+  <script src="js/engine-nhl.js"></script>
   <script src="js/watch.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/player.js"></script>

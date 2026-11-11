@@ -1,6 +1,6 @@
 # Scoreboard
 
-A live multi-game scoreboard that puts the most watchable game on top. NBA, NFL and NCAAM Top 25 games share one ranked board; other sports later.
+A live multi-game scoreboard that puts the most watchable game on top. NBA, NFL, NCAAM Top 25 and NHL games share one ranked board; MLB later.
 
 ## Run it
 
@@ -22,6 +22,7 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 | `js/api.js` | Fetches scores, play-by-play, win probability, logos and headshots from ESPN's public feed (CORS-open, no key). |
 | `js/engine.js` | NBA: turns play-by-play into game state at any moment T: score, clock, on-court fives, PTS/REB/AST, and on-court WPA. |
 | `js/engine-nfl.js` | NFL: same contract, plus the current drive (field diagram, time, yards, WPA) and player stats read from play text. |
+| `js/engine-nhl.js` | NHL: same contract. ESPN has no hockey win probability, so it models one (goal rates from team records and home ice, power plays, the extra attacker late, 3-on-3 overtime then a shootout, or playoff sudden death). Also team shots, power plays, hits, faceoffs and the goalie in net. |
 | `js/prospects.js` | NCAAM: the 2027 NBA draft big board (hand-kept top 60). Board players count as stars, weighted by rank, and get a "#N prospect" tag. Refresh it every few weeks. |
 | `js/watch.js` | The watchability index (0–99) and its reasons. Weights live at the top of the file. |
 | `js/ui.js` | Cards, hero layout, win-probability chart, in-place patching and slide animations. |
@@ -64,4 +65,11 @@ in the second half; it grows with the favorite's rank and the clock, and fades a
 
 - Career milestones, debuts and returns from injury in the index (needs a player-history source).
 - A full single-game page.
-- MLB and NHL.
+- MLB.
+
+## Hockey notes
+
+- **Win probability** is our own model (`js/engine-nhl.js`, constants at the top): each team scores at a steady rate set by its points % and home ice; a power play multiplies the rates for its remaining time; a team down 1 or 2 pulls its goalie for the last 90/120 seconds. The chance of winning is the chance of leading after regulation plus the chance of a tie times the overtime odds. On 25 games (Nov 7–10) it was well calibrated at the ends: under 10% → home won 0%, over 90% → 92%.
+- **WPA** goes to the players named on goals (scorer 45%, assists 10% / 5%, the goalie beaten 40%) and penalties (the penalized player). Saves don't move win probability, so a shutout goalie's WPA is 0.
+- **Impact** adds shots that didn't go in, valued at expected goals × what a goal would swing right now: a save is split between shooter and goalie, a block between shooter and blocker, a miss is the shooter's. Shares are balanced so an average night nets out near zero (on Nov 7–10: goalies at .880–.920 averaged about +1, at .920+ about +15, under .880 about −9).
+- Player stats are rebuilt from the play-by-play (so the stream delay holds); on 25 games they matched ESPN's box score on all 3,704 goals, assists, shots, hits, saves and goals-against. Power-play chances match on 45 of 50 team-games (the rest are off by one).

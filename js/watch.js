@@ -12,10 +12,13 @@
   const WEIGHTS = { tension: 0.42, volatility: 0.12, quality: 0.16, stars: 0.15, performance: 0.15 };
 
   const SPORT = {
-    nba: { marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
-    nfl: { marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
+    // periods: regulation periods (anything past them is overtime). lineups: the feed says who is on the floor.
+    nba: { periods: 4, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
+    nfl: { periods: 4, marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
     // College: shorter game, bigger talent gaps; rankings beat early-season records.
-    ncaam: { marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
+    ncaam: { periods: 2, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
+    // Hockey: a goal is a big deal. One goal is close, three is about decided, four a blowout.
+    nhl: { periods: 3, marginScale: 2, recordPrior: 5, clutchMargin: 1, oneScore: 1, oneScoreLabel: 'One-goal game', blowout: 4, wire: 1 },
   };
 
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -60,7 +63,7 @@
     if (g.state === 'final') return clamp01(marginScore);
     const leverage = g.wp == null ? marginScore : 1 - Math.abs(2 * g.wp - 1);
     const close = 0.6 * leverage + 0.4 * marginScore;
-    const late = g.period > 4 ? 1.1 : 0.4 + 0.6 * Math.pow(progressOf(g), 1.6);
+    const late = g.period > cfg.periods ? 1.1 : 0.4 + 0.6 * Math.pow(progressOf(g), 1.6);
     return clamp01(close * late);
   }
 
@@ -83,7 +86,7 @@
     const gap = Math.abs(dog.score - fav.score);
     const close = gap <= UPSET.margin ? 1 : clamp01(1 - (gap - UPSET.margin) / UPSET.fade);
     const rankWeight = 1 - ((fav.rank - 1) / (UPSET.topRank - 1)) * 0.4; // #1 → 1, #10 → .6
-    const late = g.period > 4 ? 1 : 0.6 + 0.8 * (progress - 0.5); // halftime .6 → final horn 1
+    const late = g.period > cfg.periods ? 1 : 0.6 + 0.8 * (progress - 0.5); // halftime .6 → final horn 1
     return { score: close * rankWeight * late, alert: gap <= UPSET.margin };
   }
 
@@ -99,8 +102,8 @@
         const s = stars.get(p.id);
         if (!s) continue;
         seeProspect(p, s);
-        // NBA: on the floor right now counts double. NFL has no substitution data.
-        const mult = g.state === 'final' || p.on || g.league === 'nfl' ? 1 : 0.5;
+        // Basketball: on the floor right now counts double. NFL and NHL have no shift data.
+        const mult = g.state === 'final' || p.on || !SPORT[g.league].lineups ? 1 : 0.5;
         total += s.weight * mult;
         if (mult === 1) names.push({ last: p.last, w: s.weight });
       }
@@ -176,12 +179,36 @@
     return best;
   }
 
+  // Hockey big nights: hat tricks (and the chance of one), four-point nights,
+  // shutouts (and a shutout bid in the third), and a goalie standing on his head.
+  function performanceNHL(g) {
+    let best = { score: 0, label: '' };
+    const live = g.state === 'live';
+    const progress = progressOf(g);
+    for (const p of g.players) {
+      const options = p.goalie
+        ? [
+            [g.state === 'final' && p.ga === 0 && p.sv >= 15, 0.7, `${p.last} shutout`],
+            [live && progress >= 0.67 && p.ga === 0 && p.sv >= 15, 0.6, `${p.last} shutout bid`],
+            [p.sv >= 40, 0.55, `${p.last} ${p.sv} saves`],
+          ]
+        : [
+            [p.g >= 4, 1, `${p.last} ${p.g} goals`],
+            [p.g === 3, 0.85, `${p.last} hat trick`],
+            [p.pts >= 4, 0.7, `${p.last} ${p.pts} PTS`],
+            [live && p.g === 2, 0.45, `Hat trick watch: ${p.last}`],
+          ];
+      for (const [hit, score, label] of options) if (hit && score > best.score) best = { score, label };
+    }
+    return best;
+  }
+
   function rate(g, stars) {
     const cfg = SPORT[g.league];
     const t = tension(g);
     const q = quality(g);
     const s = starPower(g, stars);
-    const perf = g.league === 'nfl' ? performanceNFL(g) : performanceNBA(g); // NBA rules cover college too
+    const perf = g.league === 'nfl' ? performanceNFL(g) : g.league === 'nhl' ? performanceNHL(g) : performanceNBA(g); // NBA rules cover college too
     const vol = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
     const up = upset(g);
     // NBA, before tip-off: a team on the second night of a back-to-back tends
@@ -207,6 +234,12 @@
     const blowout = g.state === 'live' && progress > 0.5 && margin >= cfg.blowout;
     if (blowout) reasons.push({ text: 'Blowout', tone: 'cold' });
     if (g.state === 'live') {
+      // Power play (hockey): first, like the red zone, so a tile shows it.
+      const pp = g.ice && g.ice.pp;
+      if (pp) {
+        const team = pp.team === g.home.id ? g.home : g.away;
+        reasons.unshift({ text: `${team.abbr} power play${pp.two ? ' · 5 on 3' : ''}`, tone: 'red' });
+      }
       // Red zone: inside the opponent's 20. First so it's the one a tile shows.
       const d = g.drive;
       if (d && !d.ended && d.ytg != null && d.ytg <= 20) {
@@ -214,7 +247,7 @@
         if (team) reasons.unshift({ text: `${team.abbr} in the red zone`, tone: 'red' });
       }
       if (up.alert) reasons.push({ text: 'Upset alert', tone: 'red' });
-      if (g.period > 4) reasons.push({ text: 'Overtime', tone: 'hot' });
+      if (g.period > cfg.periods) reasons.push({ text: g.league === 'nhl' && /SHOOTOUT/.test(g.statusText) ? 'Shootout' : 'Overtime', tone: 'hot' });
       else if (progress >= 0.85 && margin <= cfg.clutchMargin) reasons.push({ text: 'Clutch time', tone: 'hot' });
       if (margin === 0 && g.elapsed > 0) reasons.push({ text: 'Tied', tone: 'hot' });
       else if (margin <= cfg.oneScore && progress > 0.5) reasons.push({ text: cfg.oneScoreLabel, tone: 'hot' });
