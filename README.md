@@ -31,6 +31,20 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 five players on the floor for the team it helped and debited from the five it hurt. The NFL feed has no
 substitutions, so a play's swing goes to the players named on it (passer and receiver split a catch).
 
+**Impact (beta)** — the header switch swaps WPA for an experimental stat meant to rank players across
+games, leagues and sports. Each play's swing goes only to the players responsible for it (shooter 80% /
+assister 20%; a miss to the shooter, shared with a blocker; turnovers shared with the stealer; fouls and
+rebounds to whoever made them; NFL as before), then is divided by √leverage, where leverage =
+4·wp·(1−wp)·√(game length ÷ time left) (1 = tied at tip-off). Clutch plays still count more, but a
+blowout or a heavy underdog's game isn't starved. Two feed corrections (Impact only; WPA is untouched):
+a **free-throw trip** (foul through last free throw) counts as one unit, split between the fouler (charged)
+and the shooter (credited) for its expected value, plus the shooter's makes above or below it, since the
+NBA feed prices FTs in at the foul and college prices them on the make; and a **one-row spike** that the
+next non-scoring row undoes within 20s is netted out. Knobs: `IMPACT`, `SPIKE_SEC`, `ftPct` in `js/engine.js`.
+**Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by Impact or WPA, with their
+counting stats and a Player of the Day; **Plays** (`#plays`) ranks the day's biggest single plays, with who
+was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
+
 **Stream delay** — every play carries a real-world timestamp, so the board shows the game exactly as
 it stood `delay` seconds ago. "Hold" freezes the board until you move the slider back.
 

@@ -51,6 +51,16 @@
     return [css(ac), css(hc)];
   }
 
+  // ---------- player value: classic WPA or experimental Impact ----------
+  // WPA: NBA/college credit every swing to all ten players on the floor (NFL:
+  // the players named on the play). Impact: only the players responsible for
+  // each play, leverage-adjusted (see SB.impact in engine.js).
+  let metric = 'wpa';
+  const val = (p) => (metric === 'imp' ? p.imp || 0 : p.wpa || 0);
+  const momentVal = (m) => (metric === 'imp' ? m.imp ?? 0 : m.wpa ?? 0);
+  const metricShort = () => (metric === 'imp' ? 'IMP' : 'WPA');
+  const setMetric = (m) => (metric = m === 'imp' ? 'imp' : 'wpa');
+
   // ---------- formatting ----------
   const fmtWPA = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}`;
   const pct = (x) => `${Math.round(x * 100)}%`;
@@ -103,13 +113,13 @@
     if (g.state === 'pre') {
       return `<div class="g-foot dim">${esc(g.broadcast || `${g.league === 'nfl' ? 'Kickoff' : 'Tip-off'} ${g.statusText}`)}</div>`;
     }
-    const top = g.players.slice().sort((a, b) => b.wpa - a.wpa)[0];
+    const top = g.players.slice().sort((a, b) => val(b) - val(a))[0];
     if (!top) return `<div class="g-foot dim">${g.noPbp ? 'No play-by-play from ESPN' : '&nbsp;'}</div>`;
     return `<div class="g-foot">
       ${headshot(top, 'sm')}
       <span class="who">${esc(top.last)}</span>
       <span class="line">${esc(shortStat(top))}</span>
-      <span class="wpa ${top.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(top.wpa)}<small>WPA</small></span>
+      <span class="wpa ${val(top) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(top))}<small>${metricShort()}</small></span>
     </div>`;
   }
 
@@ -161,6 +171,7 @@
     for (let q = g.quarter; q < total; q += q < reg ? g.quarter : g.ot) grid += `<line x1="${x(q)}" x2="${x(q)}" y1="0" y2="${H}" class="q"/>`;
     const id = `c${g.id}`;
     const hl = focusHTML(g, total, W, H, d, id);
+    g._cap = hl ? hl.cap : ''; // shown beside the "Win probability" heading, not over the chart
     return `<div class="chart${hl ? ' focus' : ''}">
       <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
         <defs>
@@ -179,7 +190,7 @@
       <i class="now" style="left:${((g.elapsed / total) * 100).toFixed(2)}%;top:${wpTop(cur)}%"></i>
       <img class="edge top" src="${esc(g.away.logo)}" alt="">
       <img class="edge bot" src="${esc(g.home.logo)}" alt="">
-      ${hl ? hl.html : ''}
+      ${hl ? hl.html : impBubblesHTML(g, total)}
     </div>`;
   }
 
@@ -198,7 +209,7 @@
     const cls = (v) => (v >= 0 ? 'pos' : 'neg');
     const name = esc(p.last || p.name);
 
-    if (p.stints) {
+    if (p.stints && metric === 'wpa') {
       const stints = p.stints.filter((s) => s.e > s.s);
       const rects = stints.map((s) => `<rect x="${x(s.s)}" y="0" width="${(x(s.e) - x(s.s)).toFixed(1)}" height="${H}"/>`).join('');
       const tags = stints
@@ -210,17 +221,20 @@
         defs: `<clipPath id="${id}f">${rects}</clipPath>`,
         under: `<g class="stint">${rects}</g>`,
         over: `<path d="${d}" class="wpline lit" clip-path="url(#${id}f)"/>`,
-        html: `${tags}<span class="focus-cap"><b>${name}</b> ${mins} min on court · <em class="${cls(p.wpa)}">${fmtWPA(p.wpa)}</em></span>`,
+        html: tags,
+        cap: `<span class="focus-cap"><b>${name}</b> ${mins} min on court · <em class="${cls(p.wpa)}">${fmtWPA(p.wpa)} WPA</em></span>`,
       };
     }
 
-    const moments = p.moments || [];
-    const big = Math.max(0.01, ...moments.map((m) => Math.abs(m.wpa)));
+    // A dot on the line at every play they were credited with (NFL always;
+    // basketball in Impact mode), sized by its value.
+    const moments = (p.moments || []).filter((m) => momentVal(m) !== 0);
+    const big = Math.max(0.01, ...moments.map((m) => Math.abs(momentVal(m))));
     const ticks = moments.map((m) => `<line x1="${x(m.t)}" x2="${x(m.t)}" y1="0" y2="${H}"/>`).join('');
     const dots = moments
       .map((m) => {
-        const size = (5 + (Math.abs(m.wpa) / big) * 9).toFixed(1);
-        return `<i class="mom ${cls(m.wpa)}" style="left:${pct(m.t).toFixed(2)}%;top:${wpTop(m.wp)}%;--s:${size}px"></i>`;
+        const size = (5 + (Math.abs(momentVal(m)) / big) * 9).toFixed(1);
+        return `<i class="mom ${cls(momentVal(m))}" style="left:${pct(m.t).toFixed(2)}%;top:${wpTop(m.wp)}%;--s:${size}px"></i>`;
       })
       .join('');
     const plays = `${moments.length} play${moments.length === 1 ? '' : 's'}`;
@@ -228,7 +242,8 @@
       defs: '',
       under: `<g class="mom-ticks">${ticks}</g>`,
       over: '',
-      html: `${dots}<span class="focus-cap"><b>${name}</b> ${plays} · <em class="${cls(p.wpa)}">${fmtWPA(p.wpa)}</em></span>`,
+      html: dots,
+      cap: `<span class="focus-cap"><b>${name}</b> ${plays} · <em class="${cls(val(p))}">${fmtWPA(val(p))} ${metricShort()}</em></span>`,
     };
   }
 
@@ -248,14 +263,20 @@
     if (lastPaint && !morphing) paint(lastPaint[0], lastPaint[1], false);
   }
 
+  // What a click needs to open the player drawer (js/player.js).
+  const playerAttrs = (g, p, team) =>
+    `data-pid="${esc(p.id)}" data-team="${esc(team.id)}" data-league="${esc(g.league)}" data-name="${esc(p.name)}" data-shot="${esc(
+      p.headshot || ''
+    )}" data-color="${esc(team.css)}" title="See ${esc(p.name)}'s week"`;
+
   function leadersHTML(g) {
-    const sorted = g.players.slice().sort((a, b) => b.wpa - a.wpa);
+    const sorted = g.players.slice().sort((a, b) => val(b) - val(a));
     if (!sorted.length) {
       if (!g.seasonLeaders.length)
         return `<div class="empty-note">${g.noPbp ? 'No player stats without play-by-play' : 'Lineups appear at tip-off'}</div>`;
       return g.seasonLeaders
         .map(
-          (p) => `<div class="lrow">
+          (p) => `<div class="lrow" ${playerAttrs(g, p, p.teamAbbr === g.home.abbr ? g.home : g.away)}>
             ${headshot(p)}
             <span class="who"><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p)}</b><small>${esc(p.teamAbbr)} · ${esc(p.label)}</small></span>
           </div>`
@@ -264,20 +285,20 @@
     }
     const rows = sorted.slice(0, 5);
     const coldest = sorted[sorted.length - 1];
-    if (g.league !== 'nfl' && sorted.length > 5 && coldest.wpa < 0) rows.push(coldest);
-    const max = Math.max(0.05, ...rows.map((p) => Math.abs(p.wpa)));
+    if (g.league !== 'nfl' && sorted.length > 5 && val(coldest) < 0) rows.push(coldest);
+    const max = Math.max(0.05, ...rows.map((p) => Math.abs(val(p))));
     return rows
       .map((p, i) => {
         const team = p.teamId === g.home.id ? g.home : g.away;
-        const w = ((Math.abs(p.wpa) / max) * 100).toFixed(0);
+        const w = ((Math.abs(val(p)) / max) * 100).toFixed(0);
         const cold = i === 5 ? ' cold' : '';
-        return `<div class="lrow${cold}${isFocus(g, p)}" data-pid="${esc(p.id)}">
+        return `<div class="lrow${cold}${isFocus(g, p)}" ${playerAttrs(g, p, team)}>
           ${headshot(p)}
           <span class="who"><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p)}</b><small>${esc(team.abbr)} · ${statLine(p)}${
-          p.on ? ' · <em>on court</em>' : ''
+          p.on && g.state === 'live' ? ' · <em>on court</em>' : ''
         }</small></span>
-          <span class="wpa ${p.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa)}</span>
-          <span class="meter"><i class="${p.wpa >= 0 ? 'pos' : 'neg'}" style="width:${w}%"></i></span>
+          <span class="wpa ${val(p) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(p))}</span>
+          <span class="meter"><i class="${val(p) >= 0 ? 'pos' : 'neg'}" style="width:${w}%"></i></span>
         </div>`;
       })
       .join('');
@@ -290,10 +311,12 @@
     return ` <small class="pros" title="${title}">#${p.prospect}${short ? '' : ' prospect'}</small>`;
   }
 
+  // Live: who is on the floor now. After the final: the starting fives.
   function courtHTML(g) {
+    const final = g.state === 'final';
     const side = (t) => {
       const five = g.players
-        .filter((p) => p.on && p.teamId === t.id)
+        .filter((p) => (final ? p.starter : p.on) && p.teamId === t.id)
         .sort((a, b) => b.pts - a.pts)
         .slice(0, 5);
       if (!five.length) return '';
@@ -301,11 +324,11 @@
         <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
         ${five
           .map(
-            (p) => `<div class="crow${isFocus(g, p)}" data-pid="${esc(p.id)}">
+            (p) => `<div class="crow${isFocus(g, p)}" ${playerAttrs(g, p, t)}>
               ${headshot(p, 'sm')}
               <span class="who">${p.star ? '★ ' : ''}${esc(p.last)}${prospectTag(p, true)}</span>
               <span class="line">${p.pts}<small>P</small> ${p.reb}<small>R</small> ${p.ast}<small>A</small></span>
-              <span class="wpa ${p.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa)}</span>
+              <span class="wpa ${val(p) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(p))}</span>
             </div>`
           )
           .join('')}
@@ -396,17 +419,91 @@
       ${driveStatsHTML(g)}`;
   }
 
+  const playWhen = (g, p) => `${(g.league === 'ncaam' ? SB.ncaam : SB.engine).periodLabel(p.period)} ${p.clock}`;
+  // The score right after the play, e.g. "MSU 70–68 DUKE".
+  const scoreAt = (g, p) => `${g.away.abbr} ${p.away}–${p.home} ${g.home.abbr}`;
+  const focusedPlayer = (g) => (focus && focus.game === g.id ? g.players.find((p) => p.id === focus.pid) || null : null);
+
+  // Under the chart: the three plays that mattered most. Hovering a player
+  // swaps in that player's three biggest plays; in Impact mode the game's list
+  // ranks plays by Impact (leverage-adjusted) instead of raw swing.
   function swingsHTML(g) {
+    const fp = focusedPlayer(g);
+    if (fp) {
+      // Basketball WPA is on-court, so its plays have no per-player WPA: rank by Impact there.
+      const key = metric === 'wpa' && (fp.moments || []).some((m) => m.wpa != null) ? 'wpa' : 'imp';
+      const top = (fp.moments || [])
+        .filter((m) => m.play && m[key])
+        .sort((a, b) => Math.abs(b[key]) - Math.abs(a[key]))
+        .slice(0, 3);
+      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays${key !== metric ? ' <small>by Impact</small>' : ''}</div>`;
+      if (!top.length) return `<div class="swings">${head}<div class="swing"><span>No credited plays yet</span></div></div>`;
+      return `<div class="swings">${head}${top
+        .map(
+          (m) => `<div class="swing ${m[key] >= 0 ? 'pos' : 'neg'}">
+            <b>${fmtWPA(m[key])} ${key.toUpperCase()}</b>
+            <span>${esc(playWhen(g, m.play))} · <em class="sc">${esc(scoreAt(g, m.play))}</em> · ${esc(m.play.text)}</span>
+          </div>`
+        )
+        .join('')}</div>`;
+    }
+    if (metric === 'imp' && g.impSwings?.length) {
+      return `<div class="swings">${g.impSwings
+        .slice(0, 3)
+        .map((s) => {
+          const t = s.v > 0 ? g.home : g.away;
+          return `<div class="swing" style="--tc:${t.css}">
+            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.v))} IMP</b>
+            <span>${esc(playWhen(g, s.play))} · <em class="sc">${esc(scoreAt(g, s.play))}</em> · ${esc(s.play.text)}</span>
+          </div>`;
+        })
+        .join('')}</div>`;
+    }
     if (!g.swings.length) return '';
     return `<div class="swings">${g.swings
       .map((s) => {
         const t = s.delta > 0 ? g.home : g.away;
         return `<div class="swing" style="--tc:${t.css}">
           <b>${esc(t.abbr)} +${Math.abs(s.delta * 100).toFixed(0)}%</b>
-          <span>${esc((g.league === 'ncaam' ? SB.ncaam : SB.engine).periodLabel(s.period))} ${esc(s.clock)} · ${esc(s.text)}</span>
+          <span>${esc(playWhen(g, s))} · <em class="sc">${esc(scoreAt(g, s))}</em> · ${esc(s.text)}</span>
         </div>`;
       })
       .join('')}</div>`;
+  }
+
+  // Impact mode, nobody hovered: a bubble on the line at each of the game's
+  // biggest Impact plays, sized by value. Hover (or focus) one for the play.
+  function impBubblesHTML(g, total) {
+    if (metric !== 'imp' || !g.impSwings?.length || blurred.has(g.id)) return ''; // Hide score hides plays too
+    const big = Math.max(0.001, ...g.impSwings.map((s) => Math.abs(s.v)));
+    return g.impSwings
+      .map((s) => {
+        const t = s.v > 0 ? g.home : g.away;
+        const left = Math.min(98.5, Math.max(1.5, (s.play.elapsed / total) * 100)); // in from the edges so its tip fits
+        const top = Number(wpTop(s.play.wp));
+        const size = (10 + (Math.abs(s.v) / big) * 12).toFixed(1);
+        const who = s.credits
+          .map((c) => {
+            const pl = g.players.find((p) => p.id === c.id);
+            return pl ? `${esc(pl.last || pl.name)} <em class="${c.v >= 0 ? 'pos' : 'neg'}">${fmtWPA(c.v)}</em>` : '';
+          })
+          .filter(Boolean)
+          .join(' · ');
+        // Keep the tip inside the chart: below a bubble near the top, above one
+        // near the bottom (hugging the left edge, centred, or hugging the right),
+        // and beside one in the middle band, on whichever side has more room.
+        const side =
+          top < 38 || top > 62
+            ? `${left < 28 ? ' xl' : left > 72 ? ' xr' : ' xc'}${top < 38 ? ' b' : ''}`
+            : left < 50
+            ? ' sr'
+            : ' sl';
+        return `<i class="bub" tabindex="0" style="left:${left.toFixed(2)}%;top:${top}%;--s:${size}px;--tc:${t.css}">
+          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.v))} IMP</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
+          <span class="tip-t">${esc(s.play.text)}</span>${who ? `<small>${who}</small>` : ''}</span>
+        </i>`;
+      })
+      .join('');
   }
 
   function partsHTML(g) {
@@ -470,17 +567,21 @@
         : hide
         ? `<b class="hidden">${g.state === 'final' ? 'Final' : 'Live'}</b><small>Score hidden</small>`
         : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(g.league === 'nfl' ? g.downText : g.lastPlay)}</small>`;
-    const leadersTitle = g.players.length
-      ? g.league === 'nfl'
-        ? 'Top performers <small>WPA on plays they were part of</small>'
-        : 'WPA leaders <small>win probability added while on court</small>'
-      : 'Players to watch';
+    const chart = chartHTML(g); // first: it sets g._cap for the heading
+    const leadersTitle = !g.players.length
+      ? 'Players to watch'
+      : metric === 'imp'
+      ? 'Impact leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
+      : g.league === 'nfl'
+      ? 'Top performers <small>WPA on plays they were part of</small>'
+      : 'WPA leaders <small>win probability added while on court</small>';
+    const courtTitle = g.state === 'final' ? 'Starting lineup' : 'On court';
     const middle =
       g.league === 'nfl'
         ? `<section class="h-col">${driveHTML(g)}</section>
            <section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>`
         : `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
-           <section class="h-col"><h3>On court</h3><div class="court">${courtHTML(g)}</div></section>`;
+           <section class="h-col"><h3>${courtTitle}</h3><div class="court">${courtHTML(g)}</div></section>`;
     return `
       <div class="g-top">
         ${hide ? statusPill({ ...g, statusText: g.state === 'final' ? 'Final' : 'Live' }) : statusPill(g)}
@@ -497,8 +598,8 @@
       <div class="g-wp">${wpBar(g)}</div>
       <div class="h-body">
         <section class="h-col">
-          <h3>Win probability</h3>
-          ${chartHTML(g)}
+          <h3 class="wp-h">Win probability${chart && g._cap ? g._cap : ''}</h3>
+          ${chart}
           ${hide ? '' : swingsHTML(g)}
           ${partsHTML(g)}
         </section>
@@ -687,5 +788,152 @@
     }
   }
 
-  SB.ui = { render, teamColors, esc, toggleBlur };
+  // ---------- Player of the Day page ----------
+  // Every player from every game on the board (all sports), ranked by the
+  // chosen metric. The #1 row is the day's (so far) Player of the Day.
+  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM' };
+  let playersHTMLCache = '';
+
+  function gameLabel(g) {
+    const s = g.state === 'final' ? g.statusText : g.state === 'live' ? g.statusText : '';
+    return `${esc(g.away.abbr)} ${g.away.score}–${g.home.score} ${esc(g.home.abbr)}${s ? ` · ${esc(s)}` : ''}`;
+  }
+
+  // Rankings page, two tabs: Players (everyone on the board, ranked) and
+  // Plays (the day's biggest single plays, with who made them and the score).
+  function renderPlayers(models, opts) {
+    const root = document.getElementById('players');
+    if (!root) return;
+    const tab = opts.tab === 'plays' ? 'plays' : 'players';
+    const anyLive = models.some((g) => g.state === 'live');
+    const played = models.filter((g) => (g.state === 'live' || g.state === 'final') && g.players.length);
+    const col = (k) => (metric === k ? ' class="sorted"' : '');
+    const seg = (k, label) =>
+      `<button type="button" data-metric="${k}" class="${metric === k ? 'on' : ''}" aria-pressed="${metric === k}">${label}</button>`;
+    const tabLink = (k, label) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${label}</a>`;
+    const soFar = anyLive ? ' · so far' : '';
+
+    const head = `
+      <div class="players-head">
+        <div>
+          <h2>Rankings</h2>
+          <p>${opts.dayLabel} · ${played.length} game${played.length === 1 ? '' : 's'} with play-by-play</p>
+        </div>
+        <div class="seg" role="group" aria-label="Rank by">${seg('imp', 'Impact <small>beta</small>')}${seg('wpa', 'WPA')}</div>
+      </div>
+      <nav class="rank-tabs" aria-label="Rankings">${tabLink('players', 'Players')}${tabLink('plays', 'Plays')}</nav>`;
+
+    const body = tab === 'plays' ? playsTab(played, opts, col, soFar) : playersTab(played, col, soFar);
+
+    const html = `${head}${body}
+      <p class="players-note"><b>Impact</b> (beta) credits each play's win-probability swing only to the players responsible for it (shooter and assister, the player who turned it over or fouled, the rebounder or stopper; a free-throw trip is split between the fouler and the shooter), then divides it by the square root of the play's leverage, so a blowout or a heavy underdog's game still counts and a thriller doesn't count five times over. Because it's all in win probability, it ranks every sport on one list.
+      <b>WPA</b> is the classic number: in basketball every player on the floor shares each swing, in football the players named on the play. Basketball and football WPA aren't on the same scale. A play's WPA is its raw swing for the team it helped.</p>`;
+    if (html !== playersHTMLCache) {
+      playersHTMLCache = html;
+      root.innerHTML = html;
+    }
+  }
+
+  function playersTab(games, col, soFar) {
+    const rows = [];
+    for (const g of games) {
+      for (const p of g.players) {
+        if (g.league !== 'nfl' && !p.played) continue;
+        rows.push({ p, g, team: p.teamId === g.home.id ? g.home : g.away });
+      }
+    }
+    rows.sort((a, b) => val(b.p) - val(a.p));
+    const top = rows.slice(0, 60);
+    const crown = top[0];
+    const crownHTML = crown
+      ? `<div class="potd" style="--tc:${crown.team.css}" ${playerAttrs(crown.g, crown.p, crown.team)}>
+          <span class="potd-k">Player of the Day${soFar}</span>
+          ${headshot(crown.p)}
+          <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${LEAGUE_NAME[crown.g.league]} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
+          <div class="potd-v"><b>${fmtWPA(val(crown.p))}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'}</small></div>
+        </div>`
+      : '';
+    const body = top
+      .map(
+        ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
+          <td class="rk">${i + 1}</td>
+          <td class="pl">${headshot(p, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${LEAGUE_NAME[g.league]} · ${esc(team.abbr)}</small></span></td>
+          <td class="gm">${gameLabel(g)}</td>
+          <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
+          <td${col('wpa')}><span class="${(p.wpa || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa || 0)}</span></td>
+          <td class="ln">${statLine(p)}</td>
+        </tr>`
+      )
+      .join('');
+    return `${crownHTML}${
+      top.length
+        ? `<div class="ptable-wrap"><table class="ptable">
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th>Line</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table></div>`
+        : '<div class="empty-note">No games with play-by-play yet today.</div>'
+    }`;
+  }
+
+  // Every credited play from every game, from the side of the team it helped:
+  // its Impact (leverage-adjusted, after the feed corrections) and its WPA (the
+  // raw swing; a free-throw trip's is the whole trip's).
+  function playsTab(games, opts, col, soFar) {
+    const rows = [];
+    for (const g of games) {
+      for (const s of g.impPlays || []) {
+        const raw = s.play.rawDelta ?? s.play.delta;
+        const homeHelped = s.v ? s.v > 0 : raw > 0;
+        rows.push({ g, s, team: homeHelped ? g.home : g.away, imp: Math.abs(s.v), wpa: homeHelped ? raw : -raw });
+      }
+    }
+    rows.sort((a, b) => (metric === 'imp' ? b.imp - a.imp : b.wpa - a.wpa));
+    const top = rows.slice(0, 50);
+
+    const by = (g, s) =>
+      s.credits
+        .map((c) => {
+          const pl = g.players.find((p) => p.id === c.id);
+          if (!pl) return '';
+          const team = pl.teamId === g.home.id ? g.home : g.away;
+          return `<span class="by" ${playerAttrs(g, pl, team)}>${headshot(pl, 'sm')}<span><b>${esc(pl.last || pl.name)}</b><em class="${c.v >= 0 ? 'pos' : 'neg'}">${fmtWPA(c.v)}</em></span></span>`;
+        })
+        .join('');
+    const gameAttrs = (g) =>
+      `data-game="${esc(g.id)}" data-day="${esc(opts.day || '')}" data-gleague="${esc(g.league)}" title="Open this game on the scoreboard"`;
+
+    const crown = top[0];
+    const crownHTML = crown
+      ? `<div class="potd potd-play" style="--tc:${crown.team.css}" ${gameAttrs(crown.g)}>
+          <span class="potd-k">Play of the Day${soFar}</span>
+          <img class="potd-logo" src="${esc(crown.team.logo)}" alt="">
+          <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
+            <small>${LEAGUE_NAME[crown.g.league]} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
+            <div class="by-list">${by(crown.g, crown.s)}</div></div>
+          <div class="potd-v"><b>${fmtWPA(metric === 'imp' ? crown.imp : crown.wpa)}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'} · ${esc(crown.team.abbr)}</small></div>
+        </div>`
+      : '';
+    const body = top
+      .map(
+        ({ g, s, team, imp, wpa }, i) => `<tr class="play-row" ${gameAttrs(g)}>
+          <td class="rk">${i + 1}</td>
+          <td class="pt"><span class="pt-team" style="--tc:${team.css}"><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${LEAGUE_NAME[g.league]} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
+          <td class="by-cell"><div class="by-list">${by(g, s)}</div></td>
+          <td class="sc">${esc(scoreAt(g, s.play))}</td>
+          <td${col('imp')}><span class="pos">${fmtWPA(imp)}</span></td>
+          <td${col('wpa')}><span class="${wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(wpa)}</span></td>
+        </tr>`
+      )
+      .join('');
+    return `${crownHTML}${
+      top.length
+        ? `<div class="ptable-wrap"><table class="ptable plays">
+            <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th></tr></thead>
+            <tbody>${body}</tbody>
+          </table></div>`
+        : '<div class="empty-note">No plays with play-by-play yet today.</div>'
+    }`;
+  }
+
+  SB.ui = { render, renderPlayers, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric };
 })();

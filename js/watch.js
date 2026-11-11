@@ -69,6 +69,7 @@
   // more for a higher-ranked favorite and later in the game — and fades out over
   // UPSET.fade more points as either side pulls away, so an underdog blowout drops.
   const UPSET = { topRank: 10, margin: 5, fade: 4, bonus: 0.15 };
+  const B2B_PENALTY = 3; // index points per team on the 2nd night of a back-to-back (pregame)
   function upset(g) {
     const cfg = SPORT[g.league];
     const none = { score: 0, alert: false };
@@ -183,8 +184,13 @@
     const perf = g.league === 'nfl' ? performanceNFL(g) : performanceNBA(g); // NBA rules cover college too
     const vol = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
     const up = upset(g);
+    // NBA, before tip-off: a team on the second night of a back-to-back tends
+    // to play flatter. Small deduction per tired team; once the game starts,
+    // the actual game takes over.
+    const b2bTeams = g.state === 'pre' && g.b2b ? ['away', 'home'].filter((s) => g.b2b[s]).map((s) => g[s]) : [];
 
     const index = Math.round(
+      -B2B_PENALTY * b2bTeams.length +
       100 *
         (WEIGHTS.tension * t +
           WEIGHTS.volatility * vol +
@@ -220,7 +226,13 @@
     if (perf.label) reasons.push({ text: perf.label, tone: 'hot' });
     // Lottery-level draft prospect (top 14 on the board).
     if (s.prospect && s.prospect.rank <= 14) reasons.push({ text: `#${s.prospect.rank} prospect ${s.prospect.last}`, tone: 'info' });
-    if (s.score >= 0.4 && s.names.length) reasons.push({ text: `★ ${s.names.join(' + ')}`, tone: 'info' });
+    // A back-to-back takes the star chip's spot (dim, not yellow or red).
+    if (b2bTeams.length)
+      reasons.push({
+        text: b2bTeams.length === 2 ? 'Both on a back-to-back' : `${b2bTeams[0].abbr} on a back-to-back`,
+        tone: 'cold',
+      });
+    else if (s.score >= 0.4 && s.names.length) reasons.push({ text: `★ ${s.names.join(' + ')}`, tone: 'info' });
     if (q >= 0.7) reasons.push({ text: 'Heavyweight matchup', tone: 'info' });
 
     return {

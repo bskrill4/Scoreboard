@@ -73,9 +73,10 @@
     roster,
 
     // date: 'YYYYMMDD' or undefined for the current slate.
-    scoreboard(date, league = 'nba') {
-      const q = date ? `?dates=${date}` : '';
-      return getJSON(`${LEAGUES[league].site}/scoreboard${q}`);
+    // all: college only — every Division I game, not just ESPN's Top 25 slate.
+    scoreboard(date, league = 'nba', all = false) {
+      const params = [date ? `dates=${date}` : '', all ? 'groups=50&limit=400' : ''].filter(Boolean).join('&');
+      return getJSON(`${LEAGUES[league].site}/scoreboard${params ? `?${params}` : ''}`);
     },
 
     // Play-by-play, per-play win probability, and box score for one game.
@@ -83,6 +84,16 @@
     // which can lag the live game by several minutes.
     summary(eventId, league = 'nba') {
       return getJSON(`${LEAGUES[league].site}/summary?event=${eventId}&_=${Math.floor(Date.now() / 5000)}`);
+    },
+
+    // A team's season schedule (past games carry their final scores).
+    teamSchedule(teamId, league = 'nba') {
+      return getJSON(`${LEAGUES[league].site}/teams/${teamId}/schedule`);
+    },
+
+    // One athlete: name, position, jersey, current team, headshot.
+    athlete(id, league = 'nba') {
+      return getJSON(`${LEAGUES[league].stats}/athletes/${id}`);
     },
 
     // The league's statistical leaders, used as the "star" list for the watchability index.

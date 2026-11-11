@@ -225,6 +225,28 @@
     g.pbpLag = true;
   }
 
+  // NBA back-to-backs: the teams that played the day before `day`, fetched
+  // once per day. undefined while loading; an empty set if the fetch failed.
+  const prevDayTeams = new Map(); // day -> Set(team id)
+  function teamsPlayedBefore(day) {
+    if (!day) return undefined;
+    if (!prevDayTeams.has(day)) {
+      prevDayTeams.set(day, undefined);
+      SB.api
+        .scoreboard(shiftDay(day, -1), 'nba')
+        .then((d) => {
+          const ids = new Set();
+          for (const ev of d.events || []) {
+            if (/postponed|canceled/i.test(ev.status?.type?.name || '')) continue;
+            for (const c of ev.competitions[0].competitors) ids.add(String(c.team.id));
+          }
+          prevDayTeams.set(day, ids);
+        })
+        .catch(() => prevDayTeams.delete(day)); // try again next tick
+    }
+    return prevDayTeams.get(day);
+  }
+
   function buildModel(ev, T) {
     const comp = ev.competitions[0];
     const hc = comp.competitors.find((c) => c.homeAway === 'home');
@@ -262,6 +284,8 @@
       players: [],
       series: [],
       swings: [],
+      impSwings: [],
+      impPlays: [],
       lastPlay: '',
       wp: null,
       elapsed: 0,
@@ -285,6 +309,8 @@
           players: v.players,
           series: v.series,
           swings: v.swings,
+          impSwings: v.impSwings || [],
+          impPlays: v.impPlays || [],
           lastPlay: v.lastPlay,
           wp: v.wp,
           elapsed: v.elapsed,
@@ -333,6 +359,10 @@
     }
 
     if (g.league === 'ncaam') tagProspects(g);
+    if (g.league === 'nba') {
+      const played = teamsPlayedBefore(loadedDay);
+      if (played) g.b2b = { away: played.has(g.away.id), home: played.has(g.home.id) };
+    }
     const rated = SB.watch.rate(g, stars);
     g.index = rated.index;
     g.reasons = rated.reasons;
@@ -393,7 +423,8 @@
     if (!loaded) return;
     const T = cutoff();
     const models = arrange(events.filter(shown).map((ev) => buildModel(ev, T)));
-    SB.ui.render(models, { heroId, pinnedId, toTop });
+    if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
+    else SB.ui.render(models, { heroId, pinnedId, toTop });
 
     const live = models.filter((m) => m.state === 'live').length;
     const pre = models.filter((m) => m.state === 'pre' || m.state === 'sync').length;
@@ -473,6 +504,9 @@
     label.disabled = isToday;
     label.title = isToday ? '' : 'Back to today';
     $('days').classList.toggle('away', !isToday);
+    // More than 3 days from today (either way): offer an obvious way back.
+    const daysAway = Math.round(Math.abs(parseDay(day) - parseDay(todayDay())) / 86400000);
+    $('todayBtn').hidden = replay || daysAway <= 3;
   }
 
   // Switch the board to whatever day it should show now. True if it changed.
@@ -486,7 +520,7 @@
     heroId = null;
     pinnedId = null;
     prevOrder = [];
-    if (!replay) history.replaceState(null, '', pickedDay ? `?day=${pickedDay}` : location.pathname);
+    if (!replay) history.replaceState(null, '', (pickedDay ? `?day=${pickedDay}` : location.pathname) + location.hash);
     drawDays();
     return true;
   }
@@ -498,6 +532,28 @@
     pollScoreboard().then(() => {
       tick();
       pollSummaries();
+    });
+  }
+
+  // Jump the board to one game (from the player drawer): its day, its sport
+  // switched on, and the game pinned on top.
+  function showGame(day, eventId, league) {
+    if (hiddenLeagues.delete(league)) {
+      try {
+        localStorage.setItem('sb.hidden', JSON.stringify([...hiddenLeagues]));
+      } catch (e) {}
+      drawLeagues();
+    }
+    if (view() === 'players') location.hash = ''; // back to the board (hashchange repaints)
+    pickedDay = day === todayDay() ? null : day;
+    const changed = syncDay(); // a new day clears the pin, so pin after this
+    pinnedId = eventId;
+    heroId = eventId;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (changed) lastBoard = Date.now();
+    pollScoreboard().then(() => {
+      tick(true);
+      pollSummaries().then(() => tick());
     });
   }
 
@@ -517,7 +573,8 @@
         for (const ev of r.value.events || []) {
           ev._league = league;
           // College: only games with a Top 25 team (ESPN's default slate, made explicit).
-          if (league === 'ncaam' && !ev.competitions[0].competitors.some((c) => c.curatedRank?.current <= 25)) continue;
+          // A pinned game (opened from a player's week) stays even if neither team is ranked.
+          if (league === 'ncaam' && ev.id !== pinnedId && !ev.competitions[0].competitors.some((c) => c.curatedRank?.current <= 25)) continue;
           recordScoreboard(ev);
           next.push(ev);
         }
@@ -527,6 +584,20 @@
         next.push(...events.filter((ev) => ev._league === league));
       }
     });
+    // A pinned college game between two unranked teams isn't on ESPN's default
+    // slate at all: look it up on the full Division I scoreboard.
+    if (any && pinnedId && !next.some((ev) => ev.id === pinnedId)) {
+      try {
+        const all = await SB.api.scoreboard(day, 'ncaam', true);
+        const ev = (all.events || []).find((e) => e.id === pinnedId);
+        if (ev && day === loadedDay) {
+          ev._league = 'ncaam';
+          recordScoreboard(ev);
+          next.push(ev);
+        }
+      } catch (e) {}
+    }
+    if (day !== loadedDay) return;
     if (any) {
       events = next;
       loaded = true;
@@ -617,7 +688,66 @@
     tick();
   }
 
+  // ---------- views & player metric ----------
+  // Two views: the board (#) and the Player of the Day table (#players).
+  // Rankings has two tabs: #players and #plays.
+  const view = () => (location.hash === '#players' || location.hash === '#plays' ? 'players' : 'board');
+  const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
+  function applyView() {
+    const v = view();
+    $('board').hidden = v !== 'board';
+    $('players').hidden = v !== 'players';
+    for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === v);
+    document.body.classList.toggle('view-players', v === 'players');
+  }
+
+  // Classic WPA or the experimental Impact stat (remembered per browser).
+  function setMetric(m) {
+    SB.ui.setMetric(m);
+    const on = SB.ui.getMetric() === 'imp';
+    $('metricSwitch').classList.toggle('on', on);
+    $('metricSwitch').setAttribute('aria-checked', String(on));
+    try {
+      localStorage.setItem('sb.metric', SB.ui.getMetric());
+    } catch (e) {}
+  }
+
+  // A click on any player row opens their drawer: the 7 days ending on the day being viewed.
+  function openPlayerFrom(e) {
+    const row = e.target.closest('[data-pid][data-league]');
+    if (!row) return false;
+    const d = row.dataset;
+    SB.player.open({ id: d.pid, teamId: d.team, league: d.league, name: d.name, headshot: d.shot, color: d.color, endDay: loadedDay });
+    return true;
+  }
+
   function initControls() {
+    SB.player.onGame = showGame;
+    try {
+      setMetric(localStorage.getItem('sb.metric') || 'wpa');
+    } catch (e) {
+      setMetric('wpa');
+    }
+    $('metricSwitch').addEventListener('click', () => {
+      setMetric(SB.ui.getMetric() === 'imp' ? 'wpa' : 'imp');
+      tick();
+    });
+    $('players').addEventListener('click', (e) => {
+      if (openPlayerFrom(e)) return; // a player's name, even inside a play row
+      const play = e.target.closest('[data-game][data-gleague]');
+      if (play) return showGame(play.dataset.day || loadedDay, play.dataset.game, play.dataset.gleague);
+      const b = e.target.closest('[data-metric]');
+      if (!b) return;
+      setMetric(b.dataset.metric);
+      tick();
+    });
+    applyView();
+    window.addEventListener('hashchange', () => {
+      applyView();
+      window.scrollTo(0, 0);
+      tick(); // the board repaints in place when you come back
+    });
+
     $('ticks').innerHTML = DELAYS.map((d, i) => `<button type="button" data-i="${i}" tabindex="-1">${d.label}</button>`).join('');
     $('ticks').addEventListener('click', (e) => {
       const b = e.target.closest('button');
@@ -627,6 +757,7 @@
     setDelay(delayIdx);
 
     $('board').addEventListener('click', (e) => {
+      if (openPlayerFrom(e)) return;
       let toTop = false;
       if (e.target.closest('[data-action="blur"]')) {
         SB.ui.toggleBlur(e.target.closest('.game').dataset.id);
@@ -660,6 +791,7 @@
     $('dayPrev').addEventListener('click', () => goToDay(shiftDay(viewDay(), -1)));
     $('dayNext').addEventListener('click', () => goToDay(shiftDay(viewDay(), 1)));
     $('dayLabel').addEventListener('click', () => goToDay(todayDay()));
+    $('todayBtn').addEventListener('click', () => goToDay(todayDay()));
 
     if (replay) {
       $('days').hidden = true;

@@ -7,9 +7,124 @@
 (function () {
   const SB = (window.SB = window.SB || {});
 
+  // ---- Impact (experimental): leverage-adjusted, play-credited WPA ----
+  // Raw WPA lets the game decide how much value is on offer: a thriller hands
+  // out huge swings, a lopsided game (or a 10% underdog) hardly any. Impact
+  // divides each play's swing by the square root of its leverage: how much a
+  // single point could move win probability at that moment, relative to a
+  // tied game at tip-off. Clutch plays still count more, just not 5x more, and
+  // because it's all in win probability the same rule works for any sport.
+  //   leverage = 4·wp·(1−wp) · sqrt(game length / time left)    (1 = tied at the start)
+  //   impact   = swing / sqrt(leverage)
+  const IMPACT = { exponent: 0.5, minLev: 0.05, maxLev: 8, minLeft: 30 };
+  function impactWeight(wpBefore, elapsed, reg, ot) {
+    const w = wpBefore == null ? 0.5 : Math.min(0.999, Math.max(0.001, wpBefore));
+    let left = elapsed < reg ? reg - elapsed : ot - ((elapsed - reg) % ot);
+    left = Math.max(left, IMPACT.minLeft);
+    const lev = Math.min(IMPACT.maxLev, Math.max(IMPACT.minLev, 4 * w * (1 - w) * Math.sqrt(reg / left)));
+    return Math.pow(lev, -IMPACT.exponent);
+  }
+  SB.impact = { weight: impactWeight, IMPACT };
+
+  // Who is responsible for a basketball play, and their share of its swing.
+  // Each credited player gets the swing from their own team's side, so a miss,
+  // turnover or foul counts against them and a stop counts for the defender.
+  function basketballCredits(p) {
+    if (!p.p0 || p.isSub || /timeout|end period|end game|jump ?ball/i.test(p.type)) return [];
+    const shot = /\b(makes|misses)\b/.test(p.text);
+    if (shot && p.scoring) return p.isAssist && p.p1 ? [{ id: p.p0, share: 0.8 }, { id: p.p1, share: 0.2 }] : [{ id: p.p0, share: 1 }];
+    if (shot && p.blockBy && p.blockBy !== p.p0) return [{ id: p.p0, share: 0.5 }, { id: p.blockBy, share: 0.5 }];
+    if (/turnover/i.test(p.type + ' ' + p.text) && p.stealBy && p.stealBy !== p.p0)
+      return [{ id: p.p0, share: 0.5 }, { id: p.stealBy, share: 0.5 }];
+    return [{ id: p.p0, share: 1 }]; // rebounds, fouls, turnovers, college steal/block plays
+  }
+
+  // Impact corrections, applied to a copy of each play's swing (impDelta) so
+  // classic WPA stays exactly as ESPN reports it.
+  //
+  // 1. Free-throw trips as one unit. The NBA feed prices free throws in at the
+  //    foul (the fouler eats it; made FTs net ~0), college prices them on the
+  //    make (with spikes). So take the trip's whole net swing, from before the
+  //    foul to after the last free throw, and split it: the fouler is charged,
+  //    and the shooter (who almost always drew it; ESPN doesn't say) credited,
+  //    half each of what a typical trip yields (ftPct of the attempts); the
+  //    shooter also gets what they made above or below that.
+  // 2. One-row spikes. When a swing is undone by the very next non-scoring row
+  //    within SPIKE_SEC of game time, cancel the part that was undone. (Run
+  //    first, so a spike undone at the next trip's whistle still nets out.)
+  const SPIKE_SEC = 20;
+  const isFT = (p) => /free throw/i.test(p.text) && /\b(makes|misses)\b/.test(p.text);
+  const isTripFoul = (p) => /foul/i.test(p.type) && !/offensive/i.test(`${p.type} ${p.text}`);
+
+  function impactAdjust(plays, ftPct) {
+    for (const p of plays) p.impDelta = p.delta;
+
+    // 1. One-row spikes, first and row by row, so a spike that is undone at the
+    //    next trip's whistle nets out (netting inside a trip leaves its total alone).
+    for (let i = 0; i < plays.length; i++) {
+      const p = plays[i];
+      if (!p.impDelta || !p.credits.length) continue;
+      let j = i + 1;
+      while (j < plays.length && !plays[j].impDelta) j++;
+      const n = plays[j];
+      if (!n || n.scoring || n.elapsed - p.elapsed > SPIKE_SEC) continue;
+      if (Math.sign(n.impDelta) !== -Math.sign(p.impDelta)) continue;
+      const undone = Math.min(Math.abs(p.impDelta), Math.abs(n.impDelta)) * Math.sign(p.impDelta);
+      p.impDelta -= undone;
+      n.impDelta += undone;
+    }
+
+    // 2. Free-throw trips.
+    for (let i = 0; i < plays.length; i++) {
+      if (!isFT(plays[i])) continue;
+      const t = plays[i].elapsed;
+      // The foul: back over same-clock rows (subs, timeouts) to the whistle.
+      let start = i;
+      for (let k = i - 1; k >= 0 && plays[k].elapsed === t; k--) {
+        if (isTripFoul(plays[k])) {
+          start = k;
+          break;
+        }
+        if (plays[k].scoring || isFT(plays[k])) break; // an and-one's basket isn't part of the trip
+      }
+      // The last free throw at the same clock.
+      let end = i;
+      for (let k = i + 1; k < plays.length && plays[k].elapsed === t; k++) if (isFT(plays[k])) end = k;
+
+      const fts = plays.slice(i, end + 1).filter(isFT);
+      const shooter = fts[0].p0;
+      const foul = start < i ? plays[start] : null;
+      const made = fts.filter((p) => p.scoring).length;
+      const expected = ftPct * fts.length;
+      let net = 0;
+      let raw = 0;
+      for (let k = start; k <= end; k++) {
+        net += plays[k].impDelta;
+        raw += plays[k].delta;
+        plays[k].impDelta = 0;
+        plays[k].credits = [];
+      }
+      const last = plays[end];
+      last.impDelta = net;
+      last.rawDelta = raw; // the trip's classic WPA swing, for Rankings › Plays
+      last.weight = plays[start].weight; // leverage as the trip began
+      // value_i = (their side) × net × share × weight; shares below conserve the trip's swing.
+      if (made > 0 && foul && foul.p0 && shooter) {
+        last.credits = [
+          { id: shooter, share: expected / (2 * made) + (made - expected) / made },
+          { id: foul.p0, share: expected / (2 * made) },
+        ];
+      } else if (shooter) {
+        last.credits = [{ id: shooter, share: 1 }]; // 0-for-the-trip (or no foul found): the shooter's
+      }
+      last.ftTrip = { made, att: fts.length, fouler: foul ? foul.p0 : null };
+      i = end;
+    }
+  }
+
   // One engine per basketball league. The NBA plays four 12-minute quarters;
   // college plays two 20-minute halves. Overtime is 5 minutes in both.
-  function create({ periods, periodSec, otSec, label }) {
+  function create({ periods, periodSec, otSec, label, ftPct }) {
     const REG_PERIOD = periodSec;
     const OT_PERIOD = otSec;
     const REG_GAME = REG_PERIOD * periods;
@@ -99,13 +214,14 @@
         let wp = hasFeedWP ? wpMap.get(String(p.id)) : modelWP(p.homeScore - p.awayScore, elapsed);
         if (wp == null) wp = prevWP == null ? 0.5 : prevWP;
         const delta = prevWP == null ? 0 : wp - prevWP;
+        const weight = impactWeight(prevWP, elapsed, REG_GAME, OT_PERIOD);
         prevWP = wp;
 
         const type = p.type?.text || '';
         const text = (p.text || '').replace(/\s+/g, ' ');
         const p0 = p.participants?.[0]?.athlete?.id ? String(p.participants[0].athlete.id) : null;
         const p1 = p.participants?.[1]?.athlete?.id ? String(p.participants[1].athlete.id) : null;
-        plays.push({
+        const play = {
           ts: t,
           period,
           clock: p.clock?.displayValue || '',
@@ -131,10 +247,14 @@
           blockBy: / blocks /.test(text) ? p1 : /^Block/.test(type) ? p0 : null,
           wp,
           delta,
-        });
+          weight,
+        };
+        play.credits = basketballCredits(play);
+        plays.push(play);
         ts.push(t);
       }
 
+      impactAdjust(plays, ftPct);
       const complete = plays.length > 0 && plays[plays.length - 1].type === 'End Game';
       return { homeId, awayId, roster, plays, ts, hasFeedWP, complete, _n: -1, _view: null, _final: null };
     }
@@ -158,7 +278,7 @@
       const { homeId, awayId, roster } = tape;
       const players = new Map();
       for (const r of roster.values()) {
-        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, on: false, played: false, stints: [] });
+        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, imp: 0, on: false, played: false, stints: [], moments: [] });
       }
       const lineup = { [homeId]: new Set(), [awayId]: new Set() };
       // Stints: the stretches of game time each player was on the floor, with the
@@ -175,6 +295,7 @@
 
       const series = [];
       const swings = [];
+      const impPlays = []; // credited plays: { play, v (home side, leverage-adjusted), credits: [{ id, v }] }
       let leadChanges = 0;
       let lastLeader = 0;
       let minWP = 1;
@@ -196,6 +317,20 @@
             }
           }
           if (Math.abs(p.delta) >= 0.04 && !p.isSub) swings.push(p);
+        }
+        // Impact: only the players responsible for the play, leverage-adjusted,
+        // on the corrected swing (free-throw trips as one unit, spikes netted).
+        if (p.impDelta) {
+          const credited = [];
+          for (const c of p.credits) {
+            const pl = players.get(c.id);
+            if (!pl) continue;
+            const v = (pl.teamId === homeId ? 1 : -1) * p.impDelta * c.share * p.weight;
+            pl.imp += v;
+            pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p });
+            credited.push({ id: c.id, v });
+          }
+          if (credited.length) impPlays.push({ play: p, v: p.impDelta * p.weight, credits: credited });
         }
 
         if (p.isSub) {
@@ -265,8 +400,11 @@
       }
 
       swings.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+      impPlays.sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
 
       const view = {
+        impSwings: impPlays.slice(0, 8),
+        impPlays, // every credited play, biggest Impact first (Rankings › Plays)
         state,
         statusText,
         period: last ? last.period : 0,
@@ -293,6 +431,7 @@
     return { buildTape, viewAt, periodLabel, parseClock, modelWP, REG_GAME, QUARTER: REG_PERIOD, OT: OT_PERIOD };
   }
 
-  SB.engine = create({ periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}` });
-  SB.ncaam = create({ periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H` });
+  // ftPct: a typical free-throw percentage, the baseline for a trip's expected value.
+  SB.engine = create({ periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78 });
+  SB.ncaam = create({ periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72 });
 })();

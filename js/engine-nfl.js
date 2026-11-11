@@ -179,6 +179,7 @@
         let wp = hasFeedWP ? wpMap.get(pid) : modelWP(p.homeScore - p.awayScore, elapsed, REG_GAME);
         if (wp == null) wp = prevWP == null ? 0.5 : prevWP;
         const delta = prevWP == null ? 0 : wp - prevWP;
+        const weight = SB.impact.weight(prevWP, elapsed, REG_GAME, OT);
         prevWP = wp;
 
         const type = p.type?.text || '';
@@ -217,6 +218,7 @@
           stat: p.statYardage || 0,
           wp,
           delta,
+          weight,
         });
         ts.push(t);
       }
@@ -369,6 +371,7 @@
     const players = new Map();
     const series = [];
     const swings = [];
+    const impPlays = []; // credited plays: { play, v (home side, leverage-adjusted), credits: [{ id, v }] }
     let leadChanges = 0;
     let lastLeader = 0;
     let minWP = 1;
@@ -382,15 +385,18 @@
       if (!p.admin) lastReal = p;
 
       const offDelta = p.off === tape.homeId ? p.delta : -p.delta;
+      if (p.credits.length && p.delta)
+        impPlays.push({ play: p, v: p.delta * p.weight, credits: p.credits.map((c) => ({ id: c.id, v: offDelta * c.share * p.weight })) });
       for (const c of p.credits) {
         if (!players.has(c.id)) {
           const r = tape.roster.get(c.id);
-          players.set(c.id, { ...r, ...ZERO, wpa: 0, on: false, played: true, moments: [] });
+          players.set(c.id, { ...r, ...ZERO, wpa: 0, imp: 0, on: false, played: true, moments: [] });
         }
         const pl = players.get(c.id);
         pl.wpa += offDelta * c.share;
+        pl.imp += offDelta * c.share * p.weight; // leverage-adjusted (see SB.impact)
         // Each play they were part of, for the chart highlight on hover.
-        pl.moments.push({ t: p.elapsed, wp: p.wp, wpa: offDelta * c.share });
+        pl.moments.push({ t: p.elapsed, wp: p.wp, wpa: offDelta * c.share, imp: offDelta * c.share * p.weight, play: p });
         for (const k in c.stats) pl[k] += c.stats[k];
       }
 
@@ -429,6 +435,7 @@
     }
 
     swings.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+    impPlays.sort((x, y) => Math.abs(y.v) - Math.abs(x.v));
     for (const p of players.values()) Object.assign(p, statLines(p));
 
     const drive = last ? driveView(tape, n, lastReal, last) : null;
@@ -446,6 +453,8 @@
       wp: last ? (state === 'final' ? (last.home > last.away ? 1 : last.home < last.away ? 0 : 0.5) : last.wp) : null,
       series,
       swings: swings.slice(0, 3),
+      impSwings: impPlays.slice(0, 8),
+      impPlays,
       lastPlay: lastReal ? lastReal.text : '',
       leadChanges,
       vol,
