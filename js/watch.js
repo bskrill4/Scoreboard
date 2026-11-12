@@ -144,11 +144,12 @@
   // of the list and, while the game is live, a big jump in the index (summed,
   // capped at GOLD_CAP points) on top of the formula.
   const GOLD_CAP = 40;
-  // NBA team record for made threes in a game: 29. Alive at the half with 15
-  // (on pace for 30), and from the end of the third only with 22.
-  const THREES = { record: 29, half: 15, third: 22, close: 26 };
-  // Single-game points: Adebayo's 83 (2nd ever) and Wilt's 100. A chase is alive
-  // on pace for the mark: half of it at halftime, three-quarters after the third.
+  // NBA team record for made threes in a game: 29. From halftime on, the watch is
+  // alive while a team is on pace for 30: threes/30 >= minutes played/48
+  // (bar rounded down: 15 at the half, 22 after the third). CLOSE = few enough to count down.
+  const THREES = { record: 29, close: 26 };
+  // Single-game points: Adebayo's 83 (2nd ever) and Wilt's 100. Same pace rule:
+  // points/mark >= minutes played/48, from halftime on.
   const POINTS = [
     { mark: 100, name: "Wilt's 100" },
     { mark: 83, name: "Adebayo's 83" },
@@ -156,34 +157,32 @@
   // Quadruple-double: 10+ in four of PTS/REB/AST/STL/BLK. Watch once three are
   // in and the fourth is at QUAD_NEAR.
   const QUAD_NEAR = 7;
-  // Both teams combined: 300 points (on pace: 150 at the half, 225 after the third).
-  const COMBINED = { mark: 300 }; // on pace: 150 at the half, 225 after the third
+  // Both teams combined: 300 points, same pace rule.
+  const COMBINED = { mark: 300 };
 
   function goldChips(g) {
     const chips = []; // { text, bonus (index points while live) }
     if (g.league !== 'nba') return chips;
-    const status = g.statusText || '';
-    const pastHalf = g.period >= 3 || /^HALFTIME/.test(status);
-    const pastThird = g.period >= 4 || /^END Q3\b/.test(status);
+    // Share of regulation played, from the game clock (not the status text, whose
+    // wording varies by feed). On pace for a mark: n / mark >= played, from halftime,
+    // with the bar rounded down (30 threes: 15 at the half, 22 after the third).
+    const played = Math.min(1, (g.elapsed || 0) / g.reg);
+    const pastHalf = played >= 0.5;
+    const onPace = (n, mark) => g.state === 'live' && pastHalf && n >= Math.floor(mark * played);
     for (const side of ['away', 'home']) {
       const n = g.threes?.[side] || 0;
       const abbr = g[side].abbr;
       if (n > THREES.record) chips.push({ text: `${abbr} ${g.state === 'final' ? 'set' : 'breaks'} 3PT record · ${n}`, bonus: 35 });
       else if (n === THREES.record) chips.push({ text: `${abbr} ties 3PT record · ${n}`, bonus: 30 });
-      else if (g.state === 'live' && (pastThird ? n >= THREES.third : pastHalf && n >= THREES.half)) {
+      else if (onPace(n, THREES.record + 1)) {
         const left = THREES.record + 1 - n;
-        if (pastThird && n >= THREES.close) chips.push({ text: `${abbr} ${left} three${left === 1 ? '' : 's'} from the 3PT record`, bonus: 30 });
+        if (played >= 0.75 && n >= THREES.close) chips.push({ text: `${abbr} ${left} three${left === 1 ? '' : 's'} from the 3PT record`, bonus: 30 });
         else chips.push({ text: `${abbr} 3PT record watch · ${n}`, bonus: 20 });
       }
     }
     // 300 combined points.
     const total = (g.home.score || 0) + (g.away.score || 0);
     if (total >= COMBINED.mark) chips.push({ text: `300-point game · ${total}`, bonus: 30 });
-    // On pace = the total projected over regulation reaches the mark. That is exactly
-    // half of it at halftime and three-quarters after the third, and in the fourth
-    // it only stays alive while the chase is still realistic.
-    const played = pastThird && g.period < 4 ? 0.75 : pastHalf && g.period < 3 ? 0.5 : Math.min(1, Math.max(0.5, progressOf(g)));
-    const onPace = (n, mark) => g.state === 'live' && pastHalf && n / played >= mark;
     if (total < COMBINED.mark && onPace(total, COMBINED.mark)) chips.push({ text: `300-point pace · ${total}`, bonus: 20 });
 
     for (const p of g.players) {
