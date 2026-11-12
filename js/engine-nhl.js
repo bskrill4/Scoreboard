@@ -185,9 +185,20 @@
       const goalieIn = { [homeId]: startGoalie[homeId] || null, [awayId]: startGoalie[awayId] || null };
       const opp = (tid) => (tid === homeId ? awayId : homeId);
       const ppFor = (elapsed) => (pp && elapsed < pp.until ? { team: pp.team === homeId ? 'home' : 'away', left: pp.until - elapsed, two: pp.two } : null);
+      // Shootout (regular season, period 5): the feed's scores switch to the
+      // shootout tally. Keep the game tied at the end-of-overtime score, track the
+      // tally on the side, and give the winner +1 at the end, as the final reads.
+      let tied = null; // { home, away } going into the shootout
+      let so = { home: 0, away: 0 };
 
       for (const p of summary.plays || []) {
         const period = p.period?.number || 1;
+        const shootout = !playoff && period >= 5;
+        if (shootout && !tied) {
+          const prev = plays[plays.length - 1];
+          tied = { home: prev ? prev.home : 0, away: prev ? prev.away : 0 };
+        }
+        if (shootout) pp = null;
         const inPeriod = parseClock(p.clock?.displayValue); // the feed's clock counts up
         let elapsed = 0;
         for (let k = 1; k < period; k++) elapsed += periodLen(k);
@@ -213,8 +224,10 @@
           else if (strength === 'Even Strength' && pp && elapsed - pp.since > 10 && type !== 'Goal') pp = null;
         }
 
-        const isGoal = type === 'Goal';
-        const isPenalty = !NOT_PENALTY.has(type) && !!teamId;
+        // Shootout attempts aren't goals (no stats, no credit) and its odd play
+        // types ("failed shot attempt") aren't penalties.
+        const isGoal = type === 'Goal' && !shootout;
+        const isPenalty = !NOT_PENALTY.has(type) && !!teamId && !shootout;
         const emptyNet = strength === 'Empty Net';
         let ppCause = false; // a penalty that gives the other team a power play
         const credits = [];
@@ -248,10 +261,20 @@
           if (saver && roster.get(saver)) goalieIn[roster.get(saver).teamId] = saver;
         }
 
-        const homeScore = p.homeScore ?? 0;
-        const awayScore = p.awayScore ?? 0;
+        let homeScore = p.homeScore ?? 0;
+        let awayScore = p.awayScore ?? 0;
+        const end = /End of Game/i.test(type);
+        if (shootout) {
+          // The final row may already carry the real final (tie + 1); otherwise it's the tally.
+          const realFinal = end && Math.abs(homeScore - tied.home) + Math.abs(awayScore - tied.away) === 1 && homeScore >= tied.home && awayScore >= tied.away;
+          if (!realFinal) {
+            so = { home: homeScore, away: awayScore };
+            homeScore = tied.home + (end && so.home > so.away ? 1 : 0);
+            awayScore = tied.away + (end && so.away > so.home ? 1 : 0);
+          }
+        }
         let wp = winProb(rates, elapsed, period, homeScore - awayScore, ppFor(elapsed));
-        if (/End of Game/i.test(type)) wp = homeScore > awayScore ? 1 : homeScore < awayScore ? 0 : wp;
+        if (end) wp = homeScore > awayScore ? 1 : homeScore < awayScore ? 0 : wp;
         const delta = prevWP == null ? 0 : wp - prevWP;
         const weight = SB.impact.weight(prevWP, elapsed, REG_GAME, otLen);
         prevWP = wp;
@@ -300,7 +323,8 @@
           weight,
           credits,
           virtual,
-          pp: live ? { team: live.team === 'home' ? homeId : awayId, left: live.left, two: live.two } : null,
+          pp: live && !shootout ? { team: live.team === 'home' ? homeId : awayId, left: live.left, two: live.two } : null,
+          so: shootout ? { ...so } : null, // shootout tally so far
           goalieIn: { ...goalieIn },
         });
         ts.push(t);
@@ -477,7 +501,7 @@
         state = ended ? 'final' : 'live';
         if (ended) statusText = last.period > 4 ? 'FINAL/SO' : last.period === 4 ? 'FINAL/OT' : 'FINAL';
         else if (/Period End/.test(last.type)) statusText = `END ${periodLabel(last.period)}`;
-        else if (!playoff && last.period >= 5) statusText = 'SHOOTOUT';
+        else if (!playoff && last.period >= 5) statusText = last.so ? `SHOOTOUT ${last.so.away}-${last.so.home}` : 'SHOOTOUT';
         else statusText = `${periodLabel(last.period)} ${last.clock}`;
 
         let lo = 1;

@@ -55,7 +55,7 @@
   // WPA: NBA/college credit every swing to all ten players on the floor (NFL:
   // the players named on the play). Impact: only the players responsible for
   // each play, leverage-adjusted (see SB.impact in engine.js).
-  let metric = 'wpa';
+  let metric = 'imp';
   const val = (p) => (metric === 'imp' ? p.imp || 0 : p.wpa || 0);
   const momentVal = (m) => (metric === 'imp' ? m.imp ?? 0 : m.wpa ?? 0);
   const metricShort = () => (metric === 'imp' ? 'IMP' : 'WPA');

@@ -766,14 +766,15 @@
     document.body.classList.toggle('view-players', v === 'players');
   }
 
-  // Classic WPA or the experimental Impact stat (remembered per browser).
+  // Impact (the default) or classic WPA, remembered per browser. The key is new:
+  // the old one saved 'wpa' on every visit, so it can't tell a choice from the old default.
   function setMetric(m) {
     SB.ui.setMetric(m);
     const on = SB.ui.getMetric() === 'imp';
     $('metricSwitch').classList.toggle('on', on);
     $('metricSwitch').setAttribute('aria-checked', String(on));
     try {
-      localStorage.setItem('sb.metric', SB.ui.getMetric());
+      localStorage.setItem('sb.playerValue', SB.ui.getMetric());
     } catch (e) {}
   }
 
@@ -833,9 +834,9 @@
     SB.player.onGame = showGame;
     initSettings();
     try {
-      setMetric(localStorage.getItem('sb.metric') || 'wpa');
+      setMetric(localStorage.getItem('sb.playerValue') || 'imp');
     } catch (e) {
-      setMetric('wpa');
+      setMetric('imp');
     }
     $('metricSwitch').addEventListener('click', () => {
       setMetric(SB.ui.getMetric() === 'imp' ? 'wpa' : 'imp');

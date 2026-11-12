@@ -8,8 +8,10 @@
     nba: {
       site: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba',
       stats: 'https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba',
-      // [sort, how many, tiers of [rank cutoff, weight]]
-      starLists: [['offensive.avgPoints', 50, [[10, 1], [25, 0.6], [Infinity, 0.3]]]],
+      // [sort, how many, tiers of [rank cutoff, weight], optional re-rank]
+      // NBA: points + rebounds + assists per game, so a Jokic or a rebounding big
+      // ranks with the scorers (re-ranked from the top 200 scorers).
+      starLists: [['offensive.avgPoints', 50, [[10, 1], [25, 0.6], [Infinity, 0.3]], { pool: 200, score: (s) => s.avgPoints + s.avgRebounds + s.avgAssists }]],
     },
     nfl: {
       site: 'https://site.api.espn.com/apis/site/v2/sports/football/nfl',
@@ -31,7 +33,8 @@
     nhl: {
       site: 'https://site.api.espn.com/apis/site/v2/sports/hockey/nhl',
       stats: 'https://site.web.api.espn.com/apis/common/v3/sports/hockey/nhl',
-      starLists: [['offensive.points', 30, [[10, 1], [Infinity, 0.6]]]],
+      // Tiers like the NBA's, so a game's star bar isn't easier to fill in hockey.
+      starLists: [['offensive.points', 30, [[10, 1], [20, 0.6], [Infinity, 0.3]]]],
     },
   };
   LEAGUES.nba.core = 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba';
@@ -108,12 +111,29 @@
       const cfg = LEAGUES[league];
       const map = new Map();
       await Promise.all(
-        cfg.starLists.map(async ([sort, limit, tiers]) => {
+        cfg.starLists.map(async ([sort, limit, tiers, rerank]) => {
           const url =
             `${cfg.stats}/statistics/byathlete?region=us&lang=en&contentorigin=espn` +
-            `&isqualified=true&page=1&limit=${limit}&sort=${sort}%3Adesc`;
+            `&isqualified=true&page=1&limit=${rerank ? rerank.pool : limit}&sort=${sort}%3Adesc`;
           const data = await getJSON(url);
-          (data.athletes || []).forEach((row, i) => {
+          let rows = data.athletes || [];
+          if (rerank) {
+            // Name each row's stats from the category headers, score, re-sort.
+            const stat = (row) => {
+              const s = {};
+              for (const c of data.categories || []) {
+                const vals = row.categories?.find((x) => x.name === c.name)?.values || [];
+                (c.names || []).forEach((k, i) => (s[k] = Number(vals[i]) || 0));
+              }
+              return s;
+            };
+            rows = rows
+              .map((row) => ({ row, v: rerank.score(stat(row)) }))
+              .sort((a, b) => b.v - a.v)
+              .slice(0, limit)
+              .map((x) => x.row);
+          }
+          rows.forEach((row, i) => {
             const id = String(row.athlete.id);
             const weight = tiers.find(([cutoff]) => i < cutoff)[1];
             if (!map.has(id) || map.get(id).weight < weight) map.set(id, { weight, name: row.athlete.displayName });

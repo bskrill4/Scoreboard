@@ -18,19 +18,24 @@
     // College: shorter game, bigger talent gaps; rankings beat early-season records.
     ncaam: { periods: 2, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
     // Hockey: a goal is a big deal. One goal is close, three is about decided, four a blowout.
-    nhl: { periods: 3, marginScale: 2, recordPrior: 5, clutchMargin: 1, oneScore: 1, oneScoreLabel: 'One-goal game', blowout: 4, wire: 1 },
+    // suddenDeath: overtime ends on the next goal, so it scores as "anything can happen
+    // any second" (full volatility) even when nobody has scored for minutes.
+    nhl: { periods: 3, marginScale: 2, recordPrior: 5, clutchMargin: 1, oneScore: 1, oneScoreLabel: 'One-goal game', blowout: 4, wire: 1, suddenDeath: true },
   };
 
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
   const progressOf = (g) => clamp01(g.elapsed / g.reg);
 
   // Win pct shrunk toward .500 so a 2-0 team isn't treated as a juggernaut.
+  // A third number (NHL overtime losses, NFL ties) counts as half a win, like
+  // hockey's points %; ignoring it made every NHL team look better than it is.
   function teamStrength(record, prior) {
-    const m = /^(\d+)-(\d+)/.exec(record || '');
+    const m = /^(\d+)-(\d+)(?:-(\d+))?/.exec(record || '');
     if (!m) return 0.5;
     const w = Number(m[1]);
     const l = Number(m[2]);
-    return (w + prior) / (w + l + 2 * prior);
+    const half = Number(m[3] || 0);
+    return (w + half / 2 + prior) / (w + l + half + 2 * prior);
   }
 
   // College: the AP rank says more than a 3-0 record against cupcakes.
@@ -281,7 +286,9 @@
     const q = quality(g);
     const s = starPower(g, stars);
     const perf = g.league === 'nfl' ? performanceNFL(g) : g.league === 'nhl' ? performanceNHL(g) : performanceNBA(g); // NBA rules cover college too
-    const vol = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
+    const swingy = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
+    const suddenDeath = cfg.suddenDeath && g.state === 'live' && g.period > cfg.periods;
+    const vol = suddenDeath ? 1 : swingy;
     const up = upset(g);
     // NBA, before tip-off: a team on the second night of a back-to-back tends
     // to play flatter. Small deduction per tired team; once the game starts,
@@ -323,13 +330,13 @@
         if (team) reasons.unshift({ text: `${team.abbr} in the red zone`, tone: 'red' });
       }
       if (up.alert) reasons.push({ text: 'Upset alert', tone: 'red' });
-      if (g.period > cfg.periods) reasons.push({ text: g.league === 'nhl' && /SHOOTOUT/.test(g.statusText) ? 'Shootout' : 'Overtime', tone: 'hot' });
+      if (g.period > cfg.periods) reasons.push({ text: g.league === 'nhl' && /SHOOTOUT|\bSO\b/.test(g.statusText) ? 'Shootout' : 'Overtime', tone: 'hot' });
       else if (progress >= 0.85 && margin <= cfg.clutchMargin) reasons.push({ text: 'Clutch time', tone: 'hot' });
       if (margin === 0 && g.elapsed > 0) reasons.push({ text: 'Tied', tone: 'hot' });
       else if (margin <= cfg.oneScore && progress > 0.5) reasons.push({ text: cfg.oneScoreLabel, tone: 'hot' });
       const comeback = (g.minWP < 0.12 && g.wp > 0.4) || (g.maxWP > 0.88 && g.wp < 0.6);
       if (comeback) reasons.push({ text: 'Comeback brewing', tone: 'hot' });
-      if (vol > 0.7) reasons.push({ text: 'Wild swings', tone: 'hot' });
+      if (swingy > 0.7) reasons.push({ text: 'Wild swings', tone: 'hot' });
     }
     if (g.state === 'final' && margin <= cfg.wire) reasons.push({ text: 'Down to the wire', tone: 'hot' });
     // A player with a gold chip doesn't also get the ordinary yellow one.

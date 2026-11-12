@@ -32,7 +32,7 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 five players on the floor for the team it helped and debited from the five it hurt. The NFL feed has no
 substitutions, so a play's swing goes to the players named on it (passer and receiver split a catch).
 
-**Impact (beta)** — the header switch swaps WPA for an experimental stat meant to rank players across
+**Impact (beta, the default)** — the Player value switch in settings flips back to classic WPA. Impact is meant to rank players across
 games, leagues and sports. Each play's swing goes only to the players responsible for it (shooter 80% /
 assister 20%; a miss to the shooter, shared with a blocker; turnovers shared with the stealer; fouls and
 rebounds to whoever made them; NFL as before), then is divided by √leverage, where leverage =
@@ -56,6 +56,10 @@ was credited, the score at that moment, and each play's Impact and WPA (a click 
 it stood `delay` seconds ago. "Hold" freezes the board until you move the slider back.
 
 **Watchability** — `0.42·tension + 0.12·swings + 0.16·matchup + 0.15·stars + 0.15·big nights`.
+Matchup uses win % shrunk toward .500, with a record's third number (NHL overtime losses, NFL ties) as
+half a win. Stars come from ESPN's leaders (`starLists` in `js/api.js`): NBA by points + rebounds + assists
+per game (top 10 = 1, next 15 = 0.6, next 25 = 0.3), NHL by points (10 / 10 / 10 at the same weights).
+Hockey overtime is sudden death, so it scores full swings even when nobody has scored for minutes.
 **Gold chips** mark milestones and records and jump the index while live (summed, capped at +40;
 `goldChips` in `js/watch.js`): an NBA team chasing the **3PT record (29)** — on pace for 30 (+20), 4 or fewer from
 30 in the fourth (+30), tying (+30) or breaking it (+35) — a
@@ -78,6 +82,7 @@ in the second half; it grows with the favorite's rank and the clock, and fades a
 ## Hockey notes
 
 - **Win probability** is our own model (`js/engine-nhl.js`, constants at the top): each team scores at a steady rate set by its points % and home ice; a power play multiplies the rates for its remaining time; a team down 1 or 2 pulls its goalie for the last 90/120 seconds. The chance of winning is the chance of leading after regulation plus the chance of a tie times the overtime odds. On 25 games (Nov 7–10) it was well calibrated at the ends: under 10% → home won 0%, over 90% → 92%.
+- **Shootouts**: the feed's scores switch to the shootout tally in period 5. The engine keeps the game tied at the end-of-overtime score, shows the tally in the status (`SHOOTOUT 1-0`), gives the winner +1 at the end (the official final), and doesn't count shootout goals as goals or its odd play types as penalties.
 - **WPA** goes to the players named on goals (scorer 45%, assists 10% / 5%, the goalie beaten 40%) and penalties (the penalized player). Saves don't move win probability, so a shutout goalie's WPA is 0.
 - **Impact** adds shots that didn't go in, valued at expected goals × what a goal would swing right now: a save is split between shooter and goalie, a block between shooter and blocker, a miss is the shooter's. Shares are balanced so an average night nets out near zero (on Nov 7–10: goalies at .880–.920 averaged about +1, at .920+ about +15, under .880 about −9).
 - Player stats are rebuilt from the play-by-play (so the stream delay holds); on 25 games they matched ESPN's box score on all 3,704 goals, assists, shots, hits, saves and goals-against. Power-play chances match on 45 of 50 team-games (the rest are off by one).
