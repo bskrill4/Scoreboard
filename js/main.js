@@ -334,6 +334,7 @@
         if (v.drive && !v.drive.ended) g.poss = v.drive.teamId === g.home.id ? 'home' : 'away';
         g.away.score = v.awayScore;
         g.home.score = v.homeScore;
+        g.inCommercial = v.state === 'live' && inCommercial(g.league, tape, v.playCount);
         for (const p of g.players) p.star = stars.has(p.id);
         if (evState === 'in' && T === Infinity) scoreboardFallback(g, ev, ac, hc, sport);
       }
@@ -388,6 +389,46 @@
   const onBreak = (g) =>
     g.state === 'live' && (/^(HALFTIME|END (Q[13]|OF (1ST|3RD)))\b/.test(g.statusText || '') || (g.league === 'nhl' && /^END (1ST|2ND)$/.test(g.statusText || '')));
 
+  // ---------- when the top game may change ----------
+  // 'best'    : whenever a better game is available (the original behaviour).
+  // 'breaks'  : only while the current top game is stopped: a timeout / TV
+  //             timeout / two-minute warning, or the end of a quarter, half or period.
+  // 'breaks10': as 'breaks', but a game 10+ watch-index points better takes over anyway.
+  const SWITCH_MODES = ['best', 'breaks', 'breaks10'];
+  const BIG_LEAD = 10;
+  let switchMode = 'best';
+  try {
+    const saved = localStorage.getItem('sb.switch');
+    if (SWITCH_MODES.includes(saved)) switchMode = saved;
+  } catch (e) {}
+
+  // Feeds log stoppages as rows: NBA "Full Timeout", college "OfficialTVTimeOut" /
+  // "ShortTimeOut", NFL "Official Timeout" / "Timeout" / "Two-minute warning".
+  const TIMEOUT_ROW = /time ?out|two-minute warning|challenge/i;
+  // NHL has no TV-timeout row: TV breaks are the first stoppage after the 6:00,
+  // 10:00 and 14:00 marks of a period, so read them off the "Stoppage" rows.
+  const NHL_TV_MARKS = [360, 600, 840];
+  function inCommercial(league, tape, n) {
+    let i = n - 1;
+    while (i >= 0 && /substitution/i.test(tape.plays[i].type || '')) i--;
+    const p = tape.plays[i];
+    if (!p) return false;
+    if (TIMEOUT_ROW.test(p.type || '')) return true;
+    if (league !== 'nhl' || !/stoppage/i.test(p.type || '') || p.period > 3) return false;
+    const start = (p.period - 1) * 1200;
+    let prevIn = 0;
+    for (let k = i - 1; k >= 0 && tape.plays[k].period === p.period; k--) {
+      if (/stoppage/i.test(tape.plays[k].type || '')) {
+        prevIn = tape.plays[k].elapsed - start;
+        break;
+      }
+    }
+    const inPeriod = p.elapsed - start;
+    return NHL_TV_MARKS.some((m) => prevIn < m && inPeriod >= m);
+  }
+  // Any stoppage a viewer would be sitting through: end of a period, halftime, a timeout.
+  const atStoppage = (g) => g.state === 'live' && (g.inCommercial || /^(END|HALFTIME)\b/.test(g.statusText || ''));
+
   function better(b, a, margin) {
     const gb = group(b);
     const ga = group(a);
@@ -422,9 +463,17 @@
       // unless every game on the board is in one.
       const pool = order.map((id) => byId.get(id)).filter((m) => !onBreak(m));
       const cands = pool.length ? pool : order.map((id) => byId.get(id));
-      let top = cands.includes(byId.get(heroId)) ? byId.get(heroId) : cands[0];
+      const hero = byId.get(heroId);
+      let top = cands.includes(hero) ? hero : cands[0];
       for (const m of cands) if (better(m, top, 0)) top = m;
-      heroId = top ? top.id : null;
+      // Calmer modes: a live top game keeps its spot until it reaches a stoppage
+      // (or, in 'breaks10', until another game is 10+ points better).
+      let keep = false;
+      if (switchMode !== 'best' && hero && hero.state === 'live' && top && top !== hero) {
+        const bigGap = switchMode === 'breaks10' && top.index >= hero.index + BIG_LEAD;
+        keep = !atStoppage(hero) && !bigGap;
+      }
+      heroId = keep ? hero.id : top ? top.id : null;
     }
 
     return [heroId, ...order.filter((id) => id !== heroId)].filter(Boolean).map((id) => byId.get(id));
@@ -697,6 +746,9 @@
     [...$('ticks').children].forEach((el, i) => el.classList.toggle('on', i === idx));
     $('delay').value = idx;
     $('delay').style.setProperty('--fill', `${(idx / HOLD) * 100}%`);
+    // The delay lives in the settings menu now: show it on the cog when it isn't Live.
+    $('delayChip').textContent = idx === 0 ? '' : DELAYS[idx].label;
+    $('delayChip').hidden = idx === 0;
     tick();
   }
 
@@ -733,8 +785,52 @@
     return true;
   }
 
+  // ---------- settings menu (the cog) ----------
+  function setSwitchMode(m) {
+    switchMode = SWITCH_MODES.includes(m) ? m : 'best';
+    for (const r of document.querySelectorAll('input[name="switchMode"]')) r.checked = r.value === switchMode;
+    try {
+      localStorage.setItem('sb.switch', switchMode);
+    } catch (e) {}
+  }
+
+  function initSettings() {
+    const btn = $('settingsBtn');
+    const panel = $('settingsPanel');
+    const open = (on) => {
+      // Phones: the panel is pinned under the (wrapping, taller) header.
+      if (on && window.matchMedia('(max-width: 680px)').matches)
+        panel.style.top = `${Math.round(document.querySelector('header.bar').getBoundingClientRect().bottom) + 8}px`;
+      else panel.style.top = '';
+      panel.hidden = !on;
+      btn.setAttribute('aria-expanded', String(on));
+      btn.classList.toggle('on', on);
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      open(panel.hidden);
+    });
+    document.addEventListener('click', (e) => {
+      if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) open(false);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !panel.hidden) {
+        open(false);
+        btn.focus();
+      }
+    });
+    setSwitchMode(switchMode);
+    panel.addEventListener('change', (e) => {
+      if (e.target.name === 'switchMode') {
+        setSwitchMode(e.target.value);
+        tick();
+      }
+    });
+  }
+
   function initControls() {
     SB.player.onGame = showGame;
+    initSettings();
     try {
       setMetric(localStorage.getItem('sb.metric') || 'wpa');
     } catch (e) {

@@ -65,7 +65,9 @@
   const fmtWPA = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}`;
   const pct = (x) => `${Math.round(x * 100)}%`;
   const startWord = (g) => (g.league === 'nfl' ? 'Kickoff' : g.league === 'nhl' ? 'Puck drop' : 'Tip-off');
-  const statLine = (p) => p.line ?? `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST`;
+  // Basketball: steals and blocks only when they happened, to keep the line short.
+  const defLine = (p) => `${p.stl ? ` · ${p.stl} STL` : ''}${p.blk ? ` · ${p.blk} BLK` : ''}`;
+  const statLine = (p) => p.line ?? `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${defLine(p)}`;
   const shortStat = (p) => p.short ?? `${p.pts} PTS`;
   const signed = (x, digits = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}`;
   const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
@@ -328,7 +330,7 @@
             (p) => `<div class="crow${isFocus(g, p)}" ${playerAttrs(g, p, t)}>
               ${headshot(p, 'sm')}
               <span class="who">${p.star ? '★ ' : ''}${esc(p.last)}${prospectTag(p, true)}</span>
-              <span class="line">${p.pts}<small>P</small> ${p.reb}<small>R</small> ${p.ast}<small>A</small></span>
+              <span class="line">${p.pts}<small>P</small> ${p.reb}<small>R</small> ${p.ast}<small>A</small>${p.stl ? ` ${p.stl}<small>S</small>` : ''}${p.blk ? ` ${p.blk}<small>B</small>` : ''}</span>
               <span class="wpa ${val(p) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(p))}</span>
             </div>`
           )

@@ -40,7 +40,7 @@
     return finals.get(eventId);
   }
 
-  const statLine = (p) => p.line || `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST`;
+  const statLine = (p) => p.line || `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${p.stl ? ` · ${p.stl} STL` : ''}${p.blk ? ` · ${p.blk} BLK` : ''}`;
   const score = (c) => Number(c.score?.displayValue ?? c.score) || 0;
 
   async function loadWeek(id, league, teamId, endDay) {

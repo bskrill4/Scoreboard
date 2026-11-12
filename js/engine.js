@@ -31,7 +31,8 @@
   // turnover or foul counts against them and a stop counts for the defender.
   function basketballCredits(p) {
     if (!p.p0 || p.isSub || /timeout|end period|end game|jump ?ball/i.test(p.type)) return [];
-    const shot = /\b(makes|misses)\b/.test(p.text);
+    // NBA blocked shots read "X blocks Y's 2-foot layup": a shot with no "misses" in it.
+    const shot = /\b(makes|misses)\b/.test(p.text) || (p.blockBy && / blocks /.test(p.text));
     if (shot && p.scoring) return p.isAssist && p.p1 ? [{ id: p.p0, share: 0.8 }, { id: p.p1, share: 0.2 }] : [{ id: p.p0, share: 1 }];
     if (shot && p.blockBy && p.blockBy !== p.p0) return [{ id: p.p0, share: 0.5 }, { id: p.blockBy, share: 0.5 }];
     if (/turnover/i.test(p.type + ' ' + p.text) && p.stealBy && p.stealBy !== p.p0)
@@ -254,6 +255,36 @@
         ts.push(t);
       }
 
+      // College logs a block as its own "Block Shot" row that never moves win
+      // probability; the swing sits on the miss just before it. Split that miss
+      // 50/50 between shooter and blocker, as the NBA's one-row blocks are.
+      for (let i = 1; i < plays.length; i++) {
+        const b = plays[i];
+        const miss = plays[i - 1];
+        if (!/^Block/i.test(b.type) || !b.p0 || !/\bmisses\b/.test(miss.text) || miss.elapsed !== b.elapsed) continue;
+        if (miss.p0 && miss.p0 !== b.p0) {
+          miss.credits = [{ id: miss.p0, share: 0.5 }, { id: b.p0, share: 0.5 }];
+          miss.blockedBy = b.p0;
+        }
+        b.credits = []; // the block row's own swing (none) isn't double-counted
+      }
+      // When the feed doesn't move on a blocked miss (common in college), the whole
+      // stop shows up on the defensive rebound. Split that rebound 50/50 between
+      // the rebounder and the blocker (a team rebound goes to the blocker). If the
+      // miss did move, the blocker already has half of it, so nothing more.
+      for (let i = 0; i < plays.length; i++) {
+        const m = plays[i];
+        const blocker = m.blockedBy || (/ blocks /.test(m.text) ? m.blockBy : null);
+        if (!blocker || m.delta) continue;
+        let j = i + 1;
+        while (j < plays.length && (plays[j].isSub || /^Block/i.test(plays[j].type))) j++;
+        const r = plays[j];
+        if (!r || !r.isRebound || !/defensive/i.test(`${r.type} ${r.text}`)) continue;
+        const blockTeam = roster.get(blocker)?.teamId;
+        if (!r.p0) r.credits = [{ id: blocker, share: 1 }];
+        else if (r.p0 !== blocker && roster.get(r.p0)?.teamId === blockTeam)
+          r.credits = [{ id: r.p0, share: 0.5 }, { id: blocker, share: 0.5 }];
+      }
       impactAdjust(plays, ftPct);
       const complete = plays.length > 0 && plays[plays.length - 1].type === 'End Game';
       return { homeId, awayId, roster, plays, ts, hasFeedWP, complete, _n: -1, _view: null, _final: null };

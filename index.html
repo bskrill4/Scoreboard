@@ -17,16 +17,55 @@
     <nav class="views" id="views" aria-label="Views">
       <a href="#" data-view="board">Scores</a>
       <a href="#players" data-view="players">Rankings</a>
-      <button type="button" class="blur-switch" id="metricSwitch" role="switch" aria-checked="false"
-        title="Experimental: credit each play to the players responsible, leverage-adjusted"><i></i>Impact <small>beta</small></button>
-    </nav>
+      <div class="settings">
+        <button type="button" class="cog" id="settingsBtn" aria-label="Settings" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+          <span class="delay-chip" id="delayChip" hidden title="Stream delay"></span>
+        </button>
+        <div class="settings-panel" id="settingsPanel" role="dialog" aria-label="Settings" hidden>
+          <section class="set">
+            <h4>Sports</h4>
+            <nav class="leagues" id="leagues" aria-label="Sports">
+              <button type="button" class="league on" data-league="nba" aria-pressed="true" title="Hide NBA games">NBA</button>
+              <button type="button" class="league on" data-league="nfl" aria-pressed="true" title="Hide NFL games">NFL</button>
+              <button type="button" class="league on" data-league="ncaam" aria-pressed="true" title="Hide NCAAM Top 25 games">NCAAM <small>Top 25</small></button>
+              <button type="button" class="league on" data-league="nhl" aria-pressed="true" title="Hide NHL games">NHL</button>
+              <span class="league soon" title="Coming soon">MLB</span>
+            </nav>
+          </section>
 
-    <nav class="leagues" id="leagues" aria-label="Sports">
-      <button type="button" class="league on" data-league="nba" aria-pressed="true" title="Hide NBA games">NBA</button>
-      <button type="button" class="league on" data-league="nfl" aria-pressed="true" title="Hide NFL games">NFL</button>
-      <button type="button" class="league on" data-league="ncaam" aria-pressed="true" title="Hide NCAAM Top 25 games">NCAAM <small>Top 25</small></button>
-      <button type="button" class="league on" data-league="nhl" aria-pressed="true" title="Hide NHL games">NHL</button>
-      <span class="league soon" title="Coming soon">MLB</span>
+          <section class="set">
+            <div class="delay">
+              <div class="delay-head">
+                <label for="delay">Stream delay</label>
+                <span id="delayStatus" class="delay-status">Live</span>
+              </div>
+              <input id="delay" type="range" min="0" max="6" step="1" value="0" aria-describedby="delayStatus">
+              <div class="ticks" id="ticks" aria-hidden="true"></div>
+            </div>
+          </section>
+
+          <section class="set">
+            <h4>Top game switches</h4>
+            <div class="radios" role="radiogroup" aria-label="Top game switches">
+              <label><input type="radio" name="switchMode" value="best"><span><b>Whenever a better game is on</b><small>The top spot always goes to the most watchable game.</small></span></label>
+              <label><input type="radio" name="switchMode" value="breaks"><span><b>Only at a break</b><small>Waits for the top game's timeout, TV break, or end of a quarter, half or period.</small></span></label>
+              <label><input type="radio" name="switchMode" value="breaks10"><span><b>At a break, or for a much better game</b><small>As above, but a game 10+ watch-index points better takes over right away.</small></span></label>
+            </div>
+          </section>
+
+          <section class="set">
+            <h4>Player value</h4>
+            <button type="button" class="blur-switch" id="metricSwitch" role="switch" aria-checked="false"
+              title="Experimental: credit each play to the players responsible, leverage-adjusted"><i></i>Impact <small>beta</small></button>
+            <p class="set-note">Off: classic WPA. On: credit for each player's own plays, leverage-adjusted.</p>
+          </section>
+
+          <section class="set">
+            <a class="replay-link" id="replayLink" href="?replay">Replay last night</a>
+          </section>
+        </div>
+      </div>
     </nav>
 
     <nav class="days" id="days" aria-label="Day">
@@ -44,16 +83,6 @@
       <span class="speeds" id="speeds"></span>
       <button type="button" id="skip">+10 min</button>
       <a href="./">Exit</a>
-    </div>
-    <a class="replay-link" id="replayLink" href="?replay">Replay last night</a>
-
-    <div class="delay">
-      <div class="delay-head">
-        <label for="delay">Stream delay</label>
-        <span id="delayStatus" class="delay-status">Live</span>
-      </div>
-      <input id="delay" type="range" min="0" max="6" step="1" value="0" aria-describedby="delayStatus">
-      <div class="ticks" id="ticks" aria-hidden="true"></div>
     </div>
   </header>
 
