@@ -486,6 +486,7 @@
     const T = cutoff();
     const models = arrange(events.filter(shown).map((ev) => buildModel(ev, T)));
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
+    else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
     else SB.ui.render(models, { heroId, pinnedId, toTop });
 
     const live = models.filter((m) => m.state === 'live').length;
@@ -606,7 +607,7 @@
       } catch (e) {}
       drawLeagues();
     }
-    if (view() === 'players') location.hash = ''; // back to the board (hashchange repaints)
+    if (view() !== 'board') location.hash = ''; // back to the board (hashchange repaints)
     pickedDay = day === todayDay() ? null : day;
     const changed = syncDay(); // a new day clears the pin, so pin after this
     pinnedId = eventId;
@@ -754,16 +755,17 @@
   }
 
   // ---------- views & player metric ----------
-  // Two views: the board (#) and the Player of the Day table (#players).
-  // Rankings has two tabs: #players and #plays.
-  const view = () => (location.hash === '#players' || location.hash === '#plays' ? 'players' : 'board');
+  // Three views: the board (#), Rankings (#players, #plays) and the viewing plan (#plan).
+  const view = () =>
+    location.hash === '#players' || location.hash === '#plays' ? 'players' : location.hash === '#plan' ? 'plan' : 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
     const v = view();
     $('board').hidden = v !== 'board';
     $('players').hidden = v !== 'players';
+    $('plan').hidden = v !== 'plan';
     for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === v);
-    document.body.classList.toggle('view-players', v === 'players');
+    document.body.classList.toggle('view-players', v === 'players' || v === 'plan');
   }
 
   // Impact (the default) or classic WPA, remembered per browser. The key is new:
@@ -855,6 +857,23 @@
       if (!b) return;
       setMetric(b.dataset.metric);
       tick();
+    });
+    // Plan: a click on any game (a pick, a timeline bar, an "also on" link) opens it on the board.
+    $('plan').addEventListener('click', (e) => {
+      // Check marks lock a game into the plan; Undo steps back one change.
+      const lock = e.target.closest('[data-lock]');
+      if (lock) {
+        SB.plan.toggle(loadedDay, lock.dataset.lock);
+        return tick();
+      }
+      if (e.target.closest('[data-undo]')) {
+        SB.plan.undo();
+        return tick();
+      }
+      const a = e.target.closest('[data-game][data-gleague]');
+      if (!a) return;
+      e.preventDefault();
+      showGame(a.dataset.day || loadedDay, a.dataset.game, a.dataset.gleague);
     });
     applyView();
     window.addEventListener('hashchange', () => {

@@ -52,6 +52,18 @@ a When filter (1st half / 2nd half & OT) for comparing early plays with each oth
 counting stats and a Player of the Day; **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
 
+**Plan** (`#plan`, `js/plan.js`) — the night's games back to back, chosen to get the most
+**index × hours** out of the evening (weighted interval scheduling): watch a game start to finish, and when it
+ends the next pick is starting. Lengths are typical scheduled-start-to-final-play times measured on Nov 8–11
+(`LENGTH_MIN`: NBA 2h31, NHL 2h44, college 2h07, NFL ~3h15 estimated); the next game may start up to
+`GRACE_MIN` (10 min) before the last is expected to end. Upcoming games use the pregame index, a live game counts
+from now to its expected end, and finals drop out, so the plan re-solves as the night goes. Each pick lists what
+else is on in its slot; long breaks suggest a game in progress to catch the end of; a timeline shows every game
+with the picks lit, colored by sport (NBA orange, NHL blue, college violet, NFL green). **Check** a game (on its
+plan row or timeline bar) to lock it in: anything that clashes with it drops out and the rest is re-picked around
+it; two checked games may overlap. Checks are remembered per day (`sb.planLocks`), and **Undo** steps back one
+change. The summary shows what the checks cost against the best unchecked plan. Click any game to pin it on the board.
+
 **Stream delay** — every play carries a real-world timestamp, so the board shows the game exactly as
 it stood `delay` seconds ago. "Hold" freezes the board until you move the slider back.
 

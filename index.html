@@ -17,6 +17,7 @@
     <nav class="views" id="views" aria-label="Views">
       <a href="#" data-view="board">Scores</a>
       <a href="#players" data-view="players">Rankings</a>
+      <a href="#plan" data-view="plan">Plan</a>
       <div class="settings">
         <button type="button" class="cog" id="settingsBtn" aria-label="Settings" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
@@ -89,6 +90,7 @@
   <div class="notice" id="notice" hidden></div>
   <main id="board" class="board" aria-live="off"></main>
   <section id="players" class="players" hidden aria-label="Rankings"></section>
+  <section id="plan" class="players plan" hidden aria-label="Viewing plan"></section>
   <footer class="foot">
     Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability credited to a player: while on the court in the NBA, on plays they were part of in the NFL and NHL (NHL win probability is our own model; ESPN doesn't publish one).
     Click any game to pin it to the top.
@@ -102,6 +104,7 @@
   <script src="js/watch.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/player.js"></script>
+  <script src="js/plan.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
