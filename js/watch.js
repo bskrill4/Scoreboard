@@ -139,6 +139,79 @@
     return { score, label: `Triple-double watch: ${p.last}` };
   }
 
+  // ---------- gold chips: milestones and records ----------
+  // Rare things worth dropping everything for. Each is a gold chip at the front
+  // of the list and, while the game is live, a big jump in the index (summed,
+  // capped at GOLD_CAP points) on top of the formula.
+  const GOLD_CAP = 40;
+  // NBA team record for made threes in a game: 29. Alive at the half with 15
+  // (on pace for 30), and from the end of the third only with 22.
+  const THREES = { record: 29, half: 15, third: 22, close: 26 };
+  // Single-game points: Adebayo's 83 (2nd ever) and Wilt's 100. A chase is alive
+  // on pace for the mark: half of it at halftime, three-quarters after the third.
+  const POINTS = [
+    { mark: 100, name: "Wilt's 100" },
+    { mark: 83, name: "Adebayo's 83" },
+  ];
+  // Quadruple-double: 10+ in four of PTS/REB/AST/STL/BLK. Watch once three are
+  // in and the fourth is at QUAD_NEAR.
+  const QUAD_NEAR = 7;
+  // Both teams combined: 300 points (on pace: 150 at the half, 225 after the third).
+  const COMBINED = { mark: 300 }; // on pace: 150 at the half, 225 after the third
+
+  function goldChips(g) {
+    const chips = []; // { text, bonus (index points while live) }
+    if (g.league !== 'nba') return chips;
+    const status = g.statusText || '';
+    const pastHalf = g.period >= 3 || /^HALFTIME/.test(status);
+    const pastThird = g.period >= 4 || /^END Q3\b/.test(status);
+    for (const side of ['away', 'home']) {
+      const n = g.threes?.[side] || 0;
+      const abbr = g[side].abbr;
+      if (n > THREES.record) chips.push({ text: `${abbr} ${g.state === 'final' ? 'set' : 'breaks'} 3PT record · ${n}`, bonus: 35 });
+      else if (n === THREES.record) chips.push({ text: `${abbr} ties 3PT record · ${n}`, bonus: 30 });
+      else if (g.state === 'live' && (pastThird ? n >= THREES.third : pastHalf && n >= THREES.half)) {
+        const left = THREES.record + 1 - n;
+        if (pastThird && n >= THREES.close) chips.push({ text: `${abbr} ${left} three${left === 1 ? '' : 's'} from the 3PT record`, bonus: 30 });
+        else chips.push({ text: `${abbr} 3PT record watch · ${n}`, bonus: 20 });
+      }
+    }
+    // 300 combined points.
+    const total = (g.home.score || 0) + (g.away.score || 0);
+    if (total >= COMBINED.mark) chips.push({ text: `300-point game · ${total}`, bonus: 30 });
+    // On pace = the total projected over regulation reaches the mark. That is exactly
+    // half of it at halftime and three-quarters after the third, and in the fourth
+    // it only stays alive while the chase is still realistic.
+    const played = pastThird && g.period < 4 ? 0.75 : pastHalf && g.period < 3 ? 0.5 : Math.min(1, Math.max(0.5, progressOf(g)));
+    const onPace = (n, mark) => g.state === 'live' && pastHalf && n / played >= mark;
+    if (total < COMBINED.mark && onPace(total, COMBINED.mark)) chips.push({ text: `300-point pace · ${total}`, bonus: 20 });
+
+    for (const p of g.players) {
+      // Points: the chase for a record replaces the plain "50 PTS" chip.
+      let pc = null;
+      const [wilt, bam] = POINTS;
+      if (p.pts > wilt.mark) pc = { text: `${p.last} breaks ${wilt.name} · ${p.pts}`, bonus: 40 };
+      else if (p.pts === wilt.mark) pc = { text: `${p.last} ties ${wilt.name}`, bonus: 40 };
+      else if (p.pts >= bam.mark && onPace(p.pts, wilt.mark)) pc = { text: `${p.last} chasing ${wilt.name} · ${p.pts}`, bonus: 40 };
+      else if (p.pts >= bam.mark) pc = { text: `${p.last} ${p.pts === bam.mark ? 'ties' : 'passes'} ${bam.name} · ${p.pts}`, bonus: 40 };
+      else if (onPace(p.pts, bam.mark)) pc = { text: `${p.last} chasing ${bam.name} · ${p.pts}`, bonus: p.pts >= bam.mark - 10 ? 35 : 30 };
+      else if (p.pts >= 50) pc = { text: `${p.last} ${p.pts} PTS`, bonus: 20 };
+      if (pc) chips.push({ ...pc, last: p.last });
+
+      // Quadruple-double.
+      const cats = [p.pts, p.reb, p.ast, p.stl || 0, p.blk || 0];
+      const tens = cats.filter((v) => v >= 10).length;
+      if (tens >= 4) chips.push({ text: `${p.last} QUADRUPLE-DOUBLE`, bonus: 40, last: p.last });
+      else if (tens === 3 && g.state === 'live' && Math.max(...cats.filter((v) => v < 10)) >= QUAD_NEAR)
+        chips.push({ text: `${p.last} quadruple-double watch`, bonus: 30, last: p.last });
+      else {
+        const td = tripleDoubleWatch(g, p);
+        if (td.label && /near 1st/.test(td.label)) chips.push({ text: td.label, bonus: 20, last: p.last });
+      }
+    }
+    return chips;
+  }
+
   function performanceNBA(g) {
     let best = { score: 0, label: '' };
     const progress = progressOf(g);
@@ -216,8 +289,12 @@
     // the actual game takes over.
     const b2bTeams = g.state === 'pre' && g.b2b ? ['away', 'home'].filter((s) => g.b2b[s]).map((s) => g[s]) : [];
 
+    const gold = goldChips(g);
+    const goldBonus = g.state === 'live' ? Math.min(GOLD_CAP, gold.reduce((t, c) => t + c.bonus, 0)) : 0;
+
     const index = Math.round(
-      -B2B_PENALTY * b2bTeams.length +
+      goldBonus -
+      B2B_PENALTY * b2bTeams.length +
       100 *
         (WEIGHTS.tension * t +
           WEIGHTS.volatility * vol +
@@ -227,7 +304,7 @@
           UPSET.bonus * up.score)
     );
 
-    // Reasons, strongest first. tone: hot (yellow), info (outline), cold (dim).
+    // Reasons, strongest first. tone: gold (milestone/record), red, hot (yellow), info (outline), cold (dim).
     const reasons = [];
     const margin = Math.abs(g.home.score - g.away.score);
     const progress = progressOf(g);
@@ -256,7 +333,11 @@
       if (vol > 0.7) reasons.push({ text: 'Wild swings', tone: 'hot' });
     }
     if (g.state === 'final' && margin <= cfg.wire) reasons.push({ text: 'Down to the wire', tone: 'hot' });
-    if (perf.label) reasons.push({ text: perf.label, tone: 'hot' });
+    // A player with a gold chip doesn't also get the ordinary yellow one.
+    if (perf.label && !gold.some((c) => c.text === perf.label || (c.last && perf.label.startsWith(`${c.last} `))))
+      reasons.push({ text: perf.label, tone: 'hot' });
+    // Gold (milestones, records) always lead, so a tile's one chip is the gold one.
+    reasons.unshift(...gold.map((c) => ({ text: c.text, tone: 'gold' })));
     // Lottery-level draft prospect (top 14 on the board).
     if (s.prospect && s.prospect.rank <= 14) reasons.push({ text: `#${s.prospect.rank} prospect ${s.prospect.last}`, tone: 'info' });
     // A back-to-back takes the star chip's spot (dim, not yellow or red).
@@ -275,5 +356,5 @@
     };
   }
 
-  SB.watch = { rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
+  SB.watch = { goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();

@@ -1005,3 +1005,14 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 @media (max-width: 680px) {
   .game.is-hero .g-top { flex-wrap: wrap; row-gap: 8px; }
 }
+
+/* Gold: milestones and records (e.g. a team chasing the 3PT record, a 50-point game). */
+.chip.gold {
+  background: linear-gradient(135deg, #fff1a8 0%, #ffd60a 38%, #e0a400 62%, #ffe680 100%);
+  color: #2a1d00;
+  box-shadow: 0 0 0 1px rgba(255, 214, 10, .6), 0 0 12px rgba(255, 196, 0, .45);
+  animation: gold-shine 2.4s ease-in-out infinite;
+  background-size: 200% 200%;
+}
+@keyframes gold-shine { 0%, 100% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } }
+@media (prefers-reduced-motion: reduce) { .chip.gold { animation: none; } }

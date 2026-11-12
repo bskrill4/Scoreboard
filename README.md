@@ -56,6 +56,13 @@ was credited, the score at that moment, and each play's Impact and WPA (a click 
 it stood `delay` seconds ago. "Hold" freezes the board until you move the slider back.
 
 **Watchability** — `0.42·tension + 0.12·swings + 0.16·matchup + 0.15·stars + 0.15·big nights`.
+**Gold chips** mark milestones and records and jump the index while live (summed, capped at +40;
+`goldChips` in `js/watch.js`): an NBA team chasing the **3PT record (29)** — 15+ threes at the half,
+22+ from the end of the third (+20), within 3 of it (+30), tying (+30) or breaking it (+35) — a
+**50-point game** (+20), a player **near his first career triple-double** (+20), a player **chasing Adebayo's 83**
+or **Wilt's 100** (+30 to +40), a **quadruple-double** (watch +30 once three categories are in and the
+fourth is at 7; done +40) and **300 combined points** (pace +20, reached +30). "On pace" projects over
+regulation: half the mark at halftime, three-quarters after the third, and only realistic chases in the fourth.
 College games add an **upset alert** bonus (up to +15) when an unranked team is within 5 of a top-10 team
 in the second half; it grows with the favorite's rank and the clock, and fades as either side pulls away
 (`UPSET` in `js/watch.js`). Live games rank first, then upcoming, then finals. Click a tile to pin it to the top. Per-sport tuning

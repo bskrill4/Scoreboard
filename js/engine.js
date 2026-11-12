@@ -325,6 +325,7 @@
       }
 
       const series = [];
+      const threes = { [homeId]: 0, [awayId]: 0 }; // made 3-pointers by team (record watch)
       const swings = [];
       // Credited plays: { play, v: Impact (home side, leverage-adjusted, what player totals add up),
       //   swing: the corrected swing (home side, no leverage divide: how single plays are ranked),
@@ -390,6 +391,7 @@
           }
           if (a) {
             if (p.scoring) a.pts += p.pts;
+            if (p.scoring && p.pts === 3 && threes[a.teamId] != null) threes[a.teamId]++;
             if (p.isRebound) a.reb += 1;
           }
           if (b && p.scoring && p.isAssist) b.ast += 1;
@@ -440,6 +442,7 @@
       impPlays.sort((x, y) => Math.abs(y.swing) - Math.abs(x.swing));
 
       const view = {
+        threes,
         impSwings: impPlays.slice(0, 8),
         impPlays, // every credited play, biggest Impact first (Rankings › Plays)
         state,
