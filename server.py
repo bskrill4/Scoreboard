@@ -20,7 +20,8 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
 
 port = int(sys.argv[1]) if len(sys.argv) > 1 else 5173
 handler = functools.partial(NoCacheHandler, directory=os.path.dirname(os.path.abspath(__file__)))
-with http.server.ThreadingHTTPServer(('', port), handler) as server:
+# Localhost only: binding every interface would serve this folder (and .git) to the whole network.
+with http.server.ThreadingHTTPServer(('127.0.0.1', port), handler) as server:
     print(f'Scoreboard on http://localhost:{port}', flush=True)
     try:
         server.serve_forever()

@@ -21,7 +21,6 @@
   const GAP_NOTE = 15; // gaps longer than this get a "fill" suggestion
 
   const MIN = 60e3;
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', ncaaf: 'NCAAF', nhl: 'NHL' };
 
   // When each game would be watched: [s, e] in ms, from now on.
   function windowOf(g, now) {
@@ -144,7 +143,7 @@
     const free = lockedHere ? plan(models, now).total : total; // the best plan with no checks
 
     const leagues = ['nba', 'nhl', 'ncaam', 'nfl', 'ncaaf'].filter((l) => all.some((x) => x.g.league === l));
-    const legend = leagues.map((l) => `<span class="lg-key lg-${l}">${LEAGUE_NAME[l]}</span>`).join('');
+    const legend = leagues.map((l) => `<span class="lg-key lg-${l}">${SB.league.name(l)}</span>`).join('');
     const head = `
       <div class="players-head">
         <div>
@@ -210,7 +209,7 @@
           <div class="pp-time"><b>${time(p.s)}</b><small>${p.live ? 'live now' : 'start'} · to ~${time(p.e)}</small></div>
           <div class="pp-game">
             <div class="pp-teams">${logo(g.away)}${teamName(g.away)}<span>@</span>${logo(g.home)}${teamName(g.home)}</div>
-            <small><span class="lg-tag">${LEAGUE_NAME[g.league]}</span>${g.broadcast ? ` ${esc(g.broadcast)} ·` : ''} ${dur(p.e - p.s)} ${chip(g)}</small>
+            <small><span class="lg-tag">${SB.league.name(g.league)}</span>${g.broadcast ? ` ${esc(g.broadcast)} ·` : ''} ${dur(p.e - p.s)} ${chip(g)}</small>
             ${others.length ? `<small class="pp-alt">Also on: ${others.map((o) => `<a href="#" ${gameAttrs(o.g, day)}>${matchup(o.g)} ${o.g.index}</a>`).join(' · ')}</small>` : ''}
           </div>
           <div class="pp-idx"><b>${g.index}</b><small>${p.locked ? 'checked' : 'index'}</small></div>
@@ -235,7 +234,7 @@
             style="left:${pct(x.s)}%;width:${(pct(x.e) - pct(x.s)).toFixed(2)}%">
             ${checkBtn(x.g, x.locked, 'tl-check')}
             <a href="#" ${gameAttrs(x.g, day)}
-              title="${esc(`${x.g.away.name} @ ${x.g.home.name} · ${LEAGUE_NAME[x.g.league]} · ${time(x.s)}–${time(x.e)} · index ${x.g.index}`)}">
+              title="${esc(`${x.g.away.name} @ ${x.g.home.name} · ${SB.league.name(x.g.league)} · ${time(x.s)}–${time(x.e)} · index ${x.g.index}`)}">
               <span>${matchup(x.g)}</span><b>${x.g.index}</b></a>
           </div></div>`
       )

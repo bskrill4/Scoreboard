@@ -11,7 +11,6 @@
 //     first goal of the season, a big night against their average.
 (function () {
   const SB = (window.SB = window.SB || {});
-  const FOOTBALL = new Set(['nfl', 'ncaaf']); // same engine and layout
 
   const ROTATE_MS = 15000;
   // Team games missed before "first game back" counts. Hockey scratches and
@@ -35,7 +34,7 @@
   const asked = new Set();
 
   function prime(g) {
-    if (!SB.api.gamelog || FOOTBALL.has(g.league) || asked.has(g.id)) return;
+    if (!SB.api.gamelog || SB.league.football(g.league) || asked.has(g.id)) return;
     asked.add(g.id);
     for (const t of [g.home, g.away]) {
       const key = `${g.league}:${t.id}`;
@@ -134,7 +133,7 @@
   }
 
   function playerFacts(g, out) {
-    if (FOOTBALL.has(g.league)) return;
+    if (SB.league.football(g.league)) return;
     const live = g.state === 'live';
     const before = (d) => d < g.start - 6 * 3600e3; // games before today's
     const statKey = g.league === 'nhl' ? 'goals' : 'points';

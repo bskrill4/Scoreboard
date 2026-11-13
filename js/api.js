@@ -53,8 +53,27 @@
   };
   LEAGUES.nba.core = 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/nba';
 
+  // What the rest of the app needs to know per league, in one place: its label,
+  // whether it's football (same engine and layout), and its engine (registered
+  // by the engine files, which load after this one).
+  const INFO = {
+    nba: { name: 'NBA', engine: 'engine' },
+    nfl: { name: 'NFL', engine: 'nfl', football: true },
+    ncaam: { name: 'NCAAM', engine: 'ncaam' },
+    ncaaf: { name: 'NCAAF', engine: 'ncaaf', football: true },
+    nhl: { name: 'NHL', engine: 'nhl' },
+  };
+  SB.league = {
+    name: (l) => INFO[l]?.name || String(l).toUpperCase(),
+    football: (l) => !!INFO[l]?.football,
+    engine: (l) => SB[INFO[l].engine],
+  };
+
+  // Every request gives up after FETCH_TIMEOUT, so one stalled connection can't
+  // hold up the poll loop (which waits for a round of requests to finish).
+  const FETCH_TIMEOUT = 15000;
   async function getJSON(url) {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT) });
     if (!res.ok) throw new Error(`${res.status} for ${url}`);
     return res.json();
   }
@@ -91,7 +110,7 @@
   }
 
   const gamelogs = new Map(); // "league:id" -> Promise of { games, experience }
-  const rankCache = new Map(); // league -> { at, p: Promise of { ranks, source } }
+  const rankCache = new Map(); // league -> { at, ttl, p: Promise of { ranks, source } }
   const schedules = new Map(); // "league:teamId" -> Promise of the team's schedule
 
   SB.api = {
@@ -128,11 +147,11 @@
     // College football's Top 25: the College Football Playoff rankings once the
     // committee has released them (the second half of the season), the AP poll
     // before that. Map of team id -> rank, plus which poll it came from.
-    // Cached for an hour; null if the feed is down (callers fall back to ESPN's
-    // own rank on the scoreboard).
+    // Cached for an hour once it succeeds; null if the feed is down (callers fall
+    // back to ESPN's own rank on the scoreboard), retried after a minute.
     async rankings(league = 'ncaaf') {
       const hit = rankCache.get(league);
-      if (hit && Date.now() - hit.at < 3600000) return hit.p;
+      if (hit && Date.now() - hit.at < hit.ttl) return hit.p;
       const p = getJSON(`${LEAGUES[league].site}/rankings`)
         .then((d) => {
           const lists = d.rankings || [];
@@ -143,7 +162,11 @@
           return { ranks, source: pick.type === 'cfp' ? 'CFP' : 'AP', name: pick.name };
         })
         .catch(() => null);
-      rankCache.set(league, { at: Date.now(), p });
+      const entry = { at: Date.now(), ttl: 3600000, p };
+      rankCache.set(league, entry);
+      p.then((r) => {
+        if (!r) entry.ttl = 60000;
+      });
       return p;
     },
 

@@ -351,7 +351,7 @@
     const t = tension(g);
     const q = quality(g);
     const s = starPower(g, stars);
-    const football = g.league === 'nfl' || g.league === 'ncaaf';
+    const football = SB.league.football(g.league);
     const perf = football ? performanceNFL(g) : g.league === 'nhl' ? performanceNHL(g) : performanceNBA(g); // NBA rules cover college too
     const swingy = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
     const suddenDeath = cfg.suddenDeath && g.state === 'live' && g.period > cfg.periods;

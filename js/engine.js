@@ -7,6 +7,60 @@
 (function () {
   const SB = (window.SB = window.SB || {});
 
+  // ---- Shared tape helpers (also used by js/engine-nfl.js and js/engine-nhl.js) ----
+  // "4:32" / "12.4" -> seconds.
+  function parseClock(s) {
+    if (!s) return 0;
+    if (s.includes(':')) {
+      const [m, sec] = s.split(':');
+      return Number(m) * 60 + parseFloat(sec);
+    }
+    return parseFloat(s) || 0;
+  }
+
+  // "J. Brunson" / "Jalen Brunson" -> "Brunson".
+  function lastName(shortName, displayName) {
+    const s = shortName || displayName || '';
+    const m = s.match(/^\S+\.\s+(.*)$/);
+    return m ? m[1] : s.split(' ').slice(1).join(' ') || s;
+  }
+
+  // First index whose value is > x in a sorted array.
+  function upperBound(arr, x) {
+    let lo = 0;
+    let hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] <= x) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo;
+  }
+
+  // Wall-clock times (ms, NaN when missing) -> a non-decreasing time per row,
+  // so viewAt can binary-search. A row stamped later than the next stamped row
+  // is an outlier (ESPN sometimes logs a timeout minutes late) and takes the
+  // previous time, instead of dragging every later play forward to it.
+  function wallTimes(walls) {
+    const next = new Array(walls.length);
+    let n = Infinity;
+    for (let i = walls.length - 1; i >= 0; i--) {
+      next[i] = n;
+      if (walls[i] >= 0) n = walls[i];
+    }
+    const out = [];
+    let prev = 0;
+    for (let i = 0; i < walls.length; i++) {
+      const w = walls[i];
+      const t = w >= 0 && w <= next[i] && w >= prev ? w : prev;
+      out.push(t);
+      prev = t;
+    }
+    return out;
+  }
+  const wallOf = (p) => (p.wallclock ? Date.parse(p.wallclock) : NaN);
+  SB.tape = { parseClock, lastName, upperBound, wallTimes, wallOf };
+
   // ---- Impact (experimental): leverage-adjusted, play-credited WPA ----
   // Raw WPA lets the game decide how much value is on offer: a thriller hands
   // out huge swings, a lopsided game (or a 10% underdog) hardly any. Impact
@@ -131,15 +185,6 @@
     const OT_PERIOD = otSec;
     const REG_GAME = REG_PERIOD * periods;
 
-    function parseClock(s) {
-      if (!s) return 0;
-      if (s.includes(':')) {
-        const [m, sec] = s.split(':');
-        return Number(m) * 60 + parseFloat(sec);
-      }
-      return parseFloat(s) || 0;
-    }
-
     function periodLen(p) {
       return p <= periods ? REG_PERIOD : OT_PERIOD;
     }
@@ -167,12 +212,6 @@
       remaining = Math.max(remaining, 0.5);
       const sd = 13.5 * Math.sqrt(remaining / reg) + 0.01;
       return 1 / (1 + Math.exp((-1.702 * homeMargin) / sd));
-    }
-
-    function lastName(shortName, displayName) {
-      const s = shortName || displayName || '';
-      const m = s.match(/^\S+\.\s+(.*)$/);
-      return m ? m[1] : s.split(' ').slice(1).join(' ') || s;
     }
 
     // ---- Tape: normalize one ESPN summary payload (done once per fetch) ----
@@ -243,7 +282,7 @@
 
       const plays = [];
       const ts = [];
-      let prevTs = 0;
+      const times = wallTimes(rows.map(wallOf));
       let prevWP = null;
       for (let i = 0; i < rows.length; i++) {
         const p = rows[i];
@@ -252,9 +291,7 @@
         const period = p.period?.number || 1;
         const clockSec = parseClock(p.clock?.displayValue);
         const elapsed = elapsedAt(period, clockSec);
-        let t = p.wallclock ? Date.parse(p.wallclock) : prevTs;
-        if (!(t >= prevTs)) t = prevTs; // keep monotonic so we can binary-search
-        prevTs = t;
+        const t = times[i];
 
         // A row whose feed score we rebuilt has a feed win probability priced on
         // the wrong score (DET-WSH: 100% WSH after the tying 3, then a -37% swing
@@ -340,17 +377,6 @@
       impactAdjust(plays, ftPct);
       const complete = plays.length > 0 && plays[plays.length - 1].type === 'End Game';
       return { homeId, awayId, roster, plays, ts, hasFeedWP, complete, _n: -1, _view: null, _final: null };
-    }
-
-    function upperBound(arr, x) {
-      let lo = 0;
-      let hi = arr.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (arr[mid] <= x) lo = mid + 1;
-        else hi = mid;
-      }
-      return lo;
     }
 
     // ---- View: the state of the game using only plays at or before T ----

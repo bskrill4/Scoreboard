@@ -17,6 +17,10 @@
 
   const SCOREBOARD_EVERY = 10000;
   const SUMMARY_EVERY = 8000;
+  // Play-by-play is ~0.5 MB a game, so only the top of the board (and a pinned
+  // game) refreshes every SUMMARY_EVERY; live games further down every SUMMARY_SLOW.
+  const SUMMARY_TOP = 4;
+  const SUMMARY_SLOW = 30000;
   const SWAP_STICKINESS = 2; // index points needed to trade places in the grid
 
   // ---------- replay mode: ?replay[=YYYYMMDD][&speed=30][&skip=minutes] ----------
@@ -69,13 +73,12 @@
   const timeLabel = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
   // ---------- models ----------
-  const SPORTS = {
-    nba: { engine: SB.engine, reg: SB.engine.REG_GAME, quarter: SB.engine.QUARTER, ot: SB.engine.OT },
-    nfl: { engine: SB.nfl, reg: SB.nfl.REG_GAME, quarter: SB.nfl.QUARTER, ot: SB.nfl.OT },
-    ncaam: { engine: SB.ncaam, reg: SB.ncaam.REG_GAME, quarter: SB.ncaam.QUARTER, ot: SB.ncaam.OT },
-    nhl: { engine: SB.nhl, reg: SB.nhl.REG_GAME, quarter: SB.nhl.QUARTER, ot: SB.nhl.OT },
-    ncaaf: { engine: SB.ncaaf, reg: SB.ncaaf.REG_GAME, quarter: SB.ncaaf.QUARTER, ot: SB.ncaaf.OT },
-  };
+  const SPORTS = Object.fromEntries(
+    SB.api.leagues.map((l) => {
+      const engine = SB.league.engine(l);
+      return [l, { engine, reg: engine.REG_GAME, quarter: engine.QUARTER, ot: engine.OT }];
+    })
+  );
 
   function seasonLeadersNFL(comp) {
     const out = [];
@@ -302,7 +305,7 @@
       seasonLeaders:
         evState !== 'pre'
           ? []
-          : ev._league === 'nfl' || ev._league === 'ncaaf'
+          : SB.league.football(ev._league)
           ? seasonLeadersNFL(comp)
           : ev._league === 'nhl'
           ? seasonLeaders(comp, /^(points|goals)$/)
@@ -630,11 +633,27 @@
   // ---------- polling ----------
   let lastBoard = 0;
 
+  // A league's whole-day scoreboard can be big (all of FBS is ~1 MB), so some
+  // are re-fetched less often; live scores come from the summaries in between.
+  const BOARD_EVERY = { ncaaf: 60000 };
+  const boardCache = new Map(); // league -> { day, at, p }
+  function boardFor(day, league) {
+    const hit = boardCache.get(league);
+    if (BOARD_EVERY[league] && hit && hit.day === day && Date.now() - hit.at < BOARD_EVERY[league]) return hit.p;
+    const p = SB.api.scoreboard(day, league);
+    boardCache.set(league, { day, at: Date.now(), p });
+    p.catch(() => boardCache.delete(league));
+    return p;
+  }
+
   async function pollScoreboard() {
     const day = loadedDay;
+    // The rankings feed only knows this week's Top 25; another day keeps the
+    // rank on its own scoreboard (which ESPN takes from that week's poll).
+    const current = !replay && day === todayDay();
     const [results, cfbRanks] = await Promise.all([
-      Promise.allSettled(SB.api.leagues.map((l) => SB.api.scoreboard(day, l))),
-      SB.api.rankings('ncaaf'),
+      Promise.allSettled(SB.api.leagues.map((l) => boardFor(day, l))),
+      current ? SB.api.rankings('ncaaf') : null,
     ]);
     if (day !== loadedDay) return; // the user changed days while this was in flight
     let any = false;
@@ -645,8 +664,8 @@
         any = true;
         for (const ev of r.value.events || []) {
           ev._league = league;
-          // College football: rank by the CFP rankings once they're out, the AP
-          // poll before (SB.api.rankings); ESPN's own rank if that feed is down.
+          // College football today: rank by the CFP rankings once they're out, the
+          // AP poll before (SB.api.rankings); ESPN's own rank if that feed is down.
           if (league === 'ncaaf' && cfbRanks) {
             for (const c of ev.competitions[0].competitors) {
               const r = cfbRanks.ranks.get(String(c.team?.id ?? c.id));
@@ -697,7 +716,11 @@
     const tape = tapes.get(ev.id);
     const state = ev.status.type.state;
     if (replay) return !tape && meta.tries < 3;
-    if (state === 'in') return Date.now() - meta.last >= SUMMARY_EVERY;
+    if (state === 'in') {
+      const rank = prevOrder.indexOf(ev.id);
+      const top = ev.id === heroId || ev.id === pinnedId || rank < 0 || rank < SUMMARY_TOP;
+      return Date.now() - meta.last >= (top ? SUMMARY_EVERY : SUMMARY_SLOW);
+    }
     if (state === 'post') {
       // Finals are fetched until the tape includes the closing play.
       return !(tape && tape.complete) && meta.tries < 4 && Date.now() - meta.last >= SUMMARY_EVERY;

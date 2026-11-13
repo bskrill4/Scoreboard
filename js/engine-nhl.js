@@ -49,20 +49,7 @@
   const pad = (n) => String(n).padStart(2, '0');
   const mmss = (s) => `${Math.floor(Math.max(0, s) / 60)}:${pad(Math.floor(Math.max(0, s) % 60))}`;
 
-  function parseClock(s) {
-    if (!s) return 0;
-    if (s.includes(':')) {
-      const [m, sec] = s.split(':');
-      return Number(m) * 60 + parseFloat(sec);
-    }
-    return parseFloat(s) || 0;
-  }
-
-  function lastName(shortName, displayName) {
-    const s = shortName || displayName || '';
-    const m = s.match(/^\S+\.\s+(.*)$/);
-    return m ? m[1] : s.split(' ').slice(1).join(' ') || s;
-  }
+  const { parseClock, lastName, upperBound, wallTimes, wallOf } = SB.tape;
 
   // Points % from "W-L-OTL", shrunk toward .500 by ten games.
   function pointsPct(record) {
@@ -179,7 +166,7 @@
 
       const plays = [];
       const ts = [];
-      let prevTs = 0;
+      const times = wallTimes((summary.plays || []).map(wallOf));
       let prevWP = null;
       let pp = null; // { team: teamId, until, two, since }
       const goalieIn = { [homeId]: startGoalie[homeId] || null, [awayId]: startGoalie[awayId] || null };
@@ -191,7 +178,7 @@
       let tied = null; // { home, away } going into the shootout
       let so = { home: 0, away: 0 };
 
-      for (const p of summary.plays || []) {
+      for (const [i, p] of (summary.plays || []).entries()) {
         const period = p.period?.number || 1;
         const shootout = !playoff && period >= 5;
         if (shootout && !tied) {
@@ -203,9 +190,7 @@
         let elapsed = 0;
         for (let k = 1; k < period; k++) elapsed += periodLen(k);
         elapsed += Math.min(inPeriod, periodLen(period));
-        let t = p.wallclock ? Date.parse(p.wallclock) : prevTs;
-        if (!(t >= prevTs)) t = prevTs;
-        prevTs = t;
+        const t = times[i];
 
         const type = p.type?.text || '';
         const text = (p.text || '').replace(/\s+/g, ' ');
@@ -332,17 +317,6 @@
 
       const complete = plays.length > 0 && /End of Game/i.test(plays[plays.length - 1].type);
       return { homeId, awayId, abbr, roster, plays, ts, complete, hasFeedWP: false, _n: -1, _view: null, _final: null };
-    }
-
-    function upperBound(arr, x) {
-      let lo = 0;
-      let hi = arr.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (arr[mid] <= x) lo = mid + 1;
-        else hi = mid;
-      }
-      return lo;
     }
 
     const ZERO = { g: 0, a: 0, pts: 0, sog: 0, hits: 0, blk: 0, pim: 0, sv: 0, ga: 0 };

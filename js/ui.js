@@ -3,7 +3,6 @@
 // images never flicker and bars animate) and slide to new slots with FLIP.
 (function () {
   const SB = (window.SB = window.SB || {});
-  const FOOTBALL = new Set(['nfl', 'ncaaf']); // same engine and layout
 
   const esc = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -65,7 +64,7 @@
   // ---------- formatting ----------
   const fmtWPA = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}`;
   const pct = (x) => `${Math.round(x * 100)}%`;
-  const startWord = (g) => (FOOTBALL.has(g.league) ? 'Kickoff' : g.league === 'nhl' ? 'Puck drop' : 'Tip-off');
+  const startWord = (g) => (SB.league.football(g.league) ? 'Kickoff' : g.league === 'nhl' ? 'Puck drop' : 'Tip-off');
   // Basketball: steals and blocks only when they happened, to keep the line short.
   const defLine = (p) => `${p.stl ? ` · ${p.stl} STL` : ''}${p.blk ? ` · ${p.blk} BLK` : ''}`;
   const statLine = (p) => p.line ?? `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${defLine(p)}`;
@@ -87,7 +86,7 @@
 
   function statusPill(g) {
     const dot = g.state === 'live' ? '<i class="dot"></i>' : '';
-    return `<span class="lg">${g.league.toUpperCase()}</span><span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
+    return `<span class="lg">${SB.league.name(g.league)}</span><span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
   }
 
   function wpBar(g) {
@@ -289,7 +288,7 @@
     }
     const rows = sorted.slice(0, 5);
     const coldest = sorted[sorted.length - 1];
-    if (!FOOTBALL.has(g.league) && sorted.length > 5 && val(coldest) < 0) rows.push(coldest);
+    if (!SB.league.football(g.league) && sorted.length > 5 && val(coldest) < 0) rows.push(coldest);
     const max = Math.max(0.05, ...rows.map((p) => Math.abs(val(p))));
     return rows
       .map((p, i) => {
@@ -470,8 +469,7 @@
       ${driveStatsHTML(g)}`;
   }
 
-  const ENGINES = { ncaam: () => SB.ncaam, nhl: () => SB.nhl };
-  const playWhen = (g, p) => `${(ENGINES[g.league] ? ENGINES[g.league]() : SB.engine).periodLabel(p.period)} ${p.clock}`;
+  const playWhen = (g, p) => `${SB.league.engine(g.league).periodLabel(p.period)} ${p.clock}`.trim();
   // The score right after the play, e.g. "MSU 70–68 DUKE".
   const scoreAt = (g, p) => `${g.away.abbr} ${p.away}–${p.home} ${g.home.abbr}`;
   const focusedPlayer = (g) => (focus && focus.game === g.id ? g.players.find((p) => p.id === focus.pid) || null : null);
@@ -629,18 +627,18 @@
         ? `<b>${esc(g.statusText)}</b><small>${esc(g.broadcast || startWord(g))}</small>`
         : hide
         ? `<b class="hidden">${g.state === 'final' ? 'Final' : 'Live'}</b><small>Score hidden</small>`
-        : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(FOOTBALL.has(g.league) ? g.downText : g.lastPlay)}</small>`;
+        : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(SB.league.football(g.league) ? g.downText : g.lastPlay)}</small>`;
     const chart = chartHTML(g); // first: it sets g._cap for the heading
     const leadersTitle = !g.players.length
       ? 'Players to watch'
       : metric === 'imp'
       ? 'Impact leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
-      : FOOTBALL.has(g.league) || g.league === 'nhl'
+      : SB.league.football(g.league) || g.league === 'nhl'
       ? 'Top performers <small>WPA on plays they were part of</small>'
       : 'WPA leaders <small>win probability added while on court</small>';
     const courtTitle = g.state === 'final' ? 'Starting lineup' : 'On court';
     const middle =
-      FOOTBALL.has(g.league)
+      SB.league.football(g.league)
         ? `<section class="h-col">${driveHTML(g)}</section>
            <section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div>${noteHTML(g, hide)}</section>`
         : g.league === 'nhl'
@@ -857,7 +855,6 @@
   // ---------- Player of the Day page ----------
   // Every player from every game on the board (all sports), ranked by the
   // chosen metric. The #1 row is the day's (so far) Player of the Day.
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', ncaaf: 'NCAAF', nhl: 'NHL' };
   let playersHTMLCache = '';
 
   function gameLabel(g) {
@@ -904,7 +901,7 @@
     const rows = [];
     for (const g of games) {
       for (const p of g.players) {
-        if (!FOOTBALL.has(g.league) && !p.played) continue;
+        if (!SB.league.football(g.league) && !p.played) continue;
         rows.push({ p, g, team: p.teamId === g.home.id ? g.home : g.away });
       }
     }
@@ -915,13 +912,13 @@
       ? `<div class="potd" style="--tc:${crown.team.css}" ${playerAttrs(crown.g, crown.p, crown.team)}>
           <span class="potd-k">Player of the Day${soFar}</span>
           ${headshot(crown.p)}
-          <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${LEAGUE_NAME[crown.g.league]} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
+          <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${SB.league.name(crown.g.league)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
           <div class="potd-v"><b>${fmtWPA(val(crown.p))}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'}</small></div>
         </div>`
       : '';
     const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
           <td class="rk">${i + 1}</td>
-          <td class="pl">${headshot(p, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${LEAGUE_NAME[g.league]} · ${esc(team.abbr)}</small></span></td>
+          <td class="pl">${headshot(p, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${SB.league.name(g.league)} · ${esc(team.abbr)}</small></span></td>
           <td class="gm">${gameLabel(g)}</td>
           <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
           <td${col('wpa')}><span class="${(p.wpa || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa || 0)}</span></td>
@@ -992,7 +989,7 @@
           <span class="potd-k">${WHEN[playsWhen].crown}${soFar}</span>
           <img class="potd-logo" src="${esc(crown.team.logo)}" alt="">
           <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
-            <small>${LEAGUE_NAME[crown.g.league]} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
+            <small>${SB.league.name(crown.g.league)} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
             <div class="by-list">${by(crown.g, crown.s)}</div></div>
           <div class="potd-v"><b>${fmtWPA(metric === 'imp' ? crown.imp : crown.wpa)}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'} · ${esc(crown.team.abbr)}</small></div>
         </div>`
@@ -1001,7 +998,7 @@
       .map(
         ({ g, s, team, imp, wpa }, i) => `<tr class="play-row" ${gameAttrs(g)}>
           <td class="rk">${i + 1}</td>
-          <td class="pt"><span class="pt-team" style="--tc:${team.css}"><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${LEAGUE_NAME[g.league]} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
+          <td class="pt"><span class="pt-team" style="--tc:${team.css}"><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${SB.league.name(g.league)} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
           <td class="by-cell"><div class="by-list">${by(g, s)}</div></td>
           <td class="sc">${esc(scoreAt(g, s.play))}</td>
           <td${col('imp')}><span class="pos">${fmtWPA(imp)}</span></td>

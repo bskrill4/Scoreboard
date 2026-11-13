@@ -7,6 +7,7 @@ require 'webrick'
 port = (ARGV[0] || 5173).to_i
 server = WEBrick::HTTPServer.new(
   Port: port,
+  BindAddress: '127.0.0.1', # localhost only: don't serve this folder (and .git) to the network
   DocumentRoot: __dir__,
   AccessLog: [],
   RequestCallback: ->(_req, res) { res['Cache-Control'] = 'no-cache' }

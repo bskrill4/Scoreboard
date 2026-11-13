@@ -13,7 +13,8 @@
 // in order and the rows are sorted by wall clock (the feed lists them by drive).
 (function () {
   const SB = (window.SB = window.SB || {});
-  const { parseClock, periodLabel, modelWP } = SB.engine;
+  const { periodLabel, modelWP } = SB.engine;
+  const { parseClock, upperBound, wallTimes, wallOf } = SB.tape;
 
   function create({ college = false } = {}) {
     const QUARTER = 900;
@@ -206,7 +207,6 @@
       const ts = [];
       const drives = [];
       const seen = new Set();
-      let prevTs = 0;
       let prevWP = null;
 
       const rows = [];
@@ -217,23 +217,16 @@
           const pid = String(p.id);
           if (seen.has(pid)) continue;
           seen.add(pid);
-          rows.push({ p, driveIdx, wall: p.wallclock ? Date.parse(p.wallclock) : NaN });
+          rows.push({ p, driveIdx });
         }
       });
       // College lists overtime by drive, so "End of OT" / "End of Game" can land
-      // before the last possession's plays: within each period, end rows go last
-      // (stable). And a stray wall clock (a timeout logged minutes later) mustn't
-      // drag every later play forward: each time is capped at the earliest
-      // time of any row after it.
+      // before the last possession's plays: within each period, end rows go last (stable).
       if (college) {
-        const isEnd = (p) => /^End (Period|of)/i.test(p.type?.text || '') ? 1 : 0;
+        const isEnd = (p) => (/^End (Period|of)/i.test(p.type?.text || '') ? 1 : 0);
         rows.sort((a, b) => (a.p.period?.number || 1) - (b.p.period?.number || 1) || isEnd(a.p) - isEnd(b.p));
-        let min = Infinity;
-        for (let k = rows.length - 1; k >= 0; k--) {
-          if (rows[k].wall >= 0) min = Math.min(min, rows[k].wall);
-          rows[k].t = min === Infinity ? NaN : min;
-        }
       }
+      const times = wallTimes(rows.map((r) => wallOf(r.p)));
       let otPeriod = 0;
       let otStep = 0;
 
@@ -265,8 +258,7 @@
         return spAt < 0 ? [0, 0] : [sp[spAt].a, sp[spAt].h];
       };
 
-      for (const row of rows) {
-        const { p, driveIdx } = row;
+      for (const [i, { p, driveIdx }] of rows.entries()) {
         const pid = String(p.id);
         const period = p.period?.number || 1;
         let elapsed = elapsedAt(period, parseClock(p.clock?.displayValue));
@@ -275,10 +267,7 @@
           if (period !== otPeriod) [otPeriod, otStep] = [period, 0];
           elapsed = REG_GAME + (period - 5) * OT + Math.min(OT - 1, ++otStep * OT_STEP);
         }
-        const capped = college ? row.t : NaN;
-        let t = capped >= 0 ? capped : p.wallclock ? Date.parse(p.wallclock) : prevTs;
-        if (!(t >= prevTs)) t = prevTs;
-        prevTs = t;
+        const t = times[i];
 
         let wp = hasFeedWP ? wpMap.get(pid) : modelWP(home - away, elapsed, REG_GAME);
         if (wp == null) wp = prevWP == null ? 0.5 : prevWP;
@@ -329,17 +318,6 @@
 
       const complete = plays.some((p) => /^End of Game/i.test(p.type));
       return { homeId, awayId, roster: index.roster, plays, ts, drives, hasFeedWP, complete, _n: -1, _view: null, _final: null };
-    }
-
-    function upperBound(arr, x) {
-      let lo = 0;
-      let hi = arr.length;
-      while (lo < hi) {
-        const mid = (lo + hi) >> 1;
-        if (arr[mid] <= x) lo = mid + 1;
-        else hi = mid;
-      }
-      return lo;
     }
 
     function driveResult(p) {
@@ -579,7 +557,7 @@
       return view;
     }
 
-    return { buildTape, viewAt, REG_GAME, QUARTER, OT, college };
+    return { buildTape, viewAt, periodLabel, REG_GAME, QUARTER, OT, college };
   }
 
   SB.nfl = create();

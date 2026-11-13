@@ -7,8 +7,6 @@
   const SB = (window.SB = window.SB || {});
   const esc = (s) => SB.ui.esc(s);
 
-  const ENGINE = { nba: () => SB.engine, ncaam: () => SB.ncaam, nfl: () => SB.nfl, ncaaf: () => SB.ncaaf, nhl: () => SB.nhl };
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', ncaaf: 'NCAAF', nhl: 'NHL' };
   const DAYS = 7;
 
   // ---- days: a "sports day" runs 6am to 6am, like the board ----
@@ -30,7 +28,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the Impact or WPA math changes.
-  const CACHE_VERSION = 1;
+  const CACHE_VERSION = 2; // 2: Nov 13 score-drift fixes in engine.js
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -75,7 +73,7 @@
         hit !== undefined
           ? Promise.resolve(hit)
           : SB.api.summary(eventId, league).then((s) => {
-              const eng = ENGINE[league]();
+              const eng = SB.league.engine(league);
               const tape = eng.buildTape(s);
               const done = s?.header?.competitions?.[0]?.status?.type?.completed;
               let out = null;
@@ -83,7 +81,7 @@
                 const view = eng.viewAt(tape, Infinity, true);
                 out = {};
                 for (const pl of view.players) {
-                  if (league !== 'nfl' && league !== 'ncaaf' && league !== 'nhl' && !pl.played) continue;
+                  if (!SB.league.football(league) && league !== 'nhl' && !pl.played) continue;
                   out[pl.id] = [+(pl.imp || 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl)];
                 }
               }
@@ -401,7 +399,7 @@
       <header class="pl-head" style="--tc:${esc(state.color || 'var(--yellow)')}">
         <span class="shot pl-shot"><img src="${esc(info.headshot || '')}" alt="" onerror="this.style.visibility='hidden'"></span>
         <div class="pl-id">
-          <span class="pl-lg">${LEAGUE_NAME[state.league]}${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}${esc(team.abbr || '')}</span>
+          <span class="pl-lg">${SB.league.name(state.league)}${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}${esc(team.abbr || '')}</span>
           <h2>${esc(info.name || '')}</h2>
           <small>${meta}</small>
         </div>
