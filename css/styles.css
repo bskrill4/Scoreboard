@@ -1134,3 +1134,21 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .note-dots { display: flex; gap: 4px; margin-top: 7px; }
 .note-dots i { width: 5px; height: 5px; border-radius: 50%; background: #4a4a58; }
 .note-dots i.on { background: var(--yellow); }
+
+/* ---------- player drawer: season view ---------- */
+.pl-range { display: flex; gap: 2px; }
+.pl-range button {
+  padding: 4px 2px; margin-right: 10px; background: none; border: 0; border-bottom: 2px solid transparent; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--dim);
+}
+.pl-range button:hover { color: var(--text); }
+.pl-range button.on { color: var(--yellow); border-bottom-color: var(--yellow); }
+.pl-line.thin { stroke: #6a6a7a; stroke-width: 1.2; }
+.pl-dot.sm { stroke-width: 1.2; }
+.pl-legend { display: flex; align-items: center; gap: 6px; margin: 6px 0 0; font-size: 10px; font-weight: 800; letter-spacing: .04em; color: var(--dim); }
+.pl-legend i { display: inline-block; flex: none; }
+.pl-legend i + i, .pl-legend .lg-roll, .pl-legend .lg-avg { margin-left: 8px; }
+.pl-legend .lg-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--yellow); margin-left: 0; }
+.pl-legend .lg-roll { width: 14px; height: 3px; border-radius: 2px; background: var(--yellow); }
+.pl-legend .lg-avg { width: 14px; height: 0; border-top: 1.5px dashed var(--text); opacity: .75; }
+.pl-games tr.pending td { opacity: .45; }

@@ -48,6 +48,12 @@ rank by their corrected swing: checked on 37 games (Nov 8–10), early swings in
 one, and plays after a game is decided barely move, so no extra time-in-game factor is applied. Dividing a
 single play by √leverage had pushed 18 first-half plays into the top 50 (6 without it). Rankings › Plays has
 a When filter (1st half / 2nd half & OT) for comparing early plays with each other.
+**Player drawer** (`js/player.js`): click any player for their **Season** (default) or **Last 7 days**, game by
+game. Season shows each game as a dot, a 5-game rolling average and the season average, with "Heating up" /
+"Cooling off" when the last 5 are 2+ off the season average; missed games leave gaps. Every finished game is
+replayed through the same engine as the board and its per-player Impact/WPA kept in localStorage
+(`sb.final.v1.<event>`, ~1.3 KB a game), so each game is downloaded once and every player in it is free after.
+Bump `CACHE_VERSION` in `js/player.js` whenever the Impact or WPA math changes.
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by Impact or WPA, with their
 counting stats and a Player of the Day; **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
