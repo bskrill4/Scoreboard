@@ -76,7 +76,20 @@
     return rosters.get(key);
   }
 
+  const gamelogs = new Map(); // "league:id" -> Promise of { games, experience }
+  const schedules = new Map(); // "league:teamId" -> Promise of the team's schedule
+
   SB.api = {
+    // A team's schedule, cached per page load (for counting games a player missed).
+    teamScheduleCached(teamId, league = 'nba') {
+      const key = `${league}:${teamId}`;
+      if (!schedules.has(key)) {
+        const p = getJSON(`${LEAGUES[league].site}/teams/${teamId}/schedule`);
+        schedules.set(key, p);
+        p.catch(() => schedules.delete(key));
+      }
+      return schedules.get(key);
+    },
     leagues: Object.keys(LEAGUES),
     tripleDoubles,
     roster,
@@ -103,6 +116,37 @@
     // One athlete: name, position, jersey, current team, headshot.
     athlete(id, league = 'nba') {
       return getJSON(`${LEAGUES[league].stats}/athletes/${id}`);
+    },
+
+    // An athlete's games this season (regular season): [{ eventId, date, stats: { name: value } }],
+    // oldest first, plus their experience ("Rookie", "3rd Season"). Cached per page load.
+    // season: e.g. 2026 for 2025-26 (default: the current season).
+    gamelog(id, league = 'nba', season = null) {
+      const key = `${league}:${id}:${season || ''}`;
+      if (!gamelogs.has(key)) {
+        const p = Promise.all([
+          getJSON(`${LEAGUES[league].stats}/athletes/${id}/gamelog${season ? `?season=${season}` : ''}`),
+          getJSON(`${LEAGUES[league].stats}/athletes/${id}`).catch(() => null),
+        ]).then(([d, a]) => {
+          const names = d.names || [];
+          const reg = (d.seasonTypes || []).find((s) => /regular/i.test(s.displayName || '')) || { categories: [] };
+          const games = [];
+          for (const c of reg.categories || []) {
+            for (const e of c.events || []) {
+              const meta = d.events?.[e.eventId];
+              if (!meta) continue;
+              const stats = {};
+              names.forEach((n, i) => (stats[n] = Number(e.stats?.[i]) || 0));
+              games.push({ eventId: String(e.eventId), date: Date.parse(meta.gameDate), stats });
+            }
+          }
+          games.sort((x, y) => x.date - y.date);
+          return { games, experience: a?.athlete?.displayExperience || '' };
+        });
+        gamelogs.set(key, p);
+        p.catch(() => gamelogs.delete(key));
+      }
+      return gamelogs.get(key);
     },
 
     // The league's statistical leaders, used as the "star" list for the watchability index.

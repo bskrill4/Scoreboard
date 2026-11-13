@@ -77,6 +77,17 @@
   // more for a higher-ranked favorite and later in the game — and fades out over
   // UPSET.fade more points as either side pulls away, so an underdog blowout drops.
   const UPSET = { topRank: 10, margin: 5, fade: 4, bonus: 0.15 };
+  // A run (14-2, 3 straight goals, 17 unanswered): up to RUN_BONUS index points
+  // while live, scaled by its size (SB.runs.runStrength), full when the running
+  // team was behind when it started (a comeback), less when it's tied or ahead.
+  const RUN_BONUS = 5;
+  const RUN_CONTEXT = { behind: 1, tied: 0.6, ahead: 0.3 };
+  function runBump(g) {
+    if (g.state !== 'live' || !g.run || !SB.runs) return 0;
+    const m = g.run.startMargin;
+    const ctx = m < 0 ? RUN_CONTEXT.behind : m === 0 ? RUN_CONTEXT.tied : RUN_CONTEXT.ahead;
+    return RUN_BONUS * SB.runs.runStrength(g, g.run) * ctx;
+  }
   const B2B_PENALTY = 3; // index points per team on the 2nd night of a back-to-back (pregame)
   function upset(g) {
     const cfg = SPORT[g.league];
@@ -298,8 +309,11 @@
     const gold = goldChips(g);
     const goldBonus = g.state === 'live' ? Math.min(GOLD_CAP, gold.reduce((t, c) => t + c.bonus, 0)) : 0;
 
+    const run = runBump(g);
+
     const index = Math.round(
-      goldBonus -
+      goldBonus +
+      run -
       B2B_PENALTY * b2bTeams.length +
       100 *
         (WEIGHTS.tension * t +
@@ -334,6 +348,7 @@
       else if (progress >= 0.85 && margin <= cfg.clutchMargin) reasons.push({ text: 'Clutch time', tone: 'hot' });
       if (margin === 0 && g.elapsed > 0) reasons.push({ text: 'Tied', tone: 'hot' });
       else if (margin <= cfg.oneScore && progress > 0.5) reasons.push({ text: cfg.oneScoreLabel, tone: 'hot' });
+      if (g.run && SB.runs) reasons.push({ text: SB.runs.runLabel(g, g.run), tone: 'hot' });
       const comeback = (g.minWP < 0.12 && g.wp > 0.4) || (g.maxWP > 0.88 && g.wp < 0.6);
       if (comeback) reasons.push({ text: 'Comeback brewing', tone: 'hot' });
       if (swingy > 0.7) reasons.push({ text: 'Wild swings', tone: 'hot' });
@@ -358,9 +373,9 @@
     return {
       index: Math.max(0, Math.min(99, index)),
       reasons,
-      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score },
+      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run },
     };
   }
 
-  SB.watch = { goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
+  SB.watch = { runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();

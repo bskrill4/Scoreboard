@@ -606,6 +606,18 @@
     } the score, clock and plays"><i></i>Hide score</button>`;
   }
 
+  // ---------- storyline: one short line of color on the top game ----------
+  // From SB.notes: a comeback, a debut, a first game back, a season high...
+  // never a repeat of the numbers on the card. Rotates every SB.notes.ROTATE_MS.
+  // Hidden with the score (it's mostly spoilers).
+  function noteHTML(g, hide) {
+    if (hide || !SB.notes) return '';
+    const f = SB.notes.current(g);
+    if (!f) return '';
+    const dots = f.n > 1 ? `<span class="note-dots">${Array.from({ length: f.n }, (_, i) => `<i class="${i === f.i ? 'on' : ''}"></i>`).join('')}</span>` : '';
+    return `<div class="note" aria-live="polite"><p>${esc(f.text)}</p>${dots}</div>`;
+  }
+
   function heroHTML(g, opts) {
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
@@ -629,12 +641,12 @@
     const middle =
       g.league === 'nfl'
         ? `<section class="h-col">${driveHTML(g)}</section>
-           <section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>`
+           <section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div>${noteHTML(g, hide)}</section>`
         : g.league === 'nhl'
         ? `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
-           <section class="h-col"><h3>On ice</h3>${iceHTML(g)}</section>`
+           <section class="h-col"><h3>On ice</h3>${iceHTML(g)}${noteHTML(g, hide)}</section>`
         : `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
-           <section class="h-col"><h3>${courtTitle}</h3><div class="court">${courtHTML(g)}</div></section>`;
+           <section class="h-col"><h3>${courtTitle}</h3><div class="court">${courtHTML(g)}</div>${noteHTML(g, hide)}</section>`;
     return `
       <div class="g-top">
         ${hide ? statusPill({ ...g, statusText: g.state === 'final' ? 'Final' : 'Live' }) : statusPill(g)}

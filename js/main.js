@@ -336,6 +336,10 @@
         g.home.score = v.homeScore;
         g.inCommercial = v.state === 'live' && inCommercial(g.league, tape, v.playCount);
         if (v.threes) g.threes = { home: v.threes[g.home.id] || 0, away: v.threes[g.away.id] || 0 };
+        // The current run and the story so far (largest leads, ties) for the run chip and the catch-up card.
+        g.story = SB.runs.story(tape, v.playCount, g.league, v.players);
+        g.run = g.story && g.story.run;
+        g.leadChanges = v.leadChanges || 0;
         for (const p of g.players) p.star = stars.has(p.id);
         if (evState === 'in' && T === Infinity) scoreboardFallback(g, ev, ac, hc, sport);
       }

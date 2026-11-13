@@ -80,6 +80,19 @@ or **Wilt's 100** (+30 to +40), a **quadruple-double** (watch +30 once three cat
 fourth is at 7; done +40) and **300 combined points** (pace +20, reached +30). "On pace", from halftime
 on: count / mark ≥ minutes played / 48, from the game clock, with the bar rounded down (30 threes: 15 at
 the half, 22 after the third).
+**Runs** (`js/runs.js`, read off the tape): basketball, a run of 10+ points while allowing at most a quarter as
+many, within 6 minutes of game time (on ~10% of the time in 24 NBA games, typically 15-2); hockey, 3+ straight
+goals; football, 14+ unanswered. A live run gets a chip ("IND on a 15-0 run") and up to +5 on the index
+(`RUN_BONUS`), scaled by its size, full when the running team started behind, 0.6 from a tie, 0.3 when it was
+already ahead (`RUN_CONTEXT` in `js/watch.js`).
+**Storylines** (`js/notes.js`): one short line of color under the top game's On court / On ice column, never a
+repeat of the numbers already on the card. From the game: a comeback ("The Celtics came back from 22 down"), a team
+that hasn't led, wire to wire (only if never tied after the first score), back and forth, a tight game, who's
+carrying a run. From each player's season (ESPN game log, fetched once per player, top game only): an NBA debut
+(hockey checks the two seasons before, since NHL rookies can have played already), a season debut, a first game
+back after missed games (3+ team games, 5 in hockey, 8 for a goalie; basketball only for starters and 15+ minute
+players, so DNPs don't count), a season high or matching one, a first goal of the season, a big night against
+their average. The best few (within 2 of the best weight, up to 4) take turns every 15 seconds; hidden with the score.
 College games add an **upset alert** bonus (up to +15) when an unranked team is within 5 of a top-10 team
 in the second half; it grows with the favorite's rank and the clock, and fades as either side pulls away
 (`UPSET` in `js/watch.js`). Live games rank first, then upcoming, then finals. Click a tile to pin it to the top. Per-sport tuning
