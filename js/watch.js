@@ -20,7 +20,13 @@
     // Hockey: a goal is a big deal. One goal is close, three is about decided, four a blowout.
     // suddenDeath: overtime ends on the next goal, so it scores as "anything can happen
     // any second" (full volatility) even when nobody has scored for minutes.
-    nhl: { periods: 3, marginScale: 2, recordPrior: 5, clutchMargin: 1, oneScore: 1, oneScoreLabel: 'One-goal game', blowout: 4, wire: 1, suddenDeath: true },
+    // recordBias: overtime losses as half-wins put the average team at ~.550, not .500.
+    // College football: rank-based matchups (useRank), a ranked-vs-ranked bonus
+    // (RANKED), the close-late tilt (lateExp: early quarters count less; crunchSec:
+    // the crunch-time floor covers the last 5 minutes), upsets of any ranked team
+    // within one score, and untimed overtime where every possession can end it.
+    ncaaf: { periods: 4, marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 24, wire: 3, useRank: true, suddenDeath: true, lateExp: 2.2, crunchSec: 300, upsetTop: 25, upsetMargin: 8, upsetFade: 8 },
+    nhl: { periods: 3, marginScale: 2, recordPrior: 5, recordBias: 0.05, clutchMargin: 1, oneScore: 1, oneScoreLabel: 'One-goal game', blowout: 4, wire: 1, suddenDeath: true },
   };
 
   const clamp01 = (x) => Math.max(0, Math.min(1, x));
@@ -43,7 +49,7 @@
   function strength(g, side) {
     const cfg = SPORT[g.league];
     const t = g[side];
-    const rec = teamStrength(t.record, cfg.recordPrior);
+    const rec = teamStrength(t.record, cfg.recordPrior) - (cfg.recordBias || 0);
     if (!cfg.useRank) return rec;
     return t.rank ? 0.95 - (t.rank - 1) * 0.016 : Math.min(rec, 0.45);
   }
@@ -56,6 +62,8 @@
     return clamp01((blended - 0.3) / 0.4);
   }
 
+  const CRUNCH = { sec: 120, floor: 0.7, wp: 0.03 }; // last 2 min, tension at least .7, while 3–97%
+  const DECIDED = { played: 0.9, wp: 0.02 }; // last 10% of regulation at 98%+: margin stops counting
   function tension(g) {
     const cfg = SPORT[g.league];
     if (g.state === 'pre') {
@@ -67,9 +75,16 @@
     const marginScore = Math.exp(-margin / cfg.marginScale);
     if (g.state === 'final') return clamp01(marginScore);
     const leverage = g.wp == null ? marginScore : 1 - Math.abs(2 * g.wp - 1);
-    const close = 0.6 * leverage + 0.4 * marginScore;
-    const late = g.period > cfg.periods ? 1.1 : 0.4 + 0.6 * Math.pow(progressOf(g), 1.6);
-    return clamp01(close * late);
+    // Decided late (a kneel-down after the pick): the score being close no longer counts.
+    const decided = g.wp != null && progressOf(g) >= DECIDED.played && Math.abs(2 * g.wp - 1) >= 1 - 2 * DECIDED.wp;
+    const close = decided ? leverage : 0.6 * leverage + 0.4 * marginScore;
+    const late = g.period > cfg.periods ? 1.1 : 0.4 + 0.6 * Math.pow(progressOf(g), cfg.lateExp || 1.6);
+    // Crunch time: the last CRUNCH.sec of regulation in a one-possession / one-score
+    // game that's still in doubt. A 3-point game with 40 seconds left is must-watch
+    // even when the favorite is 85% to hold on.
+    const inDoubt = g.wp == null || Math.abs(2 * g.wp - 1) <= 1 - 2 * CRUNCH.wp;
+    const crunch = g.period <= cfg.periods && g.reg - g.elapsed <= (cfg.crunchSec || CRUNCH.sec) && margin <= cfg.oneScore && inDoubt ? CRUNCH.floor : 0;
+    return clamp01(Math.max(close * late, crunch));
   }
 
   // Upset alert (ranked leagues): an unranked team within UPSET.margin of a top-
@@ -97,13 +112,48 @@
     if (progress < 0.5) return none;
     const { home, away } = g;
     const fav = home.rank && !away.rank ? home : away.rank && !home.rank ? away : null;
-    if (!fav || fav.rank > UPSET.topRank) return none;
+    const topRank = cfg.upsetTop || UPSET.topRank;
+    const margin = cfg.upsetMargin || UPSET.margin;
+    const fade = cfg.upsetFade || UPSET.fade;
+    if (!fav || fav.rank > topRank) return none;
     const dog = fav === home ? away : home;
     const gap = Math.abs(dog.score - fav.score);
-    const close = gap <= UPSET.margin ? 1 : clamp01(1 - (gap - UPSET.margin) / UPSET.fade);
-    const rankWeight = 1 - ((fav.rank - 1) / (UPSET.topRank - 1)) * 0.4; // #1 → 1, #10 → .6
+    const close = gap <= margin ? 1 : clamp01(1 - (gap - margin) / fade);
+    const rankWeight = 1 - ((fav.rank - 1) / (topRank - 1)) * 0.4; // #1 → 1, the last rank eligible → .6
     const late = g.period > cfg.periods ? 1 : 0.6 + 0.8 * (progress - 0.5); // halftime .6 → final horn 1
-    return { score: close * rankWeight * late, alert: gap <= UPSET.margin };
+    return { score: close * rankWeight * late, alert: gap <= margin };
+  }
+
+  // Ranked vs ranked (college football): RANKED.base index points when both
+  // teams are in the Top 25, plus up to RANKED.top more the higher the lower-
+  // ranked one is (#1 vs #2 ≈ +10, #10 vs #25 = +5). A live blowout keeps
+  // RANKED.blowout of it.
+  const RANKED = { leagues: ['ncaaf'], base: 5, top: 5, blowout: 0.3 };
+  function rankedBonus(g) {
+    const a = g.away.rank;
+    const h = g.home.rank;
+    if (!RANKED.leagues.includes(g.league) || !a || !h) return { bonus: 0, chip: '' };
+    const worst = Math.max(a, h);
+    let bonus = RANKED.base + RANKED.top * (1 - (worst - 1) / 24);
+    const cfg = SPORT[g.league];
+    if (g.state === 'live' && progressOf(g) > 0.5 && Math.abs(g.home.score - g.away.score) >= cfg.blowout) bonus *= RANKED.blowout;
+    return { bonus, chip: worst <= 10 ? 'Top-10 showdown' : 'Ranked showdown' };
+  }
+
+  // NBA Cup (in-season tournament): ESPN's event note says which round. Group
+  // play counts toward a knockout spot (small bump); from the quarterfinals on
+  // it's single elimination. Index points, before, during and after the game.
+  const CUP = [
+    [/quarterfinal/i, 6, 'NBA Cup quarterfinal'],
+    [/semifinal/i, 8, 'NBA Cup semifinal'],
+    [/championship|final/i, 10, 'NBA Cup final'],
+    [/./, 3, 'NBA Cup'],
+  ];
+  function cupBonus(g) {
+    if (g.league !== 'nba' || !/NBA Cup/i.test(g.note || '')) return { bonus: 0, chip: '' };
+    const stage = g.note.replace(/^.*?NBA Cup\s*-?\s*/i, '');
+    const [, bonus, chip] = CUP.find(([re]) => re.test(stage));
+    return { bonus, chip };
   }
 
   function starPower(g, stars) {
@@ -269,22 +319,27 @@
 
   // Hockey big nights: hat tricks (and the chance of one), four-point nights,
   // shutouts (and a shutout bid in the third), and a goalie standing on his head.
+  // Two goals happen a lot (5 games on Nov 12, one became a hat trick), so the
+  // watch is small and only in the 3rd; a finished hat trick is in the past.
+  const HAT_TRICK = { watch: 0.25, watchFrom: 2 / 3, done: 0.6 };
   function performanceNHL(g) {
     let best = { score: 0, label: '' };
     const live = g.state === 'live';
     const progress = progressOf(g);
+    const leads = (p) => (p.teamId === g.home.id ? g.home.score - g.away.score : g.away.score - g.home.score) > 0;
     for (const p of g.players) {
       const options = p.goalie
         ? [
             [g.state === 'final' && p.ga === 0 && p.sv >= 15, 0.7, `${p.last} shutout`],
-            [live && progress >= 0.67 && p.ga === 0 && p.sv >= 15, 0.6, `${p.last} shutout bid`],
+            // A bid needs a lead: at 0-0 both goalies have one, and the tie already scores.
+            [live && progress >= 0.67 && p.ga === 0 && p.sv >= 15 && leads(p), 0.6, `${p.last} shutout bid`],
             [p.sv >= 40, 0.55, `${p.last} ${p.sv} saves`],
           ]
         : [
             [p.g >= 4, 1, `${p.last} ${p.g} goals`],
-            [p.g === 3, 0.85, `${p.last} hat trick`],
+            [p.g === 3, HAT_TRICK.done, `${p.last} hat trick`],
             [p.pts >= 4, 0.7, `${p.last} ${p.pts} PTS`],
-            [live && p.g === 2, 0.45, `Hat trick watch: ${p.last}`],
+            [live && p.g === 2 && progress >= HAT_TRICK.watchFrom, HAT_TRICK.watch, `Hat trick watch: ${p.last}`],
           ];
       for (const [hit, score, label] of options) if (hit && score > best.score) best = { score, label };
     }
@@ -296,7 +351,8 @@
     const t = tension(g);
     const q = quality(g);
     const s = starPower(g, stars);
-    const perf = g.league === 'nfl' ? performanceNFL(g) : g.league === 'nhl' ? performanceNHL(g) : performanceNBA(g); // NBA rules cover college too
+    const football = g.league === 'nfl' || g.league === 'ncaaf';
+    const perf = football ? performanceNFL(g) : g.league === 'nhl' ? performanceNHL(g) : performanceNBA(g); // NBA rules cover college too
     const swingy = g.state === 'pre' ? 0 : clamp01((g.vol || 0) / 0.45);
     const suddenDeath = cfg.suddenDeath && g.state === 'live' && g.period > cfg.periods;
     const vol = suddenDeath ? 1 : swingy;
@@ -310,10 +366,14 @@
     const goldBonus = g.state === 'live' ? Math.min(GOLD_CAP, gold.reduce((t, c) => t + c.bonus, 0)) : 0;
 
     const run = runBump(g);
+    const ranked = rankedBonus(g);
+    const cup = cupBonus(g);
 
     const index = Math.round(
       goldBonus +
-      run -
+      run +
+      ranked.bonus +
+      cup.bonus -
       B2B_PENALTY * b2bTeams.length +
       100 *
         (WEIGHTS.tension * t +
@@ -368,14 +428,16 @@
         tone: 'cold',
       });
     else if (s.score >= 0.4 && s.names.length) reasons.push({ text: `★ ${s.names.join(' + ')}`, tone: 'info' });
-    if (q >= 0.7) reasons.push({ text: 'Heavyweight matchup', tone: 'info' });
+    if (cup.chip) reasons.push({ text: cup.chip, tone: 'info' });
+    if (ranked.chip) reasons.push({ text: ranked.chip, tone: 'info' });
+    else if (q >= 0.7) reasons.push({ text: 'Heavyweight matchup', tone: 'info' });
 
     return {
       index: Math.max(0, Math.min(99, index)),
       reasons,
-      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run },
+      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run, ranked: ranked.bonus, cup: cup.bonus },
     };
   }
 
-  SB.watch = { runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
+  SB.watch = { cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();

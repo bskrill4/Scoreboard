@@ -24,10 +24,24 @@
     },
     // Men's college basketball. ESPN's default slate is games with a Top 25 team.
     ncaam: {
+      allGroups: 'groups=50&limit=400',
       site: 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball',
       stats: 'https://site.web.api.espn.com/apis/common/v3/sports/basketball/mens-college-basketball',
       core: 'https://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball',
       starLists: [['offensive.avgPoints', 40, [[10, 0.7], [Infinity, 0.4]]]],
+    },
+    // College football. The board keeps games with a Top 25 team (see
+    // rankings()); the day's scoreboard asks for all of FBS so none is missed.
+    ncaaf: {
+      site: 'https://site.api.espn.com/apis/site/v2/sports/football/college-football',
+      stats: 'https://site.web.api.espn.com/apis/common/v3/sports/football/college-football',
+      allGroups: 'groups=80&limit=400',
+      // Leaders cover all of FBS, so a star is rarer than in the NFL: smaller weights.
+      starLists: [
+        ['passing.passingYards', 15, [[5, 0.7], [Infinity, 0.5]]],
+        ['rushing.rushingYards', 10, [[5, 0.5], [Infinity, 0.3]]],
+        ['receiving.receivingYards', 10, [[5, 0.5], [Infinity, 0.3]]],
+      ],
     },
     // NHL. No win probability in the feed: js/engine-nhl.js models it.
     nhl: {
@@ -77,6 +91,7 @@
   }
 
   const gamelogs = new Map(); // "league:id" -> Promise of { games, experience }
+  const rankCache = new Map(); // league -> { at, p: Promise of { ranks, source } }
   const schedules = new Map(); // "league:teamId" -> Promise of the team's schedule
 
   SB.api = {
@@ -95,9 +110,11 @@
     roster,
 
     // date: 'YYYYMMDD' or undefined for the current slate.
-    // all: college only — every Division I game, not just ESPN's Top 25 slate.
+    // all: college only — every Division I (FBS for football) game, not just
+    // ESPN's Top 25 slate. College football always asks for all of FBS.
     scoreboard(date, league = 'nba', all = false) {
-      const params = [date ? `dates=${date}` : '', all ? 'groups=50&limit=400' : ''].filter(Boolean).join('&');
+      const cfg = LEAGUES[league];
+      const params = [date ? `dates=${date}` : '', all || league === 'ncaaf' ? cfg.allGroups : ''].filter(Boolean).join('&');
       return getJSON(`${LEAGUES[league].site}/scoreboard${params ? `?${params}` : ''}`);
     },
 
@@ -106,6 +123,28 @@
     // which can lag the live game by several minutes.
     summary(eventId, league = 'nba') {
       return getJSON(`${LEAGUES[league].site}/summary?event=${eventId}&_=${Math.floor(Date.now() / 5000)}`);
+    },
+
+    // College football's Top 25: the College Football Playoff rankings once the
+    // committee has released them (the second half of the season), the AP poll
+    // before that. Map of team id -> rank, plus which poll it came from.
+    // Cached for an hour; null if the feed is down (callers fall back to ESPN's
+    // own rank on the scoreboard).
+    async rankings(league = 'ncaaf') {
+      const hit = rankCache.get(league);
+      if (hit && Date.now() - hit.at < 3600000) return hit.p;
+      const p = getJSON(`${LEAGUES[league].site}/rankings`)
+        .then((d) => {
+          const lists = d.rankings || [];
+          const pick = lists.find((r) => r.type === 'cfp' && r.ranks?.length) || lists.find((r) => r.type === 'ap' && r.ranks?.length);
+          if (!pick) return null;
+          const ranks = new Map();
+          for (const r of pick.ranks) if (r.team?.id != null && r.current <= 25) ranks.set(String(r.team.id), r.current);
+          return { ranks, source: pick.type === 'cfp' ? 'CFP' : 'AP', name: pick.name };
+        })
+        .catch(() => null);
+      rankCache.set(league, { at: Date.now(), p });
+      return p;
     },
 
     // A team's season schedule (past games carry their final scores).

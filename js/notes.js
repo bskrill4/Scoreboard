@@ -11,6 +11,7 @@
 //     first goal of the season, a big night against their average.
 (function () {
   const SB = (window.SB = window.SB || {});
+  const FOOTBALL = new Set(['nfl', 'ncaaf']); // same engine and layout
 
   const ROTATE_MS = 15000;
   // Team games missed before "first game back" counts. Hockey scratches and
@@ -24,8 +25,9 @@
     ncaam: { big: 10, tight: 5, swaps: 6, unit: 'points' },
     nhl: { big: 2, tight: 1, swaps: 3, unit: 'goals' },
     nfl: { big: 14, tight: 7, swaps: 3, unit: 'points' },
+    ncaaf: { big: 17, tight: 7, swaps: 3, unit: 'points' },
   };
-  const LEAGUE = { nba: 'NBA', ncaam: 'college', nhl: 'NHL', nfl: 'NFL' };
+  const LEAGUE = { nba: 'NBA', ncaam: 'college', nhl: 'NHL', nfl: 'NFL', ncaaf: 'college' };
 
   // ---------- season data, loaded in the background ----------
   const logs = new Map(); // "league:id" -> { games, experience } | null (failed)
@@ -33,7 +35,7 @@
   const asked = new Set();
 
   function prime(g) {
-    if (!SB.api.gamelog || g.league === 'nfl' || asked.has(g.id)) return;
+    if (!SB.api.gamelog || FOOTBALL.has(g.league) || asked.has(g.id)) return;
     asked.add(g.id);
     for (const t of [g.home, g.away]) {
       const key = `${g.league}:${t.id}`;
@@ -132,7 +134,7 @@
   }
 
   function playerFacts(g, out) {
-    if (g.league === 'nfl') return;
+    if (FOOTBALL.has(g.league)) return;
     const live = g.state === 'live';
     const before = (d) => d < g.start - 6 * 3600e3; // games before today's
     const statKey = g.league === 'nhl' ? 'goals' : 'points';

@@ -74,6 +74,7 @@
     nfl: { engine: SB.nfl, reg: SB.nfl.REG_GAME, quarter: SB.nfl.QUARTER, ot: SB.nfl.OT },
     ncaam: { engine: SB.ncaam, reg: SB.ncaam.REG_GAME, quarter: SB.ncaam.QUARTER, ot: SB.ncaam.OT },
     nhl: { engine: SB.nhl, reg: SB.nhl.REG_GAME, quarter: SB.nhl.QUARTER, ot: SB.nhl.OT },
+    ncaaf: { engine: SB.ncaaf, reg: SB.ncaaf.REG_GAME, quarter: SB.ncaaf.QUARTER, ot: SB.ncaaf.OT },
   };
 
   function seasonLeadersNFL(comp) {
@@ -296,10 +297,12 @@
       minWP: 1,
       maxWP: 0,
       broadcast: comp.broadcast || '',
+      // The event note, e.g. "NBA Cup - Group Play" (see CUP in js/watch.js).
+      note: comp.notes?.[0]?.headline || '',
       seasonLeaders:
         evState !== 'pre'
           ? []
-          : ev._league === 'nfl'
+          : ev._league === 'nfl' || ev._league === 'ncaaf'
           ? seasonLeadersNFL(comp)
           : ev._league === 'nhl'
           ? seasonLeaders(comp, /^(points|goals)$/)
@@ -629,7 +632,10 @@
 
   async function pollScoreboard() {
     const day = loadedDay;
-    const results = await Promise.allSettled(SB.api.leagues.map((l) => SB.api.scoreboard(day, l)));
+    const [results, cfbRanks] = await Promise.all([
+      Promise.allSettled(SB.api.leagues.map((l) => SB.api.scoreboard(day, l))),
+      SB.api.rankings('ncaaf'),
+    ]);
     if (day !== loadedDay) return; // the user changed days while this was in flight
     let any = false;
     const next = [];
@@ -639,9 +645,18 @@
         any = true;
         for (const ev of r.value.events || []) {
           ev._league = league;
+          // College football: rank by the CFP rankings once they're out, the AP
+          // poll before (SB.api.rankings); ESPN's own rank if that feed is down.
+          if (league === 'ncaaf' && cfbRanks) {
+            for (const c of ev.competitions[0].competitors) {
+              const r = cfbRanks.ranks.get(String(c.team?.id ?? c.id));
+              c.curatedRank = { current: r || 99 };
+            }
+          }
           // College: only games with a Top 25 team (ESPN's default slate, made explicit).
           // A pinned game (opened from a player's week) stays even if neither team is ranked.
-          if (league === 'ncaam' && ev.id !== pinnedId && !ev.competitions[0].competitors.some((c) => c.curatedRank?.current <= 25)) continue;
+          const college = league === 'ncaam' || league === 'ncaaf';
+          if (college && ev.id !== pinnedId && !ev.competitions[0].competitors.some((c) => c.curatedRank?.current <= 25)) continue;
           recordScoreboard(ev);
           next.push(ev);
         }
@@ -651,8 +666,9 @@
         next.push(...events.filter((ev) => ev._league === league));
       }
     });
-    // A pinned college game between two unranked teams isn't on ESPN's default
-    // slate at all: look it up on the full Division I scoreboard.
+    // A pinned college basketball game between two unranked teams isn't on
+    // ESPN's default slate at all: look it up on the full Division I scoreboard.
+    // (College football already asks for all of FBS, so it's in `next`.)
     if (any && pinnedId && !next.some((ev) => ev.id === pinnedId)) {
       try {
         const all = await SB.api.scoreboard(day, 'ncaam', true);

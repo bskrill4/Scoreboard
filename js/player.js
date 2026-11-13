@@ -7,8 +7,8 @@
   const SB = (window.SB = window.SB || {});
   const esc = (s) => SB.ui.esc(s);
 
-  const ENGINE = { nba: () => SB.engine, ncaam: () => SB.ncaam, nfl: () => SB.nfl, nhl: () => SB.nhl };
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', nhl: 'NHL' };
+  const ENGINE = { nba: () => SB.engine, ncaam: () => SB.ncaam, nfl: () => SB.nfl, ncaaf: () => SB.ncaaf, nhl: () => SB.nhl };
+  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', ncaaf: 'NCAAF', nhl: 'NHL' };
   const DAYS = 7;
 
   // ---- days: a "sports day" runs 6am to 6am, like the board ----
@@ -83,7 +83,7 @@
                 const view = eng.viewAt(tape, Infinity, true);
                 out = {};
                 for (const pl of view.players) {
-                  if (league !== 'nfl' && league !== 'nhl' && !pl.played) continue;
+                  if (league !== 'nfl' && league !== 'ncaaf' && league !== 'nhl' && !pl.played) continue;
                   out[pl.id] = [+(pl.imp || 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl)];
                 }
               }

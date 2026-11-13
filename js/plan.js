@@ -13,7 +13,7 @@
 (function () {
   const SB = (window.SB = window.SB || {});
 
-  const LENGTH_MIN = { nba: 151, ncaam: 127, nhl: 164, nfl: 195 };
+  const LENGTH_MIN = { nba: 151, ncaam: 127, nhl: 164, nfl: 195, ncaaf: 210 }; // college football: ~3h30 estimate
   // The next game may start up to GRACE before the last one is expected to end:
   // the times include a pregame stretch, so you'd miss a minute or two at most.
   const GRACE_MIN = 10;
@@ -21,7 +21,7 @@
   const GAP_NOTE = 15; // gaps longer than this get a "fill" suggestion
 
   const MIN = 60e3;
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', nhl: 'NHL' };
+  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', ncaaf: 'NCAAF', nhl: 'NHL' };
 
   // When each game would be watched: [s, e] in ms, from now on.
   function windowOf(g, now) {
@@ -143,7 +143,7 @@
     const lockedHere = [...locks].filter((id) => ids.has(id)).length;
     const free = lockedHere ? plan(models, now).total : total; // the best plan with no checks
 
-    const leagues = ['nba', 'nhl', 'ncaam', 'nfl'].filter((l) => all.some((x) => x.g.league === l));
+    const leagues = ['nba', 'nhl', 'ncaam', 'nfl', 'ncaaf'].filter((l) => all.some((x) => x.g.league === l));
     const legend = leagues.map((l) => `<span class="lg-key lg-${l}">${LEAGUE_NAME[l]}</span>`).join('');
     const head = `
       <div class="players-head">
@@ -251,7 +251,7 @@
       <p class="players-note">The plan picks games back to back to get the most <b>index × hours</b> out of the night:
       when one game ends, the next one is starting. <b>Check</b> a game to keep it in the plan: anything that clashes
       with it drops out and the rest is re-picked around it (Undo steps back). Lengths are typical times from the listed
-      start to the final whistle (NBA ${dur(LENGTH_MIN.nba * MIN)}, NHL ${dur(LENGTH_MIN.nhl * MIN)}, college ${dur(LENGTH_MIN.ncaam * MIN)}, NFL ${dur(LENGTH_MIN.nfl * MIN)}),
+      start to the final whistle (NBA ${dur(LENGTH_MIN.nba * MIN)}, NHL ${dur(LENGTH_MIN.nhl * MIN)}, college basketball ${dur(LENGTH_MIN.ncaam * MIN)}, NFL ${dur(LENGTH_MIN.nfl * MIN)}, college football ~${dur(LENGTH_MIN.ncaaf * MIN)}),
       so a game that runs long overlaps the next one a little. A game already on counts from now to its expected end.
       Upcoming games use the pregame index (matchup, stars, rest), so the plan updates as games go live.</p>`;
     if (html !== cache) root.innerHTML = cache = html;

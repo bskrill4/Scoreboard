@@ -1,6 +1,6 @@
 # Scoreboard
 
-A live multi-game scoreboard that puts the most watchable game on top. NBA, NFL, NCAAM Top 25 and NHL games share one ranked board; MLB later.
+A live multi-game scoreboard that puts the most watchable game on top. NBA, NFL, NCAAM Top 25, college football Top 25 and NHL games share one ranked board; MLB later.
 
 ## Run it
 
@@ -20,8 +20,8 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 | File | Job |
 | --- | --- |
 | `js/api.js` | Fetches scores, play-by-play, win probability, logos and headshots from ESPN's public feed (CORS-open, no key). |
-| `js/engine.js` | NBA: turns play-by-play into game state at any moment T: score, clock, on-court fives, PTS/REB/AST, and on-court WPA. |
-| `js/engine-nfl.js` | NFL: same contract, plus the current drive (field diagram, time, yards, WPA) and player stats read from play text. |
+| `js/engine.js` | NBA: turns play-by-play into game state at any moment T: score, clock, on-court fives, PTS/REB/AST, and on-court WPA. If the feed's running score drifts (a phantom basket on a non-scoring row) and the scoring plays add up to the box score (players' points; ESPN's header can carry the phantom too), every row's score is rebuilt from the scoring plays, and on those rows a feed win probability more than 30 points off our model (`WP_OFF`) is replaced by the model. The model counts only the current overtime period as time left. |
+| `js/engine-nfl.js` | Football (`SB.nfl`, `SB.ncaaf`): same contract, plus the current drive (field diagram, time, yards, WPA) and player stats read from play text. College's feed differs: jersey numbers and formations in the text, short scoring rows ("T. Name pass to …, for a TD", "Name 4 Yd pass from Name"), sacks counted as rushing, untimed overtime (OT plays spread out in order, end-of-period rows moved last), and an unreliable running score, so each row's score follows the summary's clean `scoringPlays` list instead. On 72 ranked games (Oct 17–Nov 7) every final matched and 97% of player passing/rushing/receiving yards were within 2 of the box score. |
 | `js/engine-nhl.js` | NHL: same contract. ESPN has no hockey win probability, so it models one (goal rates from team records and home ice, power plays, the extra attacker late, 3-on-3 overtime then a shootout, or playoff sudden death). Also team shots, power plays, hits, faceoffs and the goalie in net. |
 | `js/prospects.js` | NCAAM: the 2027 NBA draft big board (hand-kept top 60). Board players count as stars, weighted by rank, and get a "#N prospect" tag. Refresh it every few weeks. |
 | `js/watch.js` | The watchability index (0–99) and its reasons. Weights live at the top of the file. |
@@ -75,9 +75,14 @@ it stood `delay` seconds ago. "Hold" freezes the board until you move the slider
 
 **Watchability** — `0.42·tension + 0.12·swings + 0.16·matchup + 0.15·stars + 0.15·big nights`.
 Matchup uses win % shrunk toward .500, with a record's third number (NHL overtime losses, NFL ties) as
-half a win. Stars come from ESPN's leaders (`starLists` in `js/api.js`): NBA by points + rebounds + assists
+half a win; hockey then takes .05 off (`recordBias`), since overtime losses put its average team at ~.550. Stars come from ESPN's leaders (`starLists` in `js/api.js`): NBA by points + rebounds + assists
 per game (top 10 = 1, next 15 = 0.6, next 25 = 0.3), NHL by points (10 / 10 / 10 at the same weights).
 Hockey overtime is sudden death, so it scores full swings even when nobody has scored for minutes.
+**Tension** extras (`CRUNCH`, `DECIDED` in `js/watch.js`): in the last 2 minutes of regulation a one-possession /
+one-score game still at 3–97% gets tension of at least .7 (a 3-point game with 40 seconds left is must-watch even at 85%);
+in the last 10% of regulation a game at 98%+ stops getting credit for a close score (a kneel-down after the pick).
+Hockey big nights (`HAT_TRICK`): hat-trick watch (2 goals) only in the 3rd and small (.25), since two goals are common;
+a finished hat trick .6; a shutout bid only for a goalie whose team leads (at 0-0 the tie already scores).
 **Gold chips** mark milestones and records and jump the index while live (summed, capped at +40;
 `goldChips` in `js/watch.js`): an NBA team chasing the **3PT record (29)** — on pace for 30 (+20), 4 or fewer from
 30 in the fourth (+30), tying (+30) or breaking it (+35) — a
@@ -101,7 +106,19 @@ players, so DNPs don't count), a season high or matching one, a first goal of th
 their average. The best few (within 2 of the best weight, up to 4) take turns every 15 seconds; hidden with the score.
 College games add an **upset alert** bonus (up to +15) when an unranked team is within 5 of a top-10 team
 in the second half; it grows with the favorite's rank and the clock, and fades as either side pulls away
-(`UPSET` in `js/watch.js`). Live games rank first, then upcoming, then finals. Click a tile to pin it to the top. Per-sport tuning
+(`UPSET` in `js/watch.js`).
+**NBA Cup** games (ESPN's event note, e.g. "NBA Cup - Group Play") get a chip and a small bump, before, during and after:
+group play +3, then single elimination: quarterfinal +6, semifinal +8, final +10 (`CUP` in `js/watch.js`).
+**College football** (NCAAF, Top 25 only): a game shows if either team is ranked, by the **College Football Playoff
+rankings** once the committee has released them and the **AP poll** before that (`SB.api.rankings` reads ESPN's rankings
+feed, cached an hour; ESPN's own scoreboard rank if that feed is down). The day's scoreboard asks for all of FBS so no
+ranked team's game is missed. Index tilts (`SPORT.ncaaf`, `RANKED` in `js/watch.js`): **ranked vs ranked** adds +5 to +10
+(more the higher the lower-ranked team is: #1 vs #2 ≈ +10, #10 vs #25 = +5; a live blowout keeps 30%), with a
+"Top-10 showdown" / "Ranked showdown" chip; **close and late** counts more (early quarters count less, `lateExp`, and the
+crunch-time floor covers the last 5 minutes, `crunchSec`); the **upset alert** covers any ranked favorite within one score
+(8 points); overtime scores full swings, since every possession can end it. Stars are FBS passing, rushing and
+receiving leaders at smaller weights than the NFL's. Plan length is an estimated 3h30.
+Live games rank first, then upcoming, then finals. Click a tile to pin it to the top. Per-sport tuning
 (margins, record weighting, what counts as a big night) lives in `SPORT` and the `performance` functions in `js/watch.js`.
 
 ## Not built yet

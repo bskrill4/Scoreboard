@@ -54,6 +54,7 @@
   //    within SPIKE_SEC of game time, cancel the part that was undone. (Run
   //    first, so a spike undone at the next trip's whistle still nets out.)
   const SPIKE_SEC = 20;
+  const WP_OFF = 0.3; // see buildTape: rows whose feed score had to be rebuilt
   const isFT = (p) => /free throw/i.test(p.text) && /\b(makes|misses)\b/.test(p.text);
   const isTripFoul = (p) => /foul/i.test(p.type) && !/offensive/i.test(`${p.type} ${p.text}`);
 
@@ -156,9 +157,14 @@
 
     // Fallback when the feed has no win probability: final margin from any point
     // is roughly normal with sd ≈ 13.5 * sqrt(fraction of game remaining).
-    function modelWP(homeMargin, elapsed, reg = REG_GAME) {
-      const total = Math.max(reg, elapsed + 1);
-      const remaining = Math.max(total - elapsed, 0.5);
+    function modelWP(homeMargin, elapsed, reg = REG_GAME, ot = OT_PERIOD) {
+      // In overtime only the current OT period is left (a lead at its horn is final).
+      let remaining = reg - elapsed;
+      if (elapsed >= reg) {
+        const into = (elapsed - reg) % ot;
+        remaining = into === 0 && homeMargin !== 0 ? 0 : ot - into;
+      }
+      remaining = Math.max(remaining, 0.5);
       const sd = 13.5 * Math.sqrt(remaining / reg) + 0.01;
       return 1 / (1 + Math.exp((-1.702 * homeMargin) / sd));
     }
@@ -200,11 +206,49 @@
       for (const w of summary.winprobability || []) wpMap.set(String(w.playId), w.homeWinPercentage);
       const hasFeedWP = wpMap.size > 0;
 
+      // The feed's running score can drift: a non-scoring row sometimes carries
+      // a phantom basket that is never taken back (DET-WSH, Nov 12: a turnover
+      // row added 2, so the 4th ended 121-123 instead of 121-121). If the
+      // scoring plays add up to the box score and the feed's last row
+      // doesn't, rebuild every row's score from the scoring plays.
+      const rows = summary.plays || [];
+      const sums = [];
+      let sh = 0;
+      let sa = 0;
+      for (const p of rows) {
+        if (p.scoringPlay && p.scoreValue && p.team) {
+          if (String(p.team.id) === homeId) sh += p.scoreValue;
+          else if (String(p.team.id) === awayId) sa += p.scoreValue;
+        }
+        sums.push([sh, sa]);
+      }
+      // The official score: the box score's player points (the header can pick
+      // up the feed's phantom basket too), else the header.
+      const boxPts = (teamId) => {
+        const t = (summary.boxscore?.players || []).find((x) => String(x.team?.id) === teamId);
+        const st = t?.statistics?.[0];
+        const k = st?.names?.indexOf('PTS') ?? -1;
+        if (!st || k < 0) return null;
+        return st.athletes.reduce((sum, x) => sum + (Number(x.stats?.[k]) || 0), 0);
+      };
+      const bh = boxPts(homeId);
+      const ba = boxPts(awayId);
+      const offH = bh != null && ba != null ? bh : Number(homeC.score);
+      const offA = bh != null && ba != null ? ba : Number(awayC.score);
+      // The box score can trail the play-by-play by a play or two, so match it
+      // at whichever row the scoring plays reach its totals.
+      const useSums = rows.some(
+        (p, i) => sums[i][0] === offH && sums[i][1] === offA && (p.homeScore !== offH || p.awayScore !== offA)
+      );
+
       const plays = [];
       const ts = [];
       let prevTs = 0;
       let prevWP = null;
-      for (const p of summary.plays || []) {
+      for (let i = 0; i < rows.length; i++) {
+        const p = rows[i];
+        const homeScore = useSums ? sums[i][0] : p.homeScore;
+        const awayScore = useSums ? sums[i][1] : p.awayScore;
         const period = p.period?.number || 1;
         const clockSec = parseClock(p.clock?.displayValue);
         const elapsed = elapsedAt(period, clockSec);
@@ -212,7 +256,15 @@
         if (!(t >= prevTs)) t = prevTs; // keep monotonic so we can binary-search
         prevTs = t;
 
-        let wp = hasFeedWP ? wpMap.get(String(p.id)) : modelWP(p.homeScore - p.awayScore, elapsed);
+        // A row whose feed score we rebuilt has a feed win probability priced on
+        // the wrong score (DET-WSH: 100% WSH after the tying 3, then a -37% swing
+        // pinned on the first miss of OT), so it may use the model instead.
+        // Only where the phantom points clearly bend it (30+ points off the
+        // model): the model ignores possession and swings far harder than ESPN.
+        const offRow = useSums && (homeScore !== p.homeScore || awayScore !== p.awayScore);
+        const mwp = modelWP(homeScore - awayScore, elapsed);
+        let wp = hasFeedWP ? wpMap.get(String(p.id)) : mwp;
+        if (offRow && wp != null && Math.abs(wp - mwp) > WP_OFF) wp = mwp;
         if (wp == null) wp = prevWP == null ? 0.5 : prevWP;
         const delta = prevWP == null ? 0 : wp - prevWP;
         const weight = impactWeight(prevWP, elapsed, REG_GAME, OT_PERIOD);
@@ -227,8 +279,8 @@
           period,
           clock: p.clock?.displayValue || '',
           elapsed,
-          home: p.homeScore,
-          away: p.awayScore,
+          home: homeScore,
+          away: awayScore,
           type,
           text,
           teamId: p.team ? String(p.team.id) : null,

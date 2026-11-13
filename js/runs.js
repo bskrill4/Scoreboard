@@ -14,12 +14,14 @@
 //   story: each side's largest lead (and when), ties, the score at the start.
 (function () {
   const SB = (window.SB = window.SB || {});
+  const FOOTBALL = new Set(['nfl', 'ncaaf']); // same engine and layout
 
   const RUN = {
     nba: { kind: 'pts', minFor: 10, minDiff: 10, maxShare: 1 / 4, lookback: 360 },
     ncaam: { kind: 'pts', minFor: 10, minDiff: 10, maxShare: 1 / 4, lookback: 360 },
     nhl: { kind: 'unanswered', min: 3 },
     nfl: { kind: 'unanswered', min: 14 },
+    ncaaf: { kind: 'unanswered', min: 14 },
   };
 
   // Who scored on a play, for "who's driving the run".
@@ -124,7 +126,7 @@
   function runLabel(g, run) {
     const t = g[run.side].abbr;
     if (g.league === 'nhl') return `${t}: ${run.goals} straight goals`;
-    if (g.league === 'nfl') return `${t}: ${run.for} unanswered`;
+    if (FOOTBALL.has(g.league)) return `${t}: ${run.for} unanswered`;
     return `${t} on a ${run.for}-${run.against} run`;
   }
 
@@ -133,7 +135,7 @@
     if (!run) return 0;
     const c = (x) => Math.max(0, Math.min(1, x));
     if (g.league === 'nhl') return c((run.goals - 2) / 2);
-    if (g.league === 'nfl') return c((run.for - 10) / 14);
+    if (FOOTBALL.has(g.league)) return c((run.for - 10) / 14);
     return c((run.for - run.against - 8) / 10);
   }
 

@@ -3,6 +3,7 @@
 // images never flicker and bars animate) and slide to new slots with FLIP.
 (function () {
   const SB = (window.SB = window.SB || {});
+  const FOOTBALL = new Set(['nfl', 'ncaaf']); // same engine and layout
 
   const esc = (s) =>
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -64,7 +65,7 @@
   // ---------- formatting ----------
   const fmtWPA = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}`;
   const pct = (x) => `${Math.round(x * 100)}%`;
-  const startWord = (g) => (g.league === 'nfl' ? 'Kickoff' : g.league === 'nhl' ? 'Puck drop' : 'Tip-off');
+  const startWord = (g) => (FOOTBALL.has(g.league) ? 'Kickoff' : g.league === 'nhl' ? 'Puck drop' : 'Tip-off');
   // Basketball: steals and blocks only when they happened, to keep the line short.
   const defLine = (p) => `${p.stl ? ` · ${p.stl} STL` : ''}${p.blk ? ` · ${p.blk} BLK` : ''}`;
   const statLine = (p) => p.line ?? `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${defLine(p)}`;
@@ -86,7 +87,7 @@
 
   function statusPill(g) {
     const dot = g.state === 'live' ? '<i class="dot"></i>' : '';
-    return `<span class="lg">${g.league === 'ncaam' ? 'NCAAM' : g.league.toUpperCase()}</span><span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
+    return `<span class="lg">${g.league.toUpperCase()}</span><span class="status ${g.state}">${dot}${esc(g.statusText)}</span>`;
   }
 
   function wpBar(g) {
@@ -288,7 +289,7 @@
     }
     const rows = sorted.slice(0, 5);
     const coldest = sorted[sorted.length - 1];
-    if (g.league !== 'nfl' && sorted.length > 5 && val(coldest) < 0) rows.push(coldest);
+    if (!FOOTBALL.has(g.league) && sorted.length > 5 && val(coldest) < 0) rows.push(coldest);
     const max = Math.max(0.05, ...rows.map((p) => Math.abs(val(p))));
     return rows
       .map((p, i) => {
@@ -628,18 +629,18 @@
         ? `<b>${esc(g.statusText)}</b><small>${esc(g.broadcast || startWord(g))}</small>`
         : hide
         ? `<b class="hidden">${g.state === 'final' ? 'Final' : 'Live'}</b><small>Score hidden</small>`
-        : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(g.league === 'nfl' ? g.downText : g.lastPlay)}</small>`;
+        : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(FOOTBALL.has(g.league) ? g.downText : g.lastPlay)}</small>`;
     const chart = chartHTML(g); // first: it sets g._cap for the heading
     const leadersTitle = !g.players.length
       ? 'Players to watch'
       : metric === 'imp'
       ? 'Impact leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
-      : g.league === 'nfl' || g.league === 'nhl'
+      : FOOTBALL.has(g.league) || g.league === 'nhl'
       ? 'Top performers <small>WPA on plays they were part of</small>'
       : 'WPA leaders <small>win probability added while on court</small>';
     const courtTitle = g.state === 'final' ? 'Starting lineup' : 'On court';
     const middle =
-      g.league === 'nfl'
+      FOOTBALL.has(g.league)
         ? `<section class="h-col">${driveHTML(g)}</section>
            <section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div>${noteHTML(g, hide)}</section>`
         : g.league === 'nhl'
@@ -856,7 +857,7 @@
   // ---------- Player of the Day page ----------
   // Every player from every game on the board (all sports), ranked by the
   // chosen metric. The #1 row is the day's (so far) Player of the Day.
-  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', nhl: 'NHL' };
+  const LEAGUE_NAME = { nba: 'NBA', nfl: 'NFL', ncaam: 'NCAAM', ncaaf: 'NCAAF', nhl: 'NHL' };
   let playersHTMLCache = '';
 
   function gameLabel(g) {
@@ -903,7 +904,7 @@
     const rows = [];
     for (const g of games) {
       for (const p of g.players) {
-        if (g.league !== 'nfl' && !p.played) continue;
+        if (!FOOTBALL.has(g.league) && !p.played) continue;
         rows.push({ p, g, team: p.teamId === g.home.id ? g.home : g.away });
       }
     }
@@ -918,24 +919,31 @@
           <div class="potd-v"><b>${fmtWPA(val(crown.p))}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'}</small></div>
         </div>`
       : '';
-    const body = top
-      .map(
-        ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
+    const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
           <td class="rk">${i + 1}</td>
           <td class="pl">${headshot(p, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${LEAGUE_NAME[g.league]} · ${esc(team.abbr)}</small></span></td>
           <td class="gm">${gameLabel(g)}</td>
           <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
           <td${col('wpa')}><span class="${(p.wpa || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa || 0)}</span></td>
           <td class="ln">${statLine(p)}</td>
-        </tr>`
-      )
-      .join('');
+        </tr>`;
+    const body = top.map((r, i) => rowHTML(r, i)).join('');
+    // Bottom five: the lowest on the same metric, with their overall rank,
+    // only from players the top list doesn't already show.
+    const nBottom = Math.min(5, rows.length - top.length);
+    const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
+    const bottomHTML = bottom.length
+      ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th>Line</th></tr></thead>
+            <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
+          </table></div>`
+      : '';
     return `${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
             <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
-          </table></div>`
+          </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'
     }`;
   }

@@ -1058,11 +1058,12 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .tl-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--line); }
 .tl-now { position: absolute; top: -4px; bottom: 0; width: 2px; background: var(--red); z-index: 2; }
 .tl-row { position: relative; height: 24px; }
-/* Sports: NBA orange, NHL ice blue, college violet, NFL green (yellow stays "in the plan"). */
+/* Sports: NBA orange, NHL ice blue, college basketball violet, NFL green, college football rose (yellow stays "in the plan"). */
 .lg-nba { --lg: #ff8a4c; }
 .lg-nhl { --lg: #5cb8ff; }
 .lg-ncaam { --lg: #b28dff; }
 .lg-nfl { --lg: #43d17f; }
+.lg-ncaaf { --lg: #ff6fae; }
 .tl-legend { display: flex; gap: 14px; margin-bottom: 8px; }
 .lg-key { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 900; letter-spacing: .08em; color: var(--dim); }
 .lg-key::before { content: ''; width: 10px; height: 10px; border-radius: 3px; background: var(--lg); }
@@ -1152,3 +1153,13 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .pl-legend .lg-roll { width: 14px; height: 3px; border-radius: 2px; background: var(--yellow); }
 .pl-legend .lg-avg { width: 14px; height: 0; border-top: 1.5px dashed var(--text); opacity: .75; }
 .pl-games tr.pending td { opacity: .45; }
+
+/* Rankings: bottom five */
+.ptable-sub {
+  margin: 22px 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
