@@ -49,6 +49,7 @@
     tier: 0.05,
     mode: 'game', // game | cum
     smooth: false,
+    moverDays: 7, // Movers window: 7 | 30
   };
   let root = null;
   let players = []; // aggregated, refreshed on each redraw
@@ -136,7 +137,7 @@
         p.blk += blk;
         p.imp += row[0];
         p.wpa += row[1];
-        p.games.push({ t: g.t, v: row[0] * 100 });
+        p.games.push({ t: g.t, v: row[0] * 100, m: min });
       }
     }
     const list = [...map.values()].sort((a, b) => b.imp - a.imp);
@@ -384,6 +385,79 @@
     if (tip) tip.hidden = true;
   }
 
+  // ---------- movers ----------
+  // Like DARKO's widget: who rose and fell most in Impact per 36 over the last
+  // 7 or 30 days. A player's rating is their season Impact/36 to date; the
+  // change is the rating now minus the rating when the window opened. Small
+  // samples swing wildly, so it takes MOVERS.games games in the window and
+  // MOVERS.before minutes before it.
+  const MOVERS = { show: 6, games: 2, before: 60 };
+  const DAY = 864e5;
+  const rating = (gs) => {
+    const m = gs.reduce((s, g) => s + g.m, 0);
+    return m ? (gs.reduce((s, g) => s + g.v, 0) / m) * 36 : 0;
+  };
+
+  function movers() {
+    const from = Date.now() - state.moverDays * DAY;
+    const out = [];
+    for (const p of players) {
+      const before = p.games.filter((g) => g.t < from);
+      const inWin = p.games.length - before.length;
+      if (inWin < MOVERS.games || before.reduce((s, g) => s + g.m, 0) < MOVERS.before) continue;
+      // The rating after each game in the window, starting from where it opened.
+      const path = [rating(before)];
+      for (let k = before.length + 1; k <= p.games.length; k++) path.push(rating(p.games.slice(0, k)));
+      out.push({ p, inWin, now: path[path.length - 1], change: path[path.length - 1] - path[0], path });
+    }
+    out.sort((a, b) => b.change - a.change);
+    return { risers: out.filter((x) => x.change > 0).slice(0, MOVERS.show), fallers: out.filter((x) => x.change < 0).reverse().slice(0, MOVERS.show) };
+  }
+
+  function spark(path) {
+    const w = 72;
+    const h = 26;
+    const lo = Math.min(...path);
+    const hi = Math.max(...path);
+    const x = (k) => 2 + (k / Math.max(1, path.length - 1)) * (w - 6);
+    const y = (v) => 3 + (hi === lo ? (h - 6) / 2 : ((hi - v) / (hi - lo)) * (h - 6));
+    const d = path.map((v, k) => `${k ? 'L' : 'M'}${x(k).toFixed(1)} ${y(v).toFixed(1)}`).join('');
+    const last = path.length - 1;
+    return `<svg class="mv-spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><path d="${d}"/><circle cx="${x(last).toFixed(1)}" cy="${y(path[last]).toFixed(1)}" r="2.5"/></svg>`;
+  }
+
+  function moversHTML() {
+    if (!players.length) return '';
+    const { risers, fallers } = movers();
+    const signed = (v, d = 1) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(d)}`;
+    const row = ({ p, inWin, now, change, path }) => {
+      const team = state.teams.get(p.teamId) || {};
+      return `<li data-pid="${esc(p.id)}" data-team="${esc(p.teamId)}" data-league="nba" data-name="${esc(p.name)}" data-shot="${esc(shot(p.id))}" data-color="${esc(team.color || '')}" title="See ${esc(p.name)}'s season">
+          <span class="mv-who"><b>${esc(p.name)}</b><small>${esc(team.abbr || '')} · ${inWin} games · now ${signed(now)}</small></span>
+          ${spark(path)}
+          <span class="mv-chg ${change >= 0 ? 'pos' : 'neg'}">${signed(change, 1)}</span>
+        </li>`;
+    };
+    const list = (title, rows) =>
+      `<div class="mv-col"><div class="mv-head"><span>${title}</span><span>Change</span></div><ol>${
+        rows.length ? rows.map(row).join('') : '<li class="mv-none">Nobody yet.</li>'
+      }</ol></div>`;
+    const span = state.moverDays === 7 ? 'week' : '30 days';
+    const young = state.games.length && state.games[0].t > Date.now() - state.moverDays * DAY;
+    return `<section class="movers">
+        <div class="mv-top">
+          <div><h3>Movers</h3><p>Change in Impact per 36 over the past ${span}</p></div>
+          ${seg('data-smove', [[7, '7 days'], [30, '30 days']], state.moverDays)}
+        </div>
+        ${
+          young
+            ? `<p class="mv-note">The season is younger than ${state.moverDays} days, so nobody has a rating from before the window yet.</p>`
+            : `<div class="mv-cols">${list('Risers', risers)}${list('Fallers', fallers)}</div>`
+        }
+        <p class="mv-note">Players with ${MOVERS.games}+ games in the window and ${MOVERS.before}+ minutes before it. Rating = season Impact per 36 to date.</p>
+      </section>`;
+  }
+
   // ---------- page ----------
   const seg = (attr, items, cur) =>
     `<div class="seg" role="group">${items.map(([v, label, sub]) => `<button type="button" ${attr}="${v}" class="${String(v) === String(cur) ? 'on' : ''}" aria-pressed="${String(v) === String(cur)}"${sub ? ` title="${esc(sub)}"` : ''}>${label}</button>`).join('')}</div>`;
@@ -428,6 +502,7 @@
       ${SB.ui.rankTabs('season')}
       <div class="ss-top">${controlsHTML()}</div>
       <div class="ss-chart-slot">${chartHTML()}</div>
+      <div class="ss-movers-slot">${moversHTML()}</div>
       <h3 class="ptable-sub">NBA season standings</h3>
       ${tableControlsHTML()}
       <div class="ss-table-slot">${tableHTML()}</div>
@@ -451,6 +526,7 @@
     root.querySelector('.ss-status').textContent = statusText();
     root.querySelector('.ss-top').innerHTML = controlsHTML();
     root.querySelector('.ss-chart-slot').innerHTML = chartHTML();
+    root.querySelector('.ss-movers-slot').innerHTML = moversHTML();
     root.querySelector('.ss-table-slot').innerHTML = tableHTML();
   }
   function schedule() {
@@ -463,7 +539,7 @@
 
   function bind() {
     root.addEventListener('click', (e) => {
-      const b = e.target.closest('[data-stier],[data-smode],[data-scounts],[data-ssort],[data-spage]');
+      const b = e.target.closest('[data-stier],[data-smode],[data-scounts],[data-ssort],[data-spage],[data-smove]');
       if (!b) return;
       const d = b.dataset;
       if (d.stier) {
@@ -474,6 +550,11 @@
       }
       if (d.smode) state.mode = d.smode;
       if (d.scounts) state.counts = d.scounts;
+      if (d.smove) {
+        state.moverDays = Number(d.smove);
+        root.querySelector('.ss-movers-slot').innerHTML = moversHTML();
+        return;
+      }
       if (d.ssort) {
         state.sort = d.ssort === state.sort.key ? { key: d.ssort, dir: -state.sort.dir } : { key: d.ssort, dir: -1 };
         state.page = 0;

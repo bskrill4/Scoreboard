@@ -67,6 +67,10 @@ Impact or everyone (`TIERS`); the season's six best keep fixed colors and end la
 is a thin gray line that gets fainter the more are drawn, and hovering picks out the nearest line. The table sorts on
 any column and pages 25 at a time: GP, minutes and counting stats (per game or totals), Impact, **Impact per 36**
 (total ÷ minutes × 36), WPA and WPA per 36, with a search (name or team) and a minutes filter (default 100+).
+**Movers** (between the chart and the table, like DARKO's widget): the six biggest risers and fallers in Impact per 36
+over the last 7 or 30 days. A player's rating is their season Impact/36 to date; the change is the rating now minus
+the rating when the window opened, with a sparkline of the rating game by game. It takes 2+ games in the window and
+60+ minutes before it (`MOVERS`). 30 days has nobody until the season is 30 days old.
 A localStorage note: a full season (1,230 games) would be ~2.5 MB of the ~5 MB a site gets.
 
 **Plan** (`#plan`, `js/plan.js`) — the night's games back to back, chosen to get the most
