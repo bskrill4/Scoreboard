@@ -170,6 +170,11 @@
       return p;
     },
 
+    // Every game in one month ('YYYYMM'), for building a season.
+    scoreboardMonth(month, league = 'nba') {
+      return getJSON(`${LEAGUES[league].site}/scoreboard?dates=${month}&limit=500`);
+    },
+
     // A team's season schedule (past games carry their final scores).
     teamSchedule(teamId, league = 'nba') {
       return getJSON(`${LEAGUES[league].site}/teams/${teamId}/schedule`);

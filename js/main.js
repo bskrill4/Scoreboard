@@ -497,6 +497,7 @@
     const models = arrange(events.filter(shown).map((ev) => buildModel(ev, T)));
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
+    else if (view() === 'season') SB.season.render();
     else SB.ui.render(models, { heroId, pinnedId, toTop });
 
     const live = models.filter((m) => m.state === 'live').length;
@@ -798,17 +799,18 @@
   }
 
   // ---------- views & player metric ----------
-  // Three views: the board (#), Rankings (#players, #plays) and the viewing plan (#plan).
-  const view = () =>
-    location.hash === '#players' || location.hash === '#plays' ? 'players' : location.hash === '#plan' ? 'plan' : 'board';
+  // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab) and the viewing plan (#plan).
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#plan': 'plan' };
+  const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
     const v = view();
     $('board').hidden = v !== 'board';
     $('players').hidden = v !== 'players';
     $('plan').hidden = v !== 'plan';
-    for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === v);
-    document.body.classList.toggle('view-players', v === 'players' || v === 'plan');
+    $('season').hidden = v !== 'season';
+    for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === (v === 'season' ? 'players' : v));
+    document.body.classList.toggle('view-players', v !== 'board');
   }
 
   // Impact (the default) or classic WPA, remembered per browser. The key is new:
@@ -824,11 +826,12 @@
   }
 
   // A click on any player row opens their drawer: the 7 days ending on the day being viewed.
-  function openPlayerFrom(e) {
+  // endDay: the season page isn't tied to the board's day, so it passes today.
+  function openPlayerFrom(e, endDay = loadedDay) {
     const row = e.target.closest('[data-pid][data-league]');
     if (!row) return false;
     const d = row.dataset;
-    SB.player.open({ id: d.pid, teamId: d.team, league: d.league, name: d.name, headshot: d.shot, color: d.color, endDay: loadedDay });
+    SB.player.open({ id: d.pid, teamId: d.team, league: d.league, name: d.name, headshot: d.shot, color: d.color, endDay });
     return true;
   }
 
@@ -901,6 +904,7 @@
       setMetric(b.dataset.metric);
       tick();
     });
+    $('season').addEventListener('click', (e) => openPlayerFrom(e, todayDay())); // a standings row opens the player's season to date
     // Plan: a click on any game (a pick, a timeline bar, an "also on" link) opens it on the board.
     $('plan').addEventListener('click', (e) => {
       // Check marks lock a game into the plan; Undo steps back one change.

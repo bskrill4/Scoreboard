@@ -864,6 +864,12 @@
 
   // Rankings page, two tabs: Players (everyone on the board, ranked) and
   // Plays (the day's biggest single plays, with who made them and the score).
+  // Rankings tabs, shared with the Season page (js/season.js).
+  function rankTabs(tab) {
+    const link = (k, label) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${label}</a>`;
+    return `<nav class="rank-tabs" aria-label="Rankings">${link('players', 'Players')}${link('plays', 'Plays')}${link('season', 'NBA season')}</nav>`;
+  }
+
   function renderPlayers(models, opts) {
     const root = document.getElementById('players');
     if (!root) return;
@@ -873,7 +879,6 @@
     const col = (k) => (metric === k ? ' class="sorted"' : '');
     const seg = (k, label) =>
       `<button type="button" data-metric="${k}" class="${metric === k ? 'on' : ''}" aria-pressed="${metric === k}">${label}</button>`;
-    const tabLink = (k, label) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${label}</a>`;
     const soFar = anyLive ? ' · so far' : '';
 
     const head = `
@@ -884,7 +889,7 @@
         </div>
         <div class="seg" role="group" aria-label="Rank by">${seg('imp', 'Impact <small>beta</small>')}${seg('wpa', 'WPA')}</div>
       </div>
-      <nav class="rank-tabs" aria-label="Rankings">${tabLink('players', 'Players')}${tabLink('plays', 'Plays')}</nav>`;
+      ${rankTabs(tab)}`;
 
     const body = tab === 'plays' ? playsTab(played, opts, col, soFar) : playersTab(played, col, soFar);
 
@@ -1019,5 +1024,5 @@
     }`;
   }
 
-  SB.ui = { render, renderPlayers, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
+  SB.ui = { render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

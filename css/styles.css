@@ -1163,3 +1163,43 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
   text-transform: uppercase;
   color: var(--dim);
 }
+
+/* Rankings › NBA season (js/season.js) */
+.ss-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 14px 0 10px; }
+.ss-off { opacity: .45; } /* tiers while a search decides the chart */
+.ss-count, .ss-check, .ss-select { color: var(--dim); font-size: 12px; font-weight: 700; }
+.ss-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.ss-select select, .ss-search { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; font: inherit; font-size: 13px; }
+.ss-search { min-width: 220px; flex: 0 1 280px; }
+.ss-chart { position: relative; padding: 12px 12px 6px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+.ss-chart.empty-note { padding: 40px 12px; text-align: center; }
+.ss-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 6px; font-size: 12px; font-weight: 700; color: var(--text); }
+.ss-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ss-legend i { width: 14px; height: 3px; border-radius: 2px; }
+.ss-legend i.gray { background: #8d8d9b; opacity: .6; }
+.ss-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.ss-svg .gy, .ss-svg .gx { stroke: var(--line); stroke-width: 1; }
+.ss-svg .gy.zero { stroke: #4a4a58; }
+.ss-svg .yl { fill: var(--dim); font-size: 11px; font-weight: 700; text-anchor: end; }
+.ss-svg .xl { fill: var(--dim); font-size: 11px; font-weight: 700; text-anchor: start; }
+.ss-line { fill: none; stroke: #8d8d9b; stroke-width: 1; stroke-linejoin: round; stroke-linecap: round; }
+.ss-line.hi { stroke-width: 2; }
+.ss-line.focus { stroke-width: 3; }
+.ss-pt { stroke: var(--panel); stroke-width: 2; }
+.ss-end { fill: var(--text); font-size: 12px; font-weight: 800; }
+.ss-end .sw { font-size: 11px; }
+.ss-cross { stroke: #6a6a78; stroke-width: 1; stroke-dasharray: 3 3; }
+.ss-hit { fill: transparent; pointer-events: all; }
+.ss-tip { position: absolute; z-index: 3; min-width: 180px; max-width: 230px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); font-size: 12px; line-height: 1.5; pointer-events: none; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+.ss-tip small { color: var(--dim); font-weight: 600; }
+.ss-tip .pos { color: var(--yellow); }
+.ss-tip .neg { color: var(--red); }
+.ss-dot { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; vertical-align: 1px; }
+.season-table th button { padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.season-table th.num, .season-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.season-table td.num.sorted { font-weight: 800; }
+.season-table tbody tr { cursor: pointer; }
+.season-table tbody tr:hover { background: var(--panel-2); }
+.ss-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin: 12px 0 4px; color: var(--dim); font-size: 12px; font-weight: 700; }
+.ss-pager button { padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer; }
+.ss-pager button:disabled { opacity: .35; cursor: default; }

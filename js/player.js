@@ -28,7 +28,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the Impact or WPA math changes.
-  const CACHE_VERSION = 2; // 2: Nov 13 score-drift fixes in engine.js
+  const CACHE_VERSION = 5; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -64,7 +64,21 @@
 
   const statLine = (p) => p.line || `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${p.stl ? ` · ${p.stl} STL` : ''}${p.blk ? ` · ${p.blk} BLK` : ''}`;
 
-  // A finished game's players: { id: [imp, wpa, line] }, or null without play-by-play.
+  // Minutes from the box score (the engine doesn't keep a clock per player).
+  function boxMinutes(summary) {
+    const out = new Map();
+    for (const t of summary?.boxscore?.players || []) {
+      const st = t.statistics?.[0];
+      const k = st?.names?.indexOf('MIN') ?? -1;
+      if (k < 0) continue;
+      for (const a of st.athletes || []) out.set(String(a.athlete?.id), parseFloat(a.stats?.[k]) || 0);
+    }
+    return out;
+  }
+
+  // A finished game's players: { id: [imp, wpa, line, box?] }, or null without
+  // play-by-play. NBA rows add box = [teamId, min, pts, reb, ast, stl, blk, name]
+  // for the season standings (js/season.js).
   const finals = new Map(); // event id -> Promise
   function finalPlayers(eventId, league) {
     if (!finals.has(eventId)) {
@@ -80,9 +94,12 @@
               if (tape && tape.plays.length) {
                 const view = eng.viewAt(tape, Infinity, true);
                 out = {};
+                const mins = league === 'nba' ? boxMinutes(s) : null;
                 for (const pl of view.players) {
                   if (!SB.league.football(league) && league !== 'nhl' && !pl.played) continue;
-                  out[pl.id] = [+(pl.imp || 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl)];
+                  const row = [+(pl.imp || 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl)];
+                  if (mins) row.push([pl.teamId, mins.get(String(pl.id)) || 0, pl.pts, pl.reb, pl.ast, pl.stl, pl.blk, pl.name]);
+                  out[pl.id] = row;
                 }
               }
               if (done) cacheSet(eventId, out);
@@ -483,5 +500,5 @@
   }
   let loadToken = 0;
 
-  SB.player = { open, close };
+  SB.player = { open, close, finalPlayers };
 })();

@@ -20,12 +20,13 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 | File | Job |
 | --- | --- |
 | `js/api.js` | Fetches scores, play-by-play, win probability, logos and headshots from ESPN's public feed (CORS-open, no key; every request times out after 15s). Also `SB.league`: each league's label, whether it's football, and its engine, in one place. |
-| `js/engine.js` | Shared tape helpers (`SB.tape`: clock parsing, binary search, wall-clock times that ignore a row stamped minutes late) used by every engine. NBA: turns play-by-play into game state at any moment T: score, clock, on-court fives, PTS/REB/AST, and on-court WPA. If the feed's running score drifts (a phantom basket on a non-scoring row) and the scoring plays add up to the box score (players' points; ESPN's header can carry the phantom too), every row's score is rebuilt from the scoring plays, and on those rows a feed win probability more than 30 points off our model (`WP_OFF`) is replaced by the model. The model counts only the current overtime period as time left. |
+| `js/engine.js` | Shared tape helpers (`SB.tape`: clock parsing, binary search, wall-clock times that ignore a row stamped minutes late) used by every engine. NBA: turns play-by-play into game state at any moment T: score, clock, on-court fives, PTS/REB/AST, and on-court WPA. If the feed's running score drifts (a phantom basket on a non-scoring row) and the scoring plays add up to the box score (players' points; ESPN's header can carry the phantom too), every row's score is rebuilt from the scoring plays, and on those rows ESPN's win probability is shifted by what the phantom points are worth (in log-odds: ESPN's number, minus our model at ESPN's score, plus our model at the real score), so ESPN's read of possession and strength stays and no row flips between sources. The model counts only the current overtime period as time left. ESPN's feed also prices a tie in the last 5 seconds of the 4th or an overtime, and the next overtime until someone scores, as a decided game (100% for one side at 132-132 going to 2OT); there, a reading more than 30 points from 50% is replaced by the model (`TIE_OFF`, `TIE_LATE`), except while free throws are pending. |
 | `js/engine-nfl.js` | Football (`SB.nfl`, `SB.ncaaf`): same contract, plus the current drive (field diagram, time, yards, WPA) and player stats read from play text. College's feed differs: jersey numbers and formations in the text, short scoring rows ("T. Name pass to …, for a TD", "Name 4 Yd pass from Name"), sacks counted as rushing, untimed overtime (OT plays spread out in order, end-of-period rows moved last), and an unreliable running score, so each row's score follows the summary's clean `scoringPlays` list instead. On 72 ranked games (Oct 17–Nov 7) every final matched and 97% of player passing/rushing/receiving yards were within 2 of the box score. |
 | `js/engine-nhl.js` | NHL: same contract. ESPN has no hockey win probability, so it models one (goal rates from team records and home ice, power plays, the extra attacker late, 3-on-3 overtime then a shootout, or playoff sudden death). Also team shots, power plays, hits, faceoffs and the goalie in net. |
 | `js/prospects.js` | NCAAM: the 2027 NBA draft big board (hand-kept top 60). Board players count as stars, weighted by rank, and get a "#N prospect" tag. Refresh it every few weeks. |
 | `js/watch.js` | The watchability index (0–99) and its reasons. Weights live at the top of the file. |
 | `js/ui.js` | Cards, hero layout, win-probability chart, in-place patching and slide animations. |
+| `js/season.js` | Rankings › NBA season (`#season`): the season's standings and Impact chart from our own replay of every regular-season game. |
 | `js/main.js` | Polling (play-by-play every 8s for the top 4 games and a pinned one, 30s for the rest; the full college football board once a minute), stream delay, ordering/pinning, replay mode. |
 
 **WPA** — each play changes the home team's win probability. In the NBA that change is credited to the
@@ -57,6 +58,16 @@ Bump `CACHE_VERSION` in `js/player.js` whenever the Impact or WPA math changes.
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by Impact or WPA, with their
 counting stats and a Player of the Day; **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
+
+**NBA season** (Rankings › NBA season, `#season`, `js/season.js`): every finished regular-season game is replayed
+through the same engine and kept in the drawer's cache (now with each player's minutes and box line, ~2 KB a game:
+174 games is ~360 KB), so the first visit downloads the season once and later visits are instant. The chart shows
+Impact game by game (optionally a 5-game average) or cumulative, for the top 1 / 5 / 20 / 80% of players by season
+Impact or everyone (`TIERS`); the season's six best keep fixed colors and end labels in every view, everyone else
+is a thin gray line that gets fainter the more are drawn, and hovering picks out the nearest line. The table sorts on
+any column and pages 25 at a time: GP, minutes and counting stats (per game or totals), Impact, **Impact per 36**
+(total ÷ minutes × 36), WPA and WPA per 36, with a search (name or team) and a minutes filter (default 100+).
+A localStorage note: a full season (1,230 games) would be ~2.5 MB of the ~5 MB a site gets.
 
 **Plan** (`#plan`, `js/plan.js`) — the night's games back to back, chosen to get the most
 **index × hours** out of the evening (weighted interval scheduling): watch a game start to finish, and when it

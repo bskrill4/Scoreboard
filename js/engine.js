@@ -108,7 +108,14 @@
   //    within SPIKE_SEC of game time, cancel the part that was undone. (Run
   //    first, so a spike undone at the next trip's whistle still nets out.)
   const SPIKE_SEC = 20;
-  const WP_OFF = 0.3; // see buildTape: rows whose feed score had to be rebuilt
+  const TIE_OFF = 0.3; // see buildTape: a tie going to overtime
+  const TIE_LATE = 5; // seconds left in the 4th or an OT that count as "going to overtime"
+  // Log-odds, clamped so a 0% or 100% stays finite.
+  const logit = (q) => {
+    const c = Math.min(1 - 1e-4, Math.max(1e-4, q));
+    return Math.log(c / (1 - c));
+  };
+  const unlogit = (x) => 1 / (1 + Math.exp(-x));
   const isFT = (p) => /free throw/i.test(p.text) && /\b(makes|misses)\b/.test(p.text);
   const isTripFoul = (p) => /foul/i.test(p.type) && !/offensive/i.test(`${p.type} ${p.text}`);
 
@@ -284,6 +291,9 @@
       const ts = [];
       const times = wallTimes(rows.map(wallOf));
       let prevWP = null;
+      let curPeriod = 0;
+      let periodStartTotal = 0; // combined score when the period began
+      let ftPending = false; // a foul's free throws still to come
       for (let i = 0; i < rows.length; i++) {
         const p = rows[i];
         const homeScore = useSums ? sums[i][0] : p.homeScore;
@@ -294,14 +304,31 @@
         const t = times[i];
 
         // A row whose feed score we rebuilt has a feed win probability priced on
-        // the wrong score (DET-WSH: 100% WSH after the tying 3, then a -37% swing
-        // pinned on the first miss of OT), so it may use the model instead.
-        // Only where the phantom points clearly bend it (30+ points off the
-        // model): the model ignores possession and swings far harder than ESPN.
+        // the wrong score. Shift it by what the phantom points are worth: in
+        // log-odds, ESPN's number minus the model at ESPN's score plus the model
+        // at the real score. That keeps ESPN's read of possession and team
+        // strength, and moves every off row the same way. (Switching rows between
+        // ESPN and the model made fake swings: DAL-MIA, Oct 26, credited Davion
+        // Mitchell +0.19 x 4.5 for getting blocked with the game already lost.)
         const offRow = useSums && (homeScore !== p.homeScore || awayScore !== p.awayScore);
         const mwp = modelWP(homeScore - awayScore, elapsed);
         let wp = hasFeedWP ? wpMap.get(String(p.id)) : mwp;
-        if (offRow && wp != null && Math.abs(wp - mwp) > WP_OFF) wp = mwp;
+        if (offRow && wp != null) wp = unlogit(logit(wp) - logit(modelWP(p.homeScore - p.awayScore, elapsed)) + logit(mwp));
+        // ESPN prices a tie in the last seconds of the 4th or an overtime, and the
+        // next overtime until someone scores, as a decided game (DET-WSH: 97% WSH
+        // on the tying 3 with 1.1s left, 100% at 132-132 going to 2OT, then a -37%
+        // swing pinned on the first miss). A tie there means more basketball: past
+        // TIE_OFF from 50%, use the model (50%). Not while free throws are pending,
+        // where a lopsided number is real.
+        if (period !== curPeriod) [curPeriod, periodStartTotal] = [period, homeScore + awayScore];
+        if (/foul/i.test(p.type?.text || '')) ftPending = true;
+        else if (/^Free Throw/i.test(p.type?.text || '') && /(\d+) of \1\b/.test(p.text || '')) ftPending = false;
+        const tiedBreak =
+          homeScore === awayScore &&
+          period >= periods &&
+          !ftPending &&
+          (clockSec <= TIE_LATE || (period > periods && homeScore + awayScore === periodStartTotal));
+        if (tiedBreak && wp != null && Math.abs(wp - 0.5) > TIE_OFF) wp = mwp;
         if (wp == null) wp = prevWP == null ? 0.5 : prevWP;
         const delta = prevWP == null ? 0 : wp - prevWP;
         const weight = impactWeight(prevWP, elapsed, REG_GAME, OT_PERIOD);
