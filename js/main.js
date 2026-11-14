@@ -45,6 +45,7 @@
   let pinnedId = null;
   let prevOrder = [];
   let loaded = false;
+  let chimeDay = null; // the day the last tick showed, so a day switch doesn't chime
 
   // Sports switched off in the top bar (remembered per browser).
   let hiddenLeagues = new Set();
@@ -494,7 +495,13 @@
   function tick(toTop = false) {
     if (!loaded) return;
     const T = cutoff();
+    const prevHero = heroId;
+    const prevDay = loadedDay;
     const models = arrange(events.filter(shown).map((ev) => buildModel(ev, T)));
+    // Chime when a different game takes the top spot on its own: not on the
+    // first paint, a day change, a pin, or the old top game leaving the board.
+    if (prevHero && heroId && heroId !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && models.some((m) => m.id === prevHero)) SB.chime.play();
+    chimeDay = loadedDay;
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
     else if (view() === 'season') SB.season.render();
@@ -886,6 +893,16 @@
     } catch (e) {
       setMetric('imp');
     }
+    const soundBtn = $('soundSwitch');
+    const showSound = () => {
+      soundBtn.classList.toggle('on', SB.chime.isOn());
+      soundBtn.setAttribute('aria-checked', String(SB.chime.isOn()));
+    };
+    showSound();
+    soundBtn.addEventListener('click', () => {
+      SB.chime.set(!SB.chime.isOn());
+      showSound();
+    });
     $('metricSwitch').addEventListener('click', () => {
       setMetric(SB.ui.getMetric() === 'imp' ? 'wpa' : 'imp');
       tick();
