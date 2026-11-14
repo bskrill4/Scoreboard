@@ -67,7 +67,7 @@
   const startWord = (g) => (SB.league.football(g.league) ? 'Kickoff' : g.league === 'nhl' ? 'Puck drop' : 'Tip-off');
   // Basketball: steals and blocks only when they happened, to keep the line short.
   const defLine = (p) => `${p.stl ? ` · ${p.stl} STL` : ''}${p.blk ? ` · ${p.blk} BLK` : ''}`;
-  const statLine = (p) => p.line ?? `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${defLine(p)}`;
+  const statLine = (p) => p.line || `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${defLine(p)}`;
   const shortStat = (p) => p.short ?? `${p.pts} PTS`;
   const signed = (x, digits = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(digits)}`;
   const mmss = (sec) => `${Math.floor(sec / 60)}:${String(Math.round(sec % 60)).padStart(2, '0')}`;
@@ -1024,5 +1024,5 @@
     }`;
   }
 
-  SB.ui = { render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
+  SB.ui = { isBlurred: (id) => blurred.has(id), statLine, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

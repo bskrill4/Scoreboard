@@ -28,7 +28,7 @@
   let replay = null;
   if (params.has('replay')) {
     const y = new Date(Date.now() - 864e5);
-    const def = `${y.getFullYear()}${String(y.getMonth() + 1).padStart(2, '0')}${String(y.getDate()).padStart(2, '0')}`;
+    const def = SB.days.ymd(y);
     const date = /^\d{8}$/.test(params.get('replay')) ? params.get('replay') : def;
     replay = { date, speed: Number(params.get("speed")) || 30, skip: Number(params.get("skip")) || 0, simT: null };
   }
@@ -556,17 +556,8 @@
   }
 
   // ---------- days ----------
-  // A "sports day" runs 6am to 6am, so a late game stays on the night it started
-  // and the board turns over to the next day's slate at 6am.
-  const pad = (n) => String(n).padStart(2, '0');
-  const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-  const parseDay = (s) => new Date(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, Number(s.slice(6, 8)));
-  const todayDay = () => ymd(new Date(Date.now() - 6 * 3600 * 1000));
-  const shiftDay = (s, n) => {
-    const d = parseDay(s);
-    d.setDate(d.getDate() + n);
-    return ymd(d);
-  };
+  // A "sports day" runs 6am to 6am (SB.days in js/api.js).
+  const { parseDay, shiftDay, today: todayDay } = SB.days;
 
   // null = follow today (and roll over with it); otherwise a day the user picked.
   let pickedDay = /^\d{8}$/.test(params.get('day') || '') ? params.get('day') : null;

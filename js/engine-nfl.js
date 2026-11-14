@@ -15,6 +15,11 @@
   const SB = (window.SB = window.SB || {});
   const { periodLabel, modelWP } = SB.engine;
   const { parseClock, upperBound, wallTimes, wallOf } = SB.tape;
+  // Regexes from template strings, written raw: a backslash means what it says
+  // (in a plain template, `\b` is a backspace and `\d` a bare "d", which broke
+  // three patterns here before). re`...` and, case-insensitive, reI`...`.
+  const re = (strs, ...vals) => new RegExp(String.raw(strs, ...vals));
+  const reI = (strs, ...vals) => new RegExp(String.raw(strs, ...vals), 'i');
 
   // A pass play (caught or not) is QB_SHARE the quarterback's, the rest the
   // receiver's. Sacks and interceptions are all his. At 50/50 with incompletions
@@ -28,7 +33,7 @@
     const REG_GAME = QUARTER * 4;
 
     const ADMIN = /^(official timeout|timeout|end period|end of half|end of game|end of regulation|two-minute warning|coin toss)/i;
-    const NAME = "[A-Z][A-Za-z'’]*\\.(?:St\\. |Van |De |Du |Le )?[A-Z][A-Za-z'’-]*(?: (?:Jr|Sr|II|III|IV)\\b\\.?)?";
+    const NAME = String.raw`[A-Z][A-Za-z'’]*\.(?:St\. |Van |De |Du |Le )?[A-Z][A-Za-z'’-]*(?: (?:Jr|Sr|II|III|IV)\b\.?)?`;
 
     const periodLen = (p) => (p <= 4 ? QUARTER : OT);
     const OT_STEP = 20; // college OT has no clock: each OT play advances this many seconds
@@ -54,7 +59,7 @@
         s = s.replace(/#\d+\s+/g, ''); // jersey numbers
         s = s.replace(/\b([A-Z][a-z]?)\. (?=[A-Z][a-z])/g, '$1.'); // "T. Carter" -> "T.Carter"
       }
-      s = s.replace(new RegExp(`^Direct snap to ${NAME}\\.\\s*`), '');
+      s = s.replace(re`^Direct snap to ${NAME}\.\s*`, '');
       return s.replace(/,?\s*Center-[^,.]*\.?/g, '').replace(/,?\s*Holder-[^,.]*\.?/g, '').trim();
     }
 
@@ -151,40 +156,41 @@
         }
       }
 
-      if ((m = text.match(new RegExp(`^(${NAME}) \\d+ yard field goal is (GOOD|No Good)`)))) {
+      if ((m = text.match(re`^(${NAME}) \d+ yard field goal is (GOOD|No Good)`))) {
         add(off, m[1], 1, { fga: 1, fgm: m[2] === 'GOOD' ? 1 : 0 });
-      } else if ((m = text.match(new RegExp(`^(${NAME}) field goal attempt from \\d+ yards? (GOOD|NO GOOD)`, 'i')))) {
+      } else if ((m = text.match(reI`^(${NAME}) field goal attempt from \d+ yards? (GOOD|NO GOOD)`))) {
         add(off, m[1], 1, { fga: 1, fgm: /^GOOD$/i.test(m[2]) ? 1 : 0 });
-      } else if ((m = text.match(new RegExp(`^(${NAME}) sacked`)))) {
+      } else if ((m = text.match(re`^(${NAME}) sacked`))) {
         // College counts a sack as a rush for the yards lost.
         const lost = Number((text.match(/loss of (\d+) yards?/) || [])[1] || 0);
         add(off, m[1], 1, college ? { car: 1, rushYd: -lost } : {});
-        const sacker = text.match(new RegExp(`\\((${NAME})`));
+        const sacker = text.match(re`\((${NAME})`);
         if (sacker) add(def, sacker[1], -1, { sacks: 1 });
-      } else if ((m = text.match(new RegExp(`^(${NAME}) pass\\b`)))) {
+      } else if ((m = text.match(re`^(${NAME}) pass\b`))) {
         const qb = m[1];
-        const pick = text.match(new RegExp(`intercepted by (${NAME})`, 'i')) || text.match(new RegExp(`intercepted, (${NAME}) return`, 'i'));
+        const pick = text.match(reI`intercepted by (${NAME})`) || text.match(reI`intercepted, (${NAME}) return`);
         if (pick) {
           add(off, qb, 1, { att: 1, int: 1 });
           add(def, pick[1], -1, { defInt: 1 });
         } else if (/pass incomplete/.test(text)) {
           // Shared with the intended receiver like a catch (if the text names one).
-          const tgt = text.match(new RegExp(`\\bto (${NAME})`));
+          const tgt = text.match(re`\bto (${NAME})`);
           add(off, qb, tgt ? QB_SHARE : 1, { att: 1 });
           if (tgt) add(off, tgt[1], 1 - QB_SHARE, {});
         } else {
           const y = yards();
-          const rec = text.match(new RegExp(`\\bto (${NAME})`));
+          const rec = text.match(re`\bto (${NAME})`);
           add(off, qb, rec ? QB_SHARE : 1, { att: 1, cmp: 1, passYd: y, passTd: td });
           if (rec) add(off, rec[1], 1 - QB_SHARE, { rec: 1, recYd: y, recTd: td });
         }
-      } else if ((m = text.match(new RegExp(`^(${NAME}) (?!punts?\\b|kicks?\\b|kickoff\\b|extra|field goal)`)))) {
+      } else if ((m = text.match(re`^(${NAME}) (?!punts?\b|kicks?\b|kickoff\b|extra|field goal)`))) {
         add(off, m[1], 1, { car: 1, rushYd: yards(), rushTd: td });
       }
       // A defensive penalty on the play (not declined or offset): the defense's
       // share is the penalized player's, not the sacker's (Simmons's sack with a
       // teammate's face mask, Nov 2, came out a gain for Seattle).
-      const pen = text.match(new RegExp(`PENALTY on [A-Z]{2,4}-(${NAME})`));
+      // NFL: "PENALTY on CHI-G.Jarrett, Face Mask"; college: "PENALTY Canes Offside (A.Blount)".
+      const pen = text.match(re`PENALTY on [A-Z]{2,4}-(${NAME})`) || text.match(re`PENALTY \S+ [^(.]*\((${NAME})\)`);
       if (pen && !/declined|offsetting/i.test(text)) {
         const by = findPlayer(index, def, pen[1]);
         if (by) {
@@ -258,7 +264,11 @@
       // the phantom too, so the swing back landed on the sack (-41 for a sack).
       // Such a row keeps the previous row's score and win probability.
       const key = (r) => `${r.p.awayScore}-${r.p.homeScore}`;
-      const phantom = rows.map((r, i) => i > 0 && i + 1 < rows.length && key(r) !== key(rows[i - 1]) && key(rows[i + 1]) === key(rows[i - 1]));
+      // A real score is never a phantom, even if the next row was logged stale.
+      const scored = (r) => r.p.scoringPlay || /TOUCHDOWN|field goal is GOOD|GOOD \(/i.test(r.p.text || '');
+      const phantom = rows.map(
+        (r, i) => i > 0 && i + 1 < rows.length && !scored(r) && key(r) !== key(rows[i - 1]) && key(rows[i + 1]) === key(rows[i - 1])
+      );
       let otPeriod = 0;
       let otStep = 0;
 

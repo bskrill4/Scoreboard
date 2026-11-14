@@ -4,6 +4,20 @@
 (function () {
   const SB = (window.SB = window.SB || {});
 
+  // ---- days, shared by the board, the drawer and the season pages ----
+  // A "sports day" runs 6am to 6am, so a late game stays on the night it started
+  // and the board turns over to the next day's slate at 6am. Days are 'YYYYMMDD'.
+  const pad = (n) => String(n).padStart(2, '0');
+  const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+  const parseDay = (s) => new Date(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, Number(s.slice(6, 8)));
+  const dayOf = (t) => ymd(new Date(t - 6 * 3600 * 1000)); // the sports day of a time (ms)
+  const shiftDay = (s, n) => {
+    const d = parseDay(s);
+    d.setDate(d.getDate() + n);
+    return ymd(d);
+  };
+  SB.days = { pad, ymd, parseDay, dayOf, shiftDay, today: () => dayOf(Date.now()) };
+
   const LEAGUES = {
     nba: {
       site: 'https://site.api.espn.com/apis/site/v2/sports/basketball/nba',
@@ -111,6 +125,18 @@
 
   const gamelogs = new Map(); // "league:id" -> Promise of { games, experience }
   const rosterLists = new Map(); // "league:teamId" -> Promise of athletes
+  // One athlete: name, position, jersey, current team, headshot. Cached per page
+  // load (the drawer and the game log both ask for it).
+  const athletes = new Map();
+  function athleteCached(id, league = 'nba') {
+    const key = `${league}:${id}`;
+    if (!athletes.has(key)) {
+      const p = getJSON(`${LEAGUES[league].stats}/athletes/${id}`);
+      athletes.set(key, p);
+      p.catch(() => athletes.delete(key));
+    }
+    return athletes.get(key);
+  }
   const rankCache = new Map(); // league -> { at, ttl, p: Promise of { ranks, source } }
   const schedules = new Map(); // "league:teamId" -> Promise of the team's schedule
 
@@ -195,10 +221,7 @@
       return getJSON(`${LEAGUES[league].site}/teams/${teamId}/schedule`);
     },
 
-    // One athlete: name, position, jersey, current team, headshot.
-    athlete(id, league = 'nba') {
-      return getJSON(`${LEAGUES[league].stats}/athletes/${id}`);
-    },
+    athlete: athleteCached, // see athleteCached
 
     // An athlete's games this season (regular season): [{ eventId, date, stats: { name: value } }],
     // oldest first, plus their experience ("Rookie", "3rd Season"). Cached per page load.
@@ -208,7 +231,7 @@
       if (!gamelogs.has(key)) {
         const p = Promise.all([
           getJSON(`${LEAGUES[league].stats}/athletes/${id}/gamelog${season ? `?season=${season}` : ''}`),
-          getJSON(`${LEAGUES[league].stats}/athletes/${id}`).catch(() => null),
+          athleteCached(id, league).catch(() => null),
         ]).then(([d, a]) => {
           const names = d.names || [];
           const reg = (d.seasonTypes || []).find((s) => /regular/i.test(s.displayName || '')) || { categories: [] };

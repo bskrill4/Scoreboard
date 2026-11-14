@@ -26,7 +26,7 @@
   // and the chart, in this order. Validated on the dark panel.
   const COLORS = ['#3987e5', '#d95926', '#199e70', '#c98500', '#d55181', '#9085e9'];
 
-  const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const { ymd } = SB.days;
   // The months of this season so far, from its first month (0 = January).
   function seasonMonths(startMonth, now = new Date()) {
     const year = now.getMonth() >= startMonth - 1 ? now.getFullYear() : now.getFullYear() - 1;
@@ -78,6 +78,8 @@
     let lastDraw = 0;
     let drawTimer = null;
     let dirty = false; // data changed while the tab was hidden
+    let aggKey = ''; // what `all` was built from
+    let groupKey = ''; // what `players` was built from
 
     // ---------- data ----------
     async function load() {
@@ -518,8 +520,11 @@
       }
       dirty = false;
       lastDraw = Date.now();
-      all = aggregate();
-      players = grouped();
+      // Re-total only when games (or NFL positions) arrived, and re-group only
+      // when that or the position changed; search, sort and paging reuse them.
+      const dataKey = `${state.results.size}|${cfg.version ? cfg.version() : ''}`;
+      if (dataKey !== aggKey) [all, aggKey, groupKey] = [aggregate(), dataKey, ''];
+      if (`${aggKey}|${state.group}` !== groupKey) [players, groupKey] = [grouped(), `${aggKey}|${state.group}`];
       if (!root.querySelector('.ss-chart-slot')) {
         root.innerHTML = shellHTML();
         return;
@@ -750,6 +755,7 @@
       for (const list of lists) for (const a of list) if (a.position?.abbreviation) nflPos.set(String(a.id), a.position.abbreviation);
     },
     groupOf: (p) => POS_GROUP[nflPos.get(p.id)] || (nflPos.has(p.id) ? null : guessGroup(p)),
+    version: () => nflPos.size, // positions load in the background
     posLabel: (p) => nflPos.get(p.id) || '',
     cols: (group, count) => [
       { k: 'gp', label: 'GP', v: (p) => p.gp, f: 0 },

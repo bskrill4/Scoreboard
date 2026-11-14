@@ -36,11 +36,13 @@
     if (!document.hidden && document.hasFocus()) return; // the board is right there
     if (Date.now() - last < GAP_MS) return;
     last = Date.now();
-    const score = g.state === 'pre' ? `${g.away.abbr} @ ${g.home.abbr}` : `${g.away.abbr} ${g.away.score}–${g.home.score} ${g.home.abbr}`;
+    // A game whose score you hid (Hide score) is named without it.
+    const hide = g.state === 'pre' || SB.ui.isBlurred(g.id);
+    const score = hide ? `${g.away.abbr} @ ${g.home.abbr}` : `${g.away.abbr} ${g.away.score}–${g.home.score} ${g.home.abbr}`;
     const title = `${score} · ${g.statusText}`;
-    const why = (g.reasons || []).slice(0, 2).map((r) => r.text);
+    const why = hide ? [] : (g.reasons || []).slice(0, 2).map((r) => r.text); // chips can hint at the score
     const body = [`New top game · watch index ${g.index}`, ...why].join(' · ');
-    const lead = g.home.score >= g.away.score ? g.home : g.away;
+    const lead = hide || g.home.score >= g.away.score ? g.home : g.away; // the logo can't give the leader away either
     show(title, body, lead.logo);
   }
 

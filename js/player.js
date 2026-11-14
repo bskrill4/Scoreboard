@@ -9,16 +9,8 @@
 
   const DAYS = 7;
 
-  // ---- days: a "sports day" runs 6am to 6am, like the board ----
-  const pad = (n) => String(n).padStart(2, '0');
-  const ymd = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
-  const parseDay = (s) => new Date(Number(s.slice(0, 4)), Number(s.slice(4, 6)) - 1, Number(s.slice(6, 8)));
-  const dayOf = (t) => ymd(new Date(t - 6 * 3600 * 1000));
-  const shiftDay = (s, n) => {
-    const d = parseDay(s);
-    d.setDate(d.getDate() + n);
-    return ymd(d);
-  };
+  // ---- days: a "sports day" runs 6am to 6am, like the board (SB.days) ----
+  const { parseDay, dayOf, shiftDay } = SB.days;
   const dayShort = (s) => parseDay(s).toLocaleDateString([], { weekday: 'short' });
   const dayNum = (s) => parseDay(s).getDate();
 
@@ -28,41 +20,67 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the Impact or WPA math changes.
-  const CACHE_VERSION = 9; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties
+  const CACHE_VERSION = 10; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
-  function cacheGet(eventId) {
+  // Keys: sb.final.v<N>.<league>.<event>.
+  const cacheKey = (eventId, league) => `${CACHE_PREFIX}${league}.${eventId}`;
+  function cacheGet(eventId, league) {
     try {
-      const s = localStorage.getItem(CACHE_PREFIX + eventId);
+      const s = localStorage.getItem(cacheKey(eventId, league));
       return s ? JSON.parse(s) : undefined;
     } catch (e) {
       return undefined;
     }
   }
-  function cacheSet(eventId, value) {
-    const key = CACHE_PREFIX + eventId;
-    const s = JSON.stringify(value);
-    try {
-      localStorage.setItem(key, s);
-    } catch (e) {
-      // Full: drop old-version entries and half of ours, then try once more.
-      try {
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
-        const ours = [];
-        for (const k of keys) {
-          if (!/^sb\.final\./.test(k)) continue;
-          if (k.startsWith(CACHE_PREFIX)) ours.push(k);
-          else localStorage.removeItem(k); // an old version
-        }
-        ours.slice(0, Math.ceil(ours.length / 2)).forEach((k) => localStorage.removeItem(k));
-        localStorage.setItem(key, s);
-      } catch (e2) {}
+  // When storage is full, make room in this order, retrying after each step:
+  // older cache versions; drawer-only leagues (the season pages read NBA and
+  // NFL); then the oldest NBA/NFL games (ESPN event ids rise with date), a
+  // tenth at a time.
+  const SEASON_LEAGUES = ['nba', 'nfl'];
+
+  // Old cache versions are dead weight: clear them once per page load.
+  try {
+    const stale = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('sb.final.') && !k.startsWith(CACHE_PREFIX)) stale.push(k);
     }
+    stale.forEach((k) => localStorage.removeItem(k));
+  } catch (e) {}
+  function cacheSet(eventId, league, value) {
+    const key = cacheKey(eventId, league);
+    const s = JSON.stringify(value);
+    const tryWrite = () => {
+      try {
+        localStorage.setItem(key, s);
+        return true;
+      } catch (e) {
+        return false;
+      }
+    };
+    if (tryWrite()) return;
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) keys.push(localStorage.key(i));
+      const ours = keys.filter((k) => k.startsWith('sb.final.'));
+      ours.filter((k) => !k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k));
+      if (tryWrite()) return;
+      const current = ours.filter((k) => k.startsWith(CACHE_PREFIX));
+      const leagueOf = (k) => k.slice(CACHE_PREFIX.length).split('.')[0];
+      current.filter((k) => !SEASON_LEAGUES.includes(leagueOf(k))).forEach((k) => localStorage.removeItem(k));
+      if (tryWrite()) return;
+      const season = current.filter((k) => SEASON_LEAGUES.includes(leagueOf(k))).sort((a, b) => Number(a.split('.').pop()) - Number(b.split('.').pop()));
+      const step = Math.max(1, Math.ceil(season.length / 10));
+      for (let i = 0; i < season.length; i += step) {
+        season.slice(i, i + step).forEach((k) => localStorage.removeItem(k));
+        if (tryWrite()) return;
+      }
+    } catch (e) {}
   }
 
-  const statLine = (p) => p.line || `${p.pts} PTS · ${p.reb} REB · ${p.ast} AST${p.stl ? ` · ${p.stl} STL` : ''}${p.blk ? ` · ${p.blk} BLK` : ''}`;
+  const statLine = (p) => SB.ui.statLine(p); // the same line as the board
 
   // Minutes from the box score (the engine doesn't keep a clock per player).
   function boxMinutes(summary) {
@@ -95,7 +113,7 @@
   const finals = new Map(); // event id -> Promise
   function finalPlayers(eventId, league) {
     if (!finals.has(eventId)) {
-      const hit = cacheGet(eventId);
+      const hit = cacheGet(eventId, league);
       const p =
         hit !== undefined
           ? Promise.resolve(hit)
@@ -116,10 +134,10 @@
                   out[pl.id] = row;
                 }
                 if (league === 'nfl') {
-                  for (const [id, a] of boxAthletes(s)) if (!out[id]) out[id] = [0, 0, 'No credited plays', [a.teamId, a.name, ...NFL_BOX.map(() => 0)]];
+                  for (const [id, a] of boxAthletes(s)) if (!out[id]) out[id] = [0, 0, 'No credited plays', [a.teamId, a.name]];
                 }
               }
-              if (done) cacheSet(eventId, out);
+              if (done) cacheSet(eventId, league, out);
               return out;
             });
       p.catch(() => finals.delete(eventId)); // let a later open retry
@@ -160,14 +178,17 @@
         line: '',
       };
     });
-    // Games from the log that aren't on this team's schedule were for his old
-    // team; this team's games before his first game with it weren't his.
+    // Games from the log that aren't on this team's schedule were for another
+    // team; this team's games during that stretch (from his first game elsewhere
+    // to his last) weren't his. A player who left and came back keeps both ends.
     if (log && log.games.length) {
       const mine = new Set(rows.map((r) => r.id));
       const elsewhere = log.games.filter((g) => !mine.has(g.eventId));
       if (elsewhere.length) {
-        const lastAway = Math.max(...elsewhere.map((g) => g.date));
-        for (let k = rows.length - 1; k >= 0; k--) if (rows[k].t <= lastAway) rows.splice(k, 1);
+        const away = elsewhere.map((g) => g.date);
+        const [from, to] = [Math.min(...away), Math.max(...away)];
+        const played = new Set(log.games.map((g) => g.eventId));
+        for (let k = rows.length - 1; k >= 0; k--) if (rows[k].t >= from && rows[k].t <= to && !played.has(rows[k].id)) rows.splice(k, 1);
         for (const g of elsewhere) {
           const day = dayOf(g.date);
           if ((start && day < start) || day > endDay) continue;
