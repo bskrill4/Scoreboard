@@ -26,10 +26,10 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 | `js/prospects.js` | NCAAM: the 2027 NBA draft big board (hand-kept top 60). Board players count as stars, weighted by rank, and get a "#N prospect" tag. Refresh it every few weeks. |
 | `js/watch.js` | The watchability index (0–99) and its reasons. Weights live at the top of the file. |
 | `js/ui.js` | Cards, hero layout, win-probability chart, in-place patching and slide animations. |
-| `js/season.js` | Rankings › NBA season (`#season`): the season's standings and Impact chart from our own replay of every regular-season game. |
+| `js/season.js` | Rankings › NBA season (`#season`) and NFL season (`#nfl-season`): season standings, Impact chart and Movers from our own replay of every regular-season game (`makeSeason(cfg)`, one config per league). |
 | `js/main.js` | Polling (play-by-play every 8s for the top 4 games and a pinned one, 30s for the rest; the full college football board once a minute), stream delay, ordering/pinning, replay mode. |
 
-**WPA** — each play changes the home team's win probability. In the NBA that change is credited to the
+**WPA** — each play changes the home team's win probability. Football passes are split 65/35 between quarterback and receiver, caught or not (`QB_SHARE` in `js/engine-nfl.js`); sacks and interceptions are the quarterback's. A defensive penalty on a sack or pick moves the defense's share to the penalized player. A one-row phantom score (the feed's score jumps for one row and the next row puts it back) keeps the previous score and win probability, so the swing back isn't pinned on the next play. The player drawer lists a traded player's games with his old team too (from his ESPN game log, marked with that team). In the NBA that change is credited to the
 five players on the floor for the team it helped and debited from the five it hurt. The NFL feed has no
 substitutions, so a play's swing goes to the players named on it (passer and receiver split a catch).
 
@@ -67,11 +67,27 @@ Impact or everyone (`TIERS`); the season's six best keep fixed colors and end la
 is a thin gray line that gets fainter the more are drawn, and hovering picks out the nearest line. The table sorts on
 any column and pages 25 at a time: GP, minutes and counting stats (per game or totals), Impact, **Impact per 36**
 (total ÷ minutes × 36), WPA and WPA per 36, with a search (name or team) and a minutes filter (default 100+).
+**NFL season** (Rankings › NFL season, `#nfl-season`): the same page for the NFL, one position at a time (QB, RB, WR,
+TE, pass rush, LB, CB, S, K; positions from each team's current roster, or guessed from what a player did if he's no
+longer on one). Each position has its own columns (a QB's completions, yards, TDs, INTs and rushing yards; a kicker's
+FGs; a defender's sacks and picks), and Impact and WPA are also given **per game** (the feed has no snaps). Tiers are
+the top 1/5/20/80% of the chosen position; the filter is games played (default 3+). Movers cover every player at any
+position over the last **3 weeks** (2+ games in the window, 2+ before it), rated by Impact per game. On defense only
+sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
+every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
+
 **Movers** (between the chart and the table, like DARKO's widget): the six biggest risers and fallers in Impact per 36
 over the last 7 or 30 days. A player's rating is their season Impact/36 to date; the change is the rating now minus
 the rating when the window opened, with a sparkline of the rating game by game. It takes 2+ games in the window and
 60+ minutes before it (`MOVERS`). 30 days has nobody until the season is 30 days old.
 A localStorage note: a full season (1,230 games) would be ~2.5 MB of the ~5 MB a site gets.
+
+**Top game chime and alerts** (settings): a soft chime (`js/chime.js`) and, optionally, a browser notification
+(`js/alerts.js`) when a different game takes the top spot on its own. The notification shows the matchup, score and
+clock, the watch index and its top two reasons, and only fires while the board is in another tab or app (at most one
+every 15 seconds; turning it on asks Chrome for permission). With alerts on, a background tab keeps polling every 30
+seconds (Chrome may stretch that to about a minute) instead of pausing. When every live game is in a break, a live
+game still holds the top over finals and upcoming games.
 
 **Plan** (`#plan`, `js/plan.js`) — the night's games back to back, chosen to get the most
 **index × hours** out of the evening (weighted interval scheduling): watch a game start to finish, and when it
@@ -93,8 +109,10 @@ Matchup uses win % shrunk toward .500, with a record's third number (NHL overtim
 half a win; hockey then takes .05 off (`recordBias`), since overtime losses put its average team at ~.550. Stars come from ESPN's leaders (`starLists` in `js/api.js`): NBA by points + rebounds + assists
 per game (top 10 = 1, next 15 = 0.6, next 25 = 0.3), NHL by points (10 / 10 / 10 at the same weights).
 Hockey overtime is sudden death, so it scores full swings even when nobody has scored for minutes.
-**Tension** extras (`CRUNCH`, `DECIDED` in `js/watch.js`): in the last 2 minutes of regulation a one-possession /
-one-score game still at 3–97% gets tension of at least .7 (a 3-point game with 40 seconds left is must-watch even at 85%);
+**Tension** extras (`CRUNCH`, `DECIDED` in `js/watch.js`): **crunch time** gives a close game still at 3–97% a tension
+floor that rises from .6 to .95 at the final horn (a 3-point game late is must-watch even at 85%). Basketball uses the
+NBA's clutch definition, the last 5 minutes within 5 points; football and hockey the last 2 minutes within one score
+(college football 5); `crunchSec`/`crunchMargin` in `SPORT`.
 in the last 10% of regulation a game at 98%+ stops getting credit for a close score (a kneel-down after the pick).
 Hockey big nights (`HAT_TRICK`): hat-trick watch (2 goals) only in the 3rd and small (.25), since two goals are common;
 a finished hat trick .6; a shutout bid only for a goalie whose team leads (at 0-0 the tie already scores).
@@ -147,5 +165,5 @@ Live games rank first, then upcoming, then finals. Click a tile to pin it to the
 - **Win probability** is our own model (`js/engine-nhl.js`, constants at the top): each team scores at a steady rate set by its points % and home ice; a power play multiplies the rates for its remaining time; a team down 1 or 2 pulls its goalie for the last 90/120 seconds. The chance of winning is the chance of leading after regulation plus the chance of a tie times the overtime odds. On 25 games (Nov 7–10) it was well calibrated at the ends: under 10% → home won 0%, over 90% → 92%.
 - **Shootouts**: the feed's scores switch to the shootout tally in period 5. The engine keeps the game tied at the end-of-overtime score, shows the tally in the status (`SHOOTOUT 1-0`), gives the winner +1 at the end (the official final), and doesn't count shootout goals as goals or its odd play types as penalties.
 - **WPA** goes to the players named on goals (scorer 45%, assists 10% / 5%, the goalie beaten 40%) and penalties (the penalized player). Saves don't move win probability, so a shutout goalie's WPA is 0.
-- **Impact** adds shots that didn't go in, valued at expected goals × what a goal would swing right now: a save is split between shooter and goalie, a block between shooter and blocker, a miss is the shooter's. Shares are balanced so an average night nets out near zero (on Nov 7–10: goalies at .880–.920 averaged about +1, at .920+ about +15, under .880 about −9).
+- **Impact** adds shots that didn't go in, valued at expected goals × what a goal would swing right now: a save is split between shooter and goalie, a block between shooter and blocker, a miss is the shooter's. A goalie's share counts at 60% in Impact (`GOALIE_IMPACT`; at full credit goalies spread 3.2× wider than skaters and topped their game 43% of the time). Shares are balanced so an average night nets out near zero (on Nov 7–10: goalies at .880–.920 averaged about +1, at .920+ about +15, under .880 about −9).
 - Player stats are rebuilt from the play-by-play (so the stream delay holds); on 25 games they matched ESPN's box score on all 3,704 goals, assists, shots, hits, saves and goals-against. Power-play chances match on 45 of 50 team-games (the rest are off by one).

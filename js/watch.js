@@ -13,10 +13,11 @@
 
   const SPORT = {
     // periods: regulation periods (anything past them is overtime). lineups: the feed says who is on the floor.
-    nba: { periods: 4, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
+    // Basketball crunch time is the NBA's own "clutch": the last 5 minutes within 5 points.
+    nba: { periods: 4, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
     nfl: { periods: 4, marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
     // College: shorter game, bigger talent gaps; rankings beat early-season records.
-    ncaam: { periods: 2, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
+    ncaam: { periods: 2, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
     // Hockey: a goal is a big deal. One goal is close, three is about decided, four a blowout.
     // suddenDeath: overtime ends on the next goal, so it scores as "anything can happen
     // any second" (full volatility) even when nobody has scored for minutes.
@@ -62,7 +63,10 @@
     return clamp01((blended - 0.3) / 0.4);
   }
 
-  const CRUNCH = { sec: 120, floor: 0.7, wp: 0.03 }; // last 2 min, tension at least .7, while 3–97%
+  // Crunch time: in the last `sec` of regulation (crunchSec per sport) within one
+  // score (crunchMargin), while 3–97%, tension is at least `floor`, rising to
+  // `top` at the final horn.
+  const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, wp: 0.03 };
   const DECIDED = { played: 0.9, wp: 0.02 }; // last 10% of regulation at 98%+: margin stops counting
   function tension(g) {
     const cfg = SPORT[g.league];
@@ -79,11 +83,15 @@
     const decided = g.wp != null && progressOf(g) >= DECIDED.played && Math.abs(2 * g.wp - 1) >= 1 - 2 * DECIDED.wp;
     const close = decided ? leverage : 0.6 * leverage + 0.4 * marginScore;
     const late = g.period > cfg.periods ? 1.1 : 0.4 + 0.6 * Math.pow(progressOf(g), cfg.lateExp || 1.6);
-    // Crunch time: the last CRUNCH.sec of regulation in a one-possession / one-score
-    // game that's still in doubt. A 3-point game with 40 seconds left is must-watch
-    // even when the favorite is 85% to hold on.
+    // Crunch time (see CRUNCH): a close game late is must-watch even when the
+    // favorite is 85% to hold on, and more so the closer the horn.
     const inDoubt = g.wp == null || Math.abs(2 * g.wp - 1) <= 1 - 2 * CRUNCH.wp;
-    const crunch = g.period <= cfg.periods && g.reg - g.elapsed <= (cfg.crunchSec || CRUNCH.sec) && margin <= cfg.oneScore && inDoubt ? CRUNCH.floor : 0;
+    const win = cfg.crunchSec || CRUNCH.sec;
+    const left = g.reg - g.elapsed;
+    const crunch =
+      g.period <= cfg.periods && left <= win && margin <= (cfg.crunchMargin ?? cfg.oneScore) && inDoubt
+        ? CRUNCH.floor + (CRUNCH.top - CRUNCH.floor) * (1 - left / win)
+        : 0;
     return clamp01(Math.max(close * late, crunch));
   }
 

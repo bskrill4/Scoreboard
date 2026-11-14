@@ -61,6 +61,9 @@
             <button type="button" class="blur-switch" id="soundSwitch" role="switch" aria-checked="true"
               title="Play a soft chime when a new game takes the top spot"><i></i>Top game chime</button>
             <p class="set-note">A soft chime when a different game takes the top spot. Turning it on plays a preview.</p>
+            <button type="button" class="blur-switch" id="alertSwitch" role="switch" aria-checked="false"
+              title="Show a browser notification when a new game takes the top spot"><i></i>Top game alerts</button>
+            <p class="set-note" id="alertNote">A notification with the new top game, its score and watch index, while you're in another tab or app.</p>
           </section>
 
           <section class="set">
@@ -100,6 +103,7 @@
   <section id="players" class="players" hidden aria-label="Rankings"></section>
   <section id="plan" class="players plan" hidden aria-label="Viewing plan"></section>
   <section id="season" class="players season" hidden aria-label="NBA season standings"></section>
+  <section id="nflseason" class="players season" hidden aria-label="NFL season standings"></section>
   <footer class="foot">
     Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability credited to a player: while on the court in the NBA, on plays they were part of in the NFL and NHL (NHL win probability is our own model; ESPN doesn't publish one).
     Click any game to pin it to the top.
@@ -114,6 +118,7 @@
   <script src="js/watch.js"></script>
   <script src="js/notes.js"></script>
   <script src="js/chime.js"></script>
+  <script src="js/alerts.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/player.js"></script>
   <script src="js/plan.js"></script>

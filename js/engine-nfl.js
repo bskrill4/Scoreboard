@@ -16,6 +16,12 @@
   const { periodLabel, modelWP } = SB.engine;
   const { parseClock, upperBound, wallTimes, wallOf } = SB.tape;
 
+  // A pass play (caught or not) is QB_SHARE the quarterback's, the rest the
+  // receiver's. Sacks and interceptions are all his. At 50/50 with incompletions
+  // his alone, quarterbacks averaged -13.5 Impact (80% negative) on Nov 8-12; at
+  // 65/35 they average about -1 and receivers +2.
+  const QB_SHARE = 0.65;
+
   function create({ college = false } = {}) {
     const QUARTER = 900;
     const OT = 600;
@@ -147,7 +153,7 @@
 
       if ((m = text.match(new RegExp(`^(${NAME}) \\d+ yard field goal is (GOOD|No Good)`)))) {
         add(off, m[1], 1, { fga: 1, fgm: m[2] === 'GOOD' ? 1 : 0 });
-      } else if ((m = text.match(new RegExp(`^(${NAME}) field goal attempt from \d+ yards? (GOOD|NO GOOD)`, 'i')))) {
+      } else if ((m = text.match(new RegExp(`^(${NAME}) field goal attempt from \\d+ yards? (GOOD|NO GOOD)`, 'i')))) {
         add(off, m[1], 1, { fga: 1, fgm: /^GOOD$/i.test(m[2]) ? 1 : 0 });
       } else if ((m = text.match(new RegExp(`^(${NAME}) sacked`)))) {
         // College counts a sack as a rush for the yards lost.
@@ -162,15 +168,34 @@
           add(off, qb, 1, { att: 1, int: 1 });
           add(def, pick[1], -1, { defInt: 1 });
         } else if (/pass incomplete/.test(text)) {
-          add(off, qb, 1, { att: 1 });
+          // Shared with the intended receiver like a catch (if the text names one).
+          const tgt = text.match(new RegExp(`\\bto (${NAME})`));
+          add(off, qb, tgt ? QB_SHARE : 1, { att: 1 });
+          if (tgt) add(off, tgt[1], 1 - QB_SHARE, {});
         } else {
           const y = yards();
           const rec = text.match(new RegExp(`\\bto (${NAME})`));
-          add(off, qb, 0.5, { att: 1, cmp: 1, passYd: y, passTd: td });
-          if (rec) add(off, rec[1], 0.5, { rec: 1, recYd: y, recTd: td });
+          add(off, qb, rec ? QB_SHARE : 1, { att: 1, cmp: 1, passYd: y, passTd: td });
+          if (rec) add(off, rec[1], 1 - QB_SHARE, { rec: 1, recYd: y, recTd: td });
         }
-      } else if ((m = text.match(new RegExp(`^(${NAME}) (?!punts?\b|kicks?\b|kickoff\b|extra|field goal)`)))) {
+      } else if ((m = text.match(new RegExp(`^(${NAME}) (?!punts?\\b|kicks?\\b|kickoff\\b|extra|field goal)`)))) {
         add(off, m[1], 1, { car: 1, rushYd: yards(), rushTd: td });
+      }
+      // A defensive penalty on the play (not declined or offset): the defense's
+      // share is the penalized player's, not the sacker's (Simmons's sack with a
+      // teammate's face mask, Nov 2, came out a gain for Seattle).
+      const pen = text.match(new RegExp(`PENALTY on [A-Z]{2,4}-(${NAME})`));
+      if (pen && !/declined|offsetting/i.test(text)) {
+        const by = findPlayer(index, def, pen[1]);
+        if (by) {
+          // Only on plays that already credit a defender (a sack, a pick), so the
+          // swing is reassigned, never counted twice.
+          const defShare = out.filter((c) => c.share < 0).reduce((s, c) => s + c.share, 0);
+          if (defShare < 0) {
+            for (let k = out.length - 1; k >= 0; k--) if (out[k].share < 0) out.splice(k, 1, { id: out[k].id, share: 0, stats: out[k].stats });
+            out.push({ id: by, share: defShare, stats: {} });
+          }
+        }
       }
       return out;
     }
@@ -227,6 +252,13 @@
         rows.sort((a, b) => (a.p.period?.number || 1) - (b.p.period?.number || 1) || isEnd(a.p) - isEnd(b.p));
       }
       const times = wallTimes(rows.map((r) => wallOf(r.p)));
+      // A one-row phantom score: the feed's score jumps on one row and the next
+      // row puts it back (IND-TEN, Nov 2: 6-13, then 20-13 on a 5-yard catch, then
+      // 6-13 on Jeffery Simmons's sack). ESPN prices that row's win probability on
+      // the phantom too, so the swing back landed on the sack (-41 for a sack).
+      // Such a row keeps the previous row's score and win probability.
+      const key = (r) => `${r.p.awayScore}-${r.p.homeScore}`;
+      const phantom = rows.map((r, i) => i > 0 && i + 1 < rows.length && key(r) !== key(rows[i - 1]) && key(rows[i + 1]) === key(rows[i - 1]));
       let otPeriod = 0;
       let otStep = 0;
 
@@ -262,7 +294,7 @@
         const pid = String(p.id);
         const period = p.period?.number || 1;
         let elapsed = elapsedAt(period, parseClock(p.clock?.displayValue));
-        const [away, home] = scoreOf(p, period, elapsed);
+        const [away, home] = phantom[i] ? [plays[plays.length - 1]?.away ?? 0, plays[plays.length - 1]?.home ?? 0] : scoreOf(p, period, elapsed);
         if (college && period > 4) {
           if (period !== otPeriod) [otPeriod, otStep] = [period, 0];
           elapsed = REG_GAME + (period - 5) * OT + Math.min(OT - 1, ++otStep * OT_STEP);
@@ -270,7 +302,7 @@
         const t = times[i];
 
         let wp = hasFeedWP ? wpMap.get(pid) : modelWP(home - away, elapsed, REG_GAME);
-        if (wp == null) wp = prevWP == null ? 0.5 : prevWP;
+        if (wp == null || phantom[i]) wp = prevWP == null ? 0.5 : prevWP;
         const delta = prevWP == null ? 0 : wp - prevWP;
         const weight = SB.impact.weight(prevWP, elapsed, REG_GAME, OT);
         prevWP = wp;
@@ -522,7 +554,11 @@
 
       swings.sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
       impPlays.sort((x, y) => Math.abs(y.swing) - Math.abs(x.swing)); // single plays: by swing (see engine.js)
-      for (const p of players.values()) Object.assign(p, statLines(p));
+      for (const p of players.values()) {
+        Object.assign(p, statLines(p));
+        // Credited without a counting stat (a defensive penalty): still listed.
+        if (!p.line && (p.imp || p.wpa)) [p.line, p.short] = ['Penalty', 'PEN'];
+      }
 
       const drive = last ? driveView(tape, n, lastReal, last) : null;
       if (drive && state === 'final') drive.ended = true;

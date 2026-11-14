@@ -110,6 +110,7 @@
   }
 
   const gamelogs = new Map(); // "league:id" -> Promise of { games, experience }
+  const rosterLists = new Map(); // "league:teamId" -> Promise of athletes
   const rankCache = new Map(); // league -> { at, ttl, p: Promise of { ranks, source } }
   const schedules = new Map(); // "league:teamId" -> Promise of the team's schedule
 
@@ -170,6 +171,20 @@
       return p;
     },
 
+    // A team's roster as one flat list (NFL rosters come grouped by unit),
+    // cached per page load. For player positions on the NFL season page.
+    teamRoster(teamId, league = 'nba') {
+      const key = `${league}:${teamId}`;
+      if (!rosterLists.has(key)) {
+        const p = getJSON(`${LEAGUES[league].site}/teams/${teamId}/roster`).then((d) =>
+          (d.athletes || []).flatMap((x) => (Array.isArray(x.items) ? x.items : [x]))
+        );
+        rosterLists.set(key, p);
+        p.catch(() => rosterLists.delete(key));
+      }
+      return rosterLists.get(key);
+    },
+
     // Every game in one month ('YYYYMM'), for building a season.
     scoreboardMonth(month, league = 'nba') {
       return getJSON(`${LEAGUES[league].site}/scoreboard?dates=${month}&limit=500`);
@@ -204,7 +219,15 @@
               if (!meta) continue;
               const stats = {};
               names.forEach((n, i) => (stats[n] = Number(e.stats?.[i]) || 0));
-              games.push({ eventId: String(e.eventId), date: Date.parse(meta.gameDate), stats });
+              games.push({
+                eventId: String(e.eventId),
+                date: Date.parse(meta.gameDate),
+                stats,
+                // For listing a game with a team the player has since left.
+                team: meta.team?.abbreviation || '',
+                opp: `${meta.atVs || ''} ${meta.opponent?.abbreviation || ''}`.trim(),
+                result: meta.gameResult ? `${meta.gameResult} ${meta.score || ''}`.trim() : '',
+              });
             }
           }
           games.sort((x, y) => x.date - y.date);

@@ -867,7 +867,7 @@
   // Rankings tabs, shared with the Season page (js/season.js).
   function rankTabs(tab) {
     const link = (k, label) => `<a href="#${k}" class="${tab === k ? 'on' : ''}"${tab === k ? ' aria-current="page"' : ''}>${label}</a>`;
-    return `<nav class="rank-tabs" aria-label="Rankings">${link('players', 'Players')}${link('plays', 'Plays')}${link('season', 'NBA season')}</nav>`;
+    return `<nav class="rank-tabs" aria-label="Rankings">${link('players', 'Players')}${link('plays', 'Plays')}${link('season', 'NBA season')}${link('nfl-season', 'NFL season')}</nav>`;
   }
 
   function renderPlayers(models, opts) {

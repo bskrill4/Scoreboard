@@ -1166,6 +1166,8 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 
 /* Rankings › NBA season (js/season.js) */
 .ss-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 14px 0 10px; }
+.ss-groups { margin-bottom: 0; } /* NFL position toggle, above the chart controls */
+.ss-groups .seg { flex-wrap: wrap; border-radius: 14px; }
 .ss-off { opacity: .45; } /* tiers while a search decides the chart */
 .ss-count, .ss-check, .ss-select { color: var(--dim); font-size: 12px; font-weight: 700; }
 .ss-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }

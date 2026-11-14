@@ -473,8 +473,11 @@
       // The current top game only keeps it on a tie.
       // Games sitting in a break (halftime, end of Q1/Q3) can't hold it at all,
       // unless every game on the board is in one.
-      const pool = order.map((id) => byId.get(id)).filter((m) => !onBreak(m));
-      const cands = pool.length ? pool : order.map((id) => byId.get(id));
+      // ...but when every live game is in a break, the live ones still outrank
+      // finals and upcoming games (a final once took the top during a quarter break).
+      const all = order.map((id) => byId.get(id));
+      const live = all.filter((m) => m.state === 'live');
+      const cands = live.some((m) => !onBreak(m)) ? all.filter((m) => !onBreak(m)) : live.length ? live : all;
       const hero = byId.get(heroId);
       let top = cands.includes(hero) ? hero : cands[0];
       for (const m of cands) if (better(m, top, 0)) top = m;
@@ -500,11 +503,15 @@
     const models = arrange(events.filter(shown).map((ev) => buildModel(ev, T)));
     // Chime when a different game takes the top spot on its own: not on the
     // first paint, a day change, a pin, or the old top game leaving the board.
-    if (prevHero && heroId && heroId !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && models.some((m) => m.id === prevHero)) SB.chime.play();
+    if (prevHero && heroId && heroId !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && models.some((m) => m.id === prevHero)) {
+      SB.chime.play();
+      SB.alerts.newTop(models[0]);
+    }
     chimeDay = loadedDay;
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
     else if (view() === 'season') SB.season.render();
+    else if (view() === 'nflseason') SB.nflSeason.render();
     else SB.ui.render(models, { heroId, pinnedId, toTop });
 
     const live = models.filter((m) => m.state === 'live').length;
@@ -640,6 +647,8 @@
 
   // ---------- polling ----------
   let lastBoard = 0;
+  const HIDDEN_EVERY = 30000; // background tab with alerts on: poll this often
+  let lastHidden = 0;
 
   // A league's whole-day scoreboard can be big (all of FBS is ~1 MB), so some
   // are re-fetched less often; live scores come from the summaries in between.
@@ -766,12 +775,17 @@
     for (;;) {
       if (syncDay()) lastBoard = 0; // 6am rollover (or first load)
       else drawDays(); // relabel at 6am ("Tomorrow" becomes "Today")
-      if (!document.hidden) {
+      // In a background tab, keep polling (slower) so top-game alerts still fire.
+      // Chrome also slows a hidden tab's timers to about once a minute.
+      const hidden = document.hidden;
+      if (!hidden || (SB.alerts.isOn() && Date.now() - lastHidden >= HIDDEN_EVERY)) {
+        if (hidden) lastHidden = Date.now();
         if (!replay ? Date.now() - lastBoard >= SCOREBOARD_EVERY : !events.length) {
           await pollScoreboard();
           lastBoard = Date.now();
         }
         await pollSummaries();
+        if (hidden) tick(); // the render loop may be throttled; this is what fires an alert
       }
       await new Promise((r) => setTimeout(r, 2000));
     }
@@ -807,7 +821,7 @@
 
   // ---------- views & player metric ----------
   // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab) and the viewing plan (#plan).
-  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#plan': 'plan' };
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan' };
   const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
@@ -816,7 +830,9 @@
     $('players').hidden = v !== 'players';
     $('plan').hidden = v !== 'plan';
     $('season').hidden = v !== 'season';
-    for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === (v === 'season' ? 'players' : v));
+    $('nflseason').hidden = v !== 'nflseason';
+    const nav = v === 'season' || v === 'nflseason' ? 'players' : v; // both season tabs live under Rankings
+    for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === nav);
     document.body.classList.toggle('view-players', v !== 'board');
   }
 
@@ -903,6 +919,17 @@
       SB.chime.set(!SB.chime.isOn());
       showSound();
     });
+    const alertBtn = $('alertSwitch');
+    const showAlerts = () => {
+      alertBtn.classList.toggle('on', SB.alerts.isOn());
+      alertBtn.setAttribute('aria-checked', String(SB.alerts.isOn()));
+      $('alertNote').textContent = SB.alerts.note();
+    };
+    showAlerts();
+    alertBtn.addEventListener('click', async () => {
+      await SB.alerts.set(!SB.alerts.isOn());
+      showAlerts();
+    });
     $('metricSwitch').addEventListener('click', () => {
       setMetric(SB.ui.getMetric() === 'imp' ? 'wpa' : 'imp');
       tick();
@@ -921,7 +948,8 @@
       setMetric(b.dataset.metric);
       tick();
     });
-    $('season').addEventListener('click', (e) => openPlayerFrom(e, todayDay())); // a standings row opens the player's season to date
+    // A standings or movers row opens the player's season to date.
+    for (const id of ['season', 'nflseason']) $(id).addEventListener('click', (e) => openPlayerFrom(e, todayDay()));
     // Plan: a click on any game (a pick, a timeline bar, an "also on" link) opens it on the board.
     $('plan').addEventListener('click', (e) => {
       // Check marks lock a game into the plan; Undo steps back one change.

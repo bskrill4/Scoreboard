@@ -28,7 +28,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the Impact or WPA math changes.
-  const CACHE_VERSION = 5; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows
+  const CACHE_VERSION = 9; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -76,9 +76,22 @@
     return out;
   }
 
+  // Every athlete in an NFL box score (any category), so a defender with only
+  // tackles still has a game played in the season standings.
+  function boxAthletes(summary) {
+    const out = new Map();
+    for (const t of summary?.boxscore?.players || []) {
+      for (const cat of t.statistics || []) for (const a of cat.athletes || []) out.set(String(a.athlete?.id), { teamId: String(t.team.id), name: a.athlete?.displayName || '' });
+    }
+    return out;
+  }
+  const NFL_BOX = ['att', 'cmp', 'passYd', 'passTd', 'int', 'car', 'rushYd', 'rushTd', 'rec', 'recYd', 'recTd', 'sacks', 'defInt', 'fga', 'fgm'];
+
   // A finished game's players: { id: [imp, wpa, line, box?] }, or null without
-  // play-by-play. NBA rows add box = [teamId, min, pts, reb, ast, stl, blk, name]
-  // for the season standings (js/season.js).
+  // play-by-play. For the season standings (js/season.js), NBA rows add
+  // box = [teamId, min, pts, reb, ast, stl, blk, name] and NFL rows
+  // box = [teamId, name, ...NFL_BOX stats]; NFL also lists every box-score
+  // athlete, at zero, who wasn't on a credited play.
   const finals = new Map(); // event id -> Promise
   function finalPlayers(eventId, league) {
     if (!finals.has(eventId)) {
@@ -99,7 +112,11 @@
                   if (!SB.league.football(league) && league !== 'nhl' && !pl.played) continue;
                   const row = [+(pl.imp || 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl)];
                   if (mins) row.push([pl.teamId, mins.get(String(pl.id)) || 0, pl.pts, pl.reb, pl.ast, pl.stl, pl.blk, pl.name]);
+                  if (league === 'nfl') row.push([pl.teamId, pl.name, ...NFL_BOX.map((k) => pl[k] || 0)]);
                   out[pl.id] = row;
+                }
+                if (league === 'nfl') {
+                  for (const [id, a] of boxAthletes(s)) if (!out[id]) out[id] = [0, 0, 'No credited plays', [a.teamId, a.name, ...NFL_BOX.map(() => 0)]];
                 }
               }
               if (done) cacheSet(eventId, out);
@@ -116,7 +133,9 @@
   // The team's finished games in range (season, or the 7 days ending endDay),
   // oldest first, each filled in as its numbers arrive (onProgress after each).
   async function loadGames(id, league, teamId, endDay, range, onProgress) {
-    const sched = await SB.api.teamSchedule(teamId, league);
+    // The current team's schedule, plus the player's own game log, which also has
+    // his games for a team he's since left (a trade).
+    const [sched, log] = await Promise.all([SB.api.teamSchedule(teamId, league), SB.api.gamelog(id, league).catch(() => null)]);
     const start = range === 'week' ? shiftDay(endDay, -(DAYS - 1)) : null;
     const games = (sched.events || [])
       .filter((e) => {
@@ -141,6 +160,22 @@
         line: '',
       };
     });
+    // Games from the log that aren't on this team's schedule were for his old
+    // team; this team's games before his first game with it weren't his.
+    if (log && log.games.length) {
+      const mine = new Set(rows.map((r) => r.id));
+      const elsewhere = log.games.filter((g) => !mine.has(g.eventId));
+      if (elsewhere.length) {
+        const lastAway = Math.max(...elsewhere.map((g) => g.date));
+        for (let k = rows.length - 1; k >= 0; k--) if (rows[k].t <= lastAway) rows.splice(k, 1);
+        for (const g of elsewhere) {
+          const day = dayOf(g.date);
+          if ((start && day < start) || day > endDay) continue;
+          rows.push({ id: g.eventId, day, t: g.date, opp: `${g.opp}${g.team ? ` (${g.team})` : ''}`, result: g.result, pending: true, played: false, imp: null, wpa: null, line: '' });
+        }
+        rows.sort((a, b) => a.t - b.t);
+      }
+    }
     const out = { start: start || (rows[0] ? rows[0].day : endDay), end: endDay, range, games: rows, loaded: 0 };
     onProgress(out);
 
@@ -500,5 +535,5 @@
   }
   let loadToken = 0;
 
-  SB.player = { open, close, finalPlayers };
+  SB.player = { open, close, finalPlayers, NFL_BOX };
 })();

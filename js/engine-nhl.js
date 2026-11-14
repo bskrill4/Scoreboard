@@ -22,6 +22,7 @@
 // what a goal would swing right now), the way a basketball miss or block is:
 //   save:   shooter and goalie split it       blocked: shooter and blocker split it
 //   missed: the shooter
+// A goalie's part in all of these counts at GOALIE_IMPACT in Impact (not WPA).
 // Shots never move win probability, so they only count toward Impact.
 (function () {
   const SB = (window.SB = window.SB || {});
@@ -41,6 +42,11 @@
   // of the time, and a save pays the goalie half its value, so the goalie beaten
   // takes 40% of a goal (and an average shooter's goals pay for his saved shots).
   const SHARE = { scorer: 0.45, a1: 0.1, a2: 0.05, goalie: 0.4 };
+  // Impact counts a goalie's credit (goals against and saves alike, so an average
+  // night still nets out near zero) at this fraction. At full credit goalies
+  // spread 3.2x wider than skaters and were their game's top player in 43% of
+  // games (Nov 7-13); at 0.6, 1.9x and 30%. WPA is unchanged.
+  const GOALIE_IMPACT = 0.6;
 
   const NOT_PENALTY = new Set(['Face Off', 'Shot', 'Stoppage', 'Hit', 'Giveaway', 'Blocked', 'Missed', 'Takeaway', 'Goal', 'Period Start', 'Period End', 'End of Game', 'Shootout', 'Penalty Shot']);
   const NO_POWER_PLAY = /fighting|misconduct|game misconduct|match/i;
@@ -226,7 +232,7 @@
           if (scorer) credits.push({ id: scorer, share: s });
           if (a1) credits.push({ id: a1, share: SHARE.a1 });
           if (a2) credits.push({ id: a2, share: SHARE.a2 });
-          if (goalie) credits.push({ id: goalie, share: SHARE.goalie });
+          if (goalie) credits.push({ id: goalie, share: SHARE.goalie, imp: GOALIE_IMPACT });
           // A power-play goal ends a minor.
           if (pp && pp.team === teamId) pp = pp.two ? { ...pp, two: false } : null;
         } else if (isPenalty) {
@@ -276,7 +282,7 @@
           if (type === 'Shot') {
             const [saver] = role('saver');
             if (shooter) c.push({ id: shooter, share: saver ? 0.5 : 1 });
-            if (saver) c.push({ id: saver, share: 0.5 });
+            if (saver) c.push({ id: saver, share: 0.5 * GOALIE_IMPACT });
           } else if (type === 'Blocked') {
             const [blocker] = role('defender');
             if (shooter) c.push({ id: shooter, share: blocker ? 0.5 : 1 });
@@ -429,7 +435,7 @@
             const pl = get(c.id);
             if (!pl) continue;
             const w = sideOf(pl) * p.delta * c.share;
-            const v = w * p.weight;
+            const v = w * p.weight * (c.imp ?? 1); // Impact-only scaling (goalies)
             pl.wpa += w;
             pl.imp += v;
             pl.moments.push({ t: p.elapsed, wp: p.wp, wpa: w, imp: v, play: p });
