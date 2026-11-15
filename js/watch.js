@@ -108,6 +108,29 @@
   // team was behind when it started (a comeback), less when it's tied or ahead.
   const RUN_BONUS = 5;
   const RUN_CONTEXT = { behind: 1, tied: 0.6, ahead: 0.3 };
+  // A live football drive inside the opponent's 20 (the red-zone chip): up to
+  // RED_ZONE.max index points, full in a one-score game late, fading as the
+  // margin passes one score (gone at two), smaller early (like tension's late
+  // curve) and when the leader is the one knocking (RED_ZONE.leading), and gone
+  // once the game is decided. Before this the red zone was only a chip (Nov 15:
+  // HOU at the CLE 11, down 3 in the 4th, ranked below a quieter CAR-NO).
+  const RED_ZONE = { max: 6, leading: 0.7, zone: 20 };
+  function redZoneBump(g) {
+    const cfg = SPORT[g.league];
+    const d = g.drive;
+    if (g.state !== 'live' || !cfg || !d || d.ended || d.ytg == null || d.ytg > RED_ZONE.zone) return 0;
+    const team = d.ballTeam === g.home.id ? 'home' : d.ballTeam === g.away.id ? 'away' : null;
+    if (!team) return 0;
+    const other = team === 'home' ? 'away' : 'home';
+    const lead = g[team].score - g[other].score;
+    const margin = Math.abs(lead);
+    const close = margin <= cfg.oneScore ? 1 : clamp01(1 - (margin - cfg.oneScore) / cfg.oneScore);
+    const late = g.period > cfg.periods ? 1 : 0.4 + 0.6 * Math.pow(progressOf(g), cfg.lateExp || 1.6);
+    const tail = g.wp == null ? 1 : Math.min(g.wp, 1 - g.wp);
+    const doubt = clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
+    return RED_ZONE.max * close * late * doubt * (lead > 0 ? RED_ZONE.leading : 1);
+  }
+
   function runBump(g) {
     if (g.state !== 'live' || !g.run || !SB.runs) return 0;
     const m = g.run.startMargin;
@@ -377,12 +400,14 @@
     const goldBonus = g.state === 'live' ? Math.min(GOLD_CAP, gold.reduce((t, c) => t + c.bonus, 0)) : 0;
 
     const run = runBump(g);
+    const redZone = redZoneBump(g);
     const ranked = rankedBonus(g);
     const cup = cupBonus(g);
 
     const index = Math.round(
       goldBonus +
       run +
+      redZone +
       ranked.bonus +
       cup.bonus -
       B2B_PENALTY * b2bTeams.length +
@@ -446,9 +471,9 @@
     return {
       index: Math.max(0, Math.min(99, index)),
       reasons,
-      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run, ranked: ranked.bonus, cup: cup.bonus },
+      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run, redZone, ranked: ranked.bonus, cup: cup.bonus },
     };
   }
 
-  SB.watch = { cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
+  SB.watch = { redZoneBump, RED_ZONE, cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();

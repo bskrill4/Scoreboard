@@ -26,6 +26,13 @@
   // his alone, quarterbacks averaged -13.5 Impact (80% negative) on Nov 8-12; at
   // 65/35 they average about -1 and receivers +2.
   const QB_SHARE = 0.65;
+  // Defense: on a stop (a play that cost the offense win probability), the
+  // defenders the play names share DEF_SHARE of the swing on top of the offense's
+  // debit, the way a sack or a pick already credits the defender: tacklers on a
+  // run or catch, the defender on an incompletion (NFL "(D.Turner)", college
+  // "broken up by"), the forcer and recoverer of a fumble. Before this, only
+  // sacks and picks named a defender, so most defenders sat at zero.
+  const DEF_SHARE = 0.5;
 
   function create({ college = false } = {}) {
     const QUARTER = 900;
@@ -112,7 +119,8 @@
 
     // Who did what on this play, and how much of the WPA swing they get.
     // share is relative to the offense's swing (a defender's is negative).
-    function parseCredits(text, type, off, def, index, stat) {
+    // swing: the play's win-probability change for the offense (stops credit the defense).
+    function parseCredits(text, type, off, def, index, stat, swing = 0) {
       // College tags a play that stands with an accepted penalty as "Penalty" too:
       // only a pure penalty row or a NO PLAY is dropped there.
       if (/No Play/i.test(text)) return [];
@@ -130,6 +138,16 @@
         return /no gain/.test(text) ? 0 : stat || 0;
       };
       let m;
+      // Defenders named on a stop share DEF_SHARE; tackles count either way.
+      const stop = swing < 0;
+      const tacklers = () => {
+        const t = text.match(re`\((${NAME}(?:[;,] ${NAME})*)\)`);
+        return t ? t[1].split(/[;,] /) : [];
+      };
+      const defend = (names, stats) => {
+        const ids = names.map((n) => findPlayer(index, def, n)).filter(Boolean);
+        for (const id of ids) out.push({ id, share: stop ? -DEF_SHARE / ids.length : 0, stats });
+      };
 
       // College short scoring rows with full names: "Kaleb Edwards 4 Yd pass from
       // Keelon Russell (Conor Talty Kick)", "Darius Taylor 3 Yd Run (…)", "Luke
@@ -177,14 +195,28 @@
           const tgt = text.match(re`\bto (${NAME})`);
           add(off, qb, tgt ? QB_SHARE : 1, { att: 1 });
           if (tgt) add(off, tgt[1], 1 - QB_SHARE, {});
+          const pd = text.match(reI`broken up by (${NAME})`) || text.match(re`incomplete[^(\[]*\((${NAME})\)`);
+          if (pd) defend([pd[1]], { pd: 1 });
         } else {
           const y = yards();
           const rec = text.match(re`\bto (${NAME})`);
           add(off, qb, rec ? QB_SHARE : 1, { att: 1, cmp: 1, passYd: y, passTd: td });
           if (rec) add(off, rec[1], 1 - QB_SHARE, { rec: 1, recYd: y, recTd: td });
+          if (!td) defend(tacklers(), { tkl: 1 });
         }
       } else if ((m = text.match(re`^(${NAME}) (?!punts?\b|kicks?\b|kickoff\b|extra|field goal)`))) {
         add(off, m[1], 1, { car: 1, rushYd: yards(), rushTd: td });
+        if (!td) defend(tacklers(), { tkl: 1 });
+      }
+      // A forced fumble: the forcer (NFL "FUMBLES (X)", college "forced by X") and,
+      // if the defense got it, the recoverer share the defense's credit instead.
+      const forced = text.match(re`FUMBLES \((${NAME})\)`) || text.match(re`forced by (${NAME})`);
+      if (forced) {
+        const rec = text.match(reI`recovered by [A-Za-z&]+[- ](${NAME})`);
+        for (let k = out.length - 1; k >= 0; k--) if (out[k].share < 0) out[k] = { ...out[k], share: 0 };
+        defend(rec && findPlayer(index, def, rec[1]) ? [forced[1], rec[1]] : [forced[1]], {});
+        const ff = out.find((c) => c.id === findPlayer(index, def, forced[1]));
+        if (ff) ff.stats = { ...ff.stats, ff: 1 };
       }
       // A defensive penalty on the play (not declined or offset): the defense's
       // share is the penalized player's, not the sacker's (Simmons's sack with a
@@ -349,7 +381,7 @@
             ytg: p.end?.yardsToEndzone,
             text: p.end?.downDistanceText || '',
           },
-          credits: admin || isKickoff ? [] : parseCredits(text, type, off, def, index, p.statYardage),
+          credits: admin || isKickoff ? [] : parseCredits(text, type, off, def, index, p.statYardage, off === homeId ? delta : -delta),
           stat: p.statYardage || 0,
           wp,
           delta,
@@ -414,8 +446,16 @@
         const startYtg = scrim[0].s.ytg;
         const baseWP = tape.plays[firstIdx].wp - tape.plays[firstIdx].delta;
         let pos = startYtg;
+        let prev = null;
         for (const p of scrim) {
           const r = driveResult(p);
+          // ESPN often (about half of NFL punts) gives a kick's starting spot from
+          // the other side of the field: a punt from the Saints' own 40 reads "40
+          // yards to the end zone" instead of 60. When it mirrors where the previous
+          // play ended, use that spot (the bar floated loose from its drive).
+          let sYtg = p.s.ytg;
+          if (/Punt|Field Goal/i.test(p.type) && prev && prev.endTeam === p.off && Math.abs(prev.e.ytg - sYtg) > 2 && Math.abs(prev.e.ytg + sYtg - 100) <= 2)
+            sYtg = prev.e.ytg;
           const isKick = /Punt|Field Goal/i.test(p.type);
           // A kick or turnover ends the drive at the spot of the snap (how drive yards are scored).
           if (!isKick && (!r || r === 'Touchdown')) pos = p.e.ytg;
@@ -426,10 +466,27 @@
           yardSeries.push(yards);
           wpaSeries.push(sign * (p.wp - baseWP));
 
-          const x0 = absX(tape, p.off, p.s.ytg);
+          const x0 = absX(tape, p.off, sYtg);
           const x1 = /Field Goal/i.test(p.type) ? absX(tape, p.off, 0) : absX(tape, p.endTeam, p.e.ytg);
-          rows.push({ x0, x1, kind: rowKind(tape, p, x0, x1, r), text: p.text });
+          // For the field's hover card: when, the down, the swing for the offense,
+          // and who was credited (BONES each, signed for their own side).
+          const offDelta = p.off === tape.homeId ? p.delta : -p.delta;
+          rows.push({
+            x0,
+            x1,
+            kind: rowKind(tape, p, x0, x1, r),
+            text: p.text,
+            period: p.period,
+            clock: p.clock,
+            down: p.s.down,
+            dist: p.s.dist,
+            ytg: sYtg,
+            off: p.off,
+            wpa: offDelta,
+            who: p.credits.map((c) => ({ id: c.id, last: tape.roster.get(c.id)?.last || '', v: offDelta * c.share * p.weight })),
+          });
           if (r) result = r;
+          prev = p;
         }
       }
       const lastScrim = scrim[scrim.length - 1];
@@ -480,12 +537,19 @@
         return { line: `${p.rec} REC · ${p.recYd} YDS${td}`, short: `${p.recYd} YDS` };
       }
       if (p.fga) return { line: `${p.fgm}/${p.fga} FG`, short: `${p.fgm}/${p.fga} FG` };
-      if (p.defInt) return { line: `${p.defInt} INT`, short: `${p.defInt} INT` };
-      if (p.sacks) return { line: `${p.sacks} SACK${p.sacks > 1 ? 'S' : ''}`, short: `${p.sacks} SK` };
+      // Defense: tackles, sacks, picks, pass breakups, forced fumbles.
+      const d = [
+        [p.tkl, 'TKL'],
+        [p.sacks, p.sacks > 1 ? 'SACKS' : 'SACK'],
+        [p.defInt, 'INT'],
+        [p.pd, 'PD'],
+        [p.ff, 'FF'],
+      ].filter(([v]) => v);
+      if (d.length) return { line: d.map(([v, l]) => `${v} ${l}`).join(' · '), short: `${d[0][0]} ${d[0][1]}` };
       return { line: '', short: '' };
     }
 
-    const ZERO = { att: 0, cmp: 0, passYd: 0, passTd: 0, int: 0, car: 0, rushYd: 0, rushTd: 0, rec: 0, recYd: 0, recTd: 0, sacks: 0, defInt: 0, fga: 0, fgm: 0 };
+    const ZERO = { att: 0, cmp: 0, passYd: 0, passTd: 0, int: 0, car: 0, rushYd: 0, rushTd: 0, rec: 0, recYd: 0, recTd: 0, sacks: 0, defInt: 0, fga: 0, fgm: 0, tkl: 0, pd: 0, ff: 0 };
 
     function viewAt(tape, T, forceFinal) {
       const n = T === Infinity ? tape.plays.length : upperBound(tape.ts, T);

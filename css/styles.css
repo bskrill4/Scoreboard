@@ -1228,3 +1228,12 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .mv-chg.pos { color: var(--yellow); }
 .mv-chg.neg { color: var(--red); }
 .mv-note { margin: 10px 0 4px; color: var(--dim); font-size: 12px; font-weight: 600; }
+
+/* Football field: hover a play (its whole row) to read it in place of Last play */
+.prow { position: absolute; left: 0; right: 0; z-index: 1; cursor: pointer; }
+.prow:hover, .prow.hot { background: rgba(255, 255, 255, .06); }
+.pb { z-index: 2; pointer-events: none; }
+.pb.hot { outline: 2px solid #fff; outline-offset: 1px; }
+.play-swing { margin: 2px 0 8px; font-size: 12px; font-weight: 700; color: var(--dim); }
+.play-swing .pos { color: var(--yellow); }
+.play-swing .neg { color: var(--red); }

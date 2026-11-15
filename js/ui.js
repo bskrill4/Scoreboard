@@ -199,6 +199,7 @@
 
   // ---------- hover a player: when they made their WPA ----------
   let focus = null; // { game, pid } while the pointer is on a player row
+  let playHover = null; // { game, i } while the pointer is on a play on the football field
   const isFocus = (g, p) => (focus && focus.game === g.id && focus.pid === p.id ? ' hl' : '');
 
   // NBA: shade each stint on the floor, relight the line inside it and tag it
@@ -255,8 +256,22 @@
       const row = e.target.closest('[data-pid]');
       const card = row && row.closest('.game.is-hero');
       setFocus(card ? { game: card.dataset.id, pid: row.dataset.pid } : null);
+      // Football field: a play bar (or anywhere on its row) replaces Last play.
+      const bar = e.target.closest('.field [data-prow]');
+      const hero = bar && bar.closest('.game.is-hero');
+      setPlayHover(hero ? { game: hero.dataset.id, i: Number(bar.dataset.prow) } : null);
     });
-    root.addEventListener('mouseleave', () => setFocus(null));
+    root.addEventListener('mouseleave', () => {
+      setFocus(null);
+      setPlayHover(null);
+    });
+  }
+
+  function setPlayHover(next) {
+    const same = (playHover && next && playHover.game === next.game && playHover.i === next.i) || (!playHover && !next);
+    if (same) return;
+    playHover = next;
+    if (lastPaint && !morphing) paint(lastPaint[0], lastPaint[1], false);
   }
 
   function setFocus(next) {
@@ -422,9 +437,11 @@
           const left = Math.min(r.x0, r.x1);
           const width = Math.abs(r.x1 - r.x0);
           const dir = r.x1 >= r.x0 ? 'r' : 'l';
-          return `<i class="pb ${r.kind} ${dir}" title="${esc(r.text)}" style="left:${left.toFixed(1)}%;width:${width.toFixed(1)}%;top:${(i * rowH).toFixed(
-            2
-          )}%;height:${(rowH * 0.62).toFixed(2)}%"></i>`;
+          const hot = playHover && playHover.game === g.id && playHover.i === i ? ' hot' : '';
+          // A full-width strip per row is the hover target, so a 1-yard play is easy to hit.
+          return `<span class="prow${hot}" data-prow="${i}" style="top:${(i * rowH).toFixed(2)}%;height:${rowH.toFixed(2)}%"></span><i class="pb ${r.kind} ${dir}${hot}" data-prow="${i}" style="left:${left.toFixed(
+            1
+          )}%;width:${width.toFixed(1)}%;top:${(i * rowH).toFixed(2)}%;height:${(rowH * 0.62).toFixed(2)}%"></i>`;
         })
         .join('');
       if (d.firstX != null) marks += `<i class="fd" style="left:${d.firstX.toFixed(1)}%"></i>`;
@@ -461,10 +478,33 @@
     </div>`;
   }
 
+  const ORD = ['', '1st', '2nd', '3rd', '4th'];
+  // The hovered play on the field: when, the down, the swing, who got credit.
+  function playCardHTML(g, d, i) {
+    const r = d.rows[i];
+    const team = r.off === g.home.id ? g.home : g.away;
+    const down = r.down > 0 && r.dist > 0 ? `${ORD[r.down] || `${r.down}th`} & ${r.ytg <= r.dist ? 'Goal' : r.dist}` : '';
+    const yardLine = r.ytg > 0 && r.ytg < 100 ? (r.ytg === 50 ? 'midfield' : r.ytg < 50 ? `opp ${r.ytg}` : `own ${100 - r.ytg}`) : '';
+    const when = `${SB.league.engine(g.league).periodLabel(r.period)} ${r.clock}`.trim();
+    const meta = [when, `${team.abbr} ball`, down, yardLine].filter(Boolean).join(' · ');
+    const who = r.who
+      .filter((w) => w.last && Math.abs(w.v) >= 0.0005)
+      .map((w) => `<span class="${w.v >= 0 ? 'pos' : 'neg'}">${esc(w.last)} ${fmtWPA(w.v)}</span>`)
+      .join(' ');
+    return `<h3>Play ${i + 1} of ${d.rows.length} <small>${esc(meta)}</small></h3>
+      <p class="lastplay-text">${esc(r.text)}</p>
+      <p class="play-swing"><b class="${r.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(r.wpa)} WPA</b> for ${esc(team.abbr)}${who ? ` · ${who} ${metricShort()}` : ''}</p>`;
+  }
+
   function driveHTML(g) {
-    const text = g.lastPlay || (g.state === 'pre' ? `Kickoff at ${g.statusText}` : '');
-    return `<h3>Last play</h3>
-      <p class="lastplay-text" title="${esc(g.lastPlay)}">${esc(text)}</p>
+    const d = g.drive;
+    const i = playHover && playHover.game === g.id ? playHover.i : -1;
+    const head =
+      d && d.rows[i]
+        ? playCardHTML(g, d, i)
+        : `<h3>Last play <small>hover a play on the field</small></h3>
+      <p class="lastplay-text" title="${esc(g.lastPlay)}">${esc(g.lastPlay || (g.state === 'pre' ? `Kickoff at ${g.statusText}` : ''))}</p>`;
+    return `${head}
       ${fieldHTML(g)}
       ${driveStatsHTML(g)}`;
   }

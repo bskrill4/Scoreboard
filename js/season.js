@@ -724,10 +724,10 @@
     WR: [['rec', 'REC'], ['recYd', 'YDS'], ['recTd', 'TD']],
     TE: [['rec', 'REC'], ['recYd', 'YDS'], ['recTd', 'TD']],
     K: [['fgm', 'FGM'], ['fga', 'FGA']],
-    DL: [['sacks', 'SACKS'], ['defInt', 'INT']],
-    LB: [['sacks', 'SACKS'], ['defInt', 'INT']],
-    CB: [['defInt', 'INT'], ['sacks', 'SACKS']],
-    S: [['defInt', 'INT'], ['sacks', 'SACKS']],
+    DL: [['tkl', 'TKL'], ['sacks', 'SACKS'], ['ff', 'FF'], ['pd', 'PD']],
+    LB: [['tkl', 'TKL'], ['sacks', 'SACKS'], ['defInt', 'INT'], ['pd', 'PD'], ['ff', 'FF']],
+    CB: [['tkl', 'TKL'], ['pd', 'PD'], ['defInt', 'INT'], ['ff', 'FF']],
+    S: [['tkl', 'TKL'], ['pd', 'PD'], ['defInt', 'INT'], ['ff', 'FF']],
   };
   const NFL = {
     league: 'nfl',
@@ -781,7 +781,7 @@
       note: 'Every player, any position, with 2+ games in the window and 2+ before it. Rating = season BONES per game to date.',
     },
     note: `<b>BONES</b> and <b>WPA</b> are season totals from our own replay of every game; <b>BONES/G</b> and <b>WPA/G</b> are per game played (the NFL has no minutes in the feed).
-      Credit goes to the players named on each play: passes are 65% the quarterback's and 35% the targeted receiver's, runs the runner's, kicks the kicker's, and on defense only sacks and interceptions name a defender. So a pass rusher or defensive back ranks by his sacks and picks; tackles and coverage don't show up yet.
+      Credit goes to the players named on each play: passes are 65% the quarterback's and 35% the targeted receiver's, runs the runner's, kicks the kicker's. On defense, a sack or pick is the defender's, and on any stop (a play that cost the offense) the defenders the play names share half of it: the tacklers on a run or catch, the defender on an incompletion, the forcer and recoverer of a fumble. Coverage that keeps a receiver from being targeted still doesn't show.
       Positions are from each team's current roster. The chart's tiers are the top 1 / 5 / 20 / 80% of the chosen position by season BONES, or all of it. Search and colors work as on the NBA page. Regular season only.`,
   };
 
