@@ -49,7 +49,9 @@
       if (walls[i] >= 0) n = walls[i];
     }
     const out = [];
-    let prev = 0;
+    // Rows before the first stamped row take its time (not 0, which put Wake
+    // Forest-SMU's unstamped opening kickoff in 1970 and broke replay's start).
+    let prev = walls.find((w) => w >= 0) ?? 0;
     for (let i = 0; i < walls.length; i++) {
       const w = walls[i];
       const t = w >= 0 && w <= next[i] && w >= prev ? w : prev;

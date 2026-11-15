@@ -47,6 +47,11 @@
   // spread 3.2x wider than skaters and were their game's top player in 43% of
   // games (Nov 7-13); at 0.6, 1.9x and 30%. WPA is unchanged.
   const GOALIE_IMPACT = 0.6;
+  // A missed or blocked attempt costs the shooter this fraction of the chance
+  // that went begging. At full cost, Impact fell with every attempt for a skater
+  // without points (-0.8 at 0 shots on goal, -4.6 at 4+, Nov 14): shooting was
+  // punished, since a miss or block can only ever count against him.
+  const MISS_SHARE = 0.5;
 
   const NOT_PENALTY = new Set(['Face Off', 'Shot', 'Stoppage', 'Hit', 'Giveaway', 'Blocked', 'Missed', 'Takeaway', 'Goal', 'Period Start', 'Period End', 'End of Game', 'Shootout', 'Penalty Shot']);
   const NO_POWER_PLAY = /fighting|misconduct|game misconduct|match/i;
@@ -285,9 +290,9 @@
             if (saver) c.push({ id: saver, share: 0.5 * GOALIE_IMPACT });
           } else if (type === 'Blocked') {
             const [blocker] = role('defender');
-            if (shooter) c.push({ id: shooter, share: blocker ? 0.5 : 1 });
+            if (shooter) c.push({ id: shooter, share: MISS_SHARE * (blocker ? 0.5 : 1) });
             if (blocker) c.push({ id: blocker, share: 0.5 });
-          } else if (shooter) c.push({ id: shooter, share: 1 });
+          } else if (shooter) c.push({ id: shooter, share: MISS_SHARE });
           if (c.length && swing) virtual = { swing, credits: c };
         }
 

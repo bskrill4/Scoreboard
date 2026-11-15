@@ -66,7 +66,9 @@
   // Crunch time: in the last `sec` of regulation (crunchSec per sport) within one
   // score (crunchMargin), while 3–97%, tension is at least `floor`, rising to
   // `top` at the final horn.
-  const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, wp: 0.03 };
+  // While the trailing side is below `full` the floor fades, to nothing at
+  // `none` (a hard 3% cutoff had a one-goal NHL finish at 2.6% scoring 7).
+  const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, full: 0.05, none: 0.01 };
   const DECIDED = { played: 0.9, wp: 0.02 }; // last 10% of regulation at 98%+: margin stops counting
   function tension(g) {
     const cfg = SPORT[g.league];
@@ -85,12 +87,13 @@
     const late = g.period > cfg.periods ? 1.1 : 0.4 + 0.6 * Math.pow(progressOf(g), cfg.lateExp || 1.6);
     // Crunch time (see CRUNCH): a close game late is must-watch even when the
     // favorite is 85% to hold on, and more so the closer the horn.
-    const inDoubt = g.wp == null || Math.abs(2 * g.wp - 1) <= 1 - 2 * CRUNCH.wp;
+    const tail = g.wp == null ? 1 : Math.min(g.wp, 1 - g.wp);
+    const doubt = clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
     const win = cfg.crunchSec || CRUNCH.sec;
     const left = g.reg - g.elapsed;
     const crunch =
-      g.period <= cfg.periods && left <= win && margin <= (cfg.crunchMargin ?? cfg.oneScore) && inDoubt
-        ? CRUNCH.floor + (CRUNCH.top - CRUNCH.floor) * (1 - left / win)
+      g.period <= cfg.periods && left <= win && margin <= (cfg.crunchMargin ?? cfg.oneScore)
+        ? (CRUNCH.floor + (CRUNCH.top - CRUNCH.floor) * (1 - left / win)) * doubt
         : 0;
     return clamp01(Math.max(close * late, crunch));
   }

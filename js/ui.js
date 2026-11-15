@@ -902,15 +902,49 @@
     }
   }
 
+  // Rankings › Players filters: one sport or all, ranked by the raw number or
+  // by how far above that sport's average player it is today. Sports aren't on
+  // one baseline (Nov 14: the average player was +7.2 Impact in the NBA, +4.3 in
+  // college basketball, +1.7 in college football, -0.5 for NHL skaters), so the
+  // "vs sport avg" view compares players across sports more fairly.
+  let playersSport = 'all';
+  let playersRank = 'raw'; // raw | rel
+  function setPlayersFilter(o) {
+    if (o.sport) playersSport = o.sport;
+    if (o.rank) playersRank = o.rank === 'rel' ? 'rel' : 'raw';
+  }
+
   function playersTab(games, col, soFar) {
-    const rows = [];
+    const all = [];
     for (const g of games) {
       for (const p of g.players) {
         if (!SB.league.football(g.league) && !p.played) continue;
-        rows.push({ p, g, team: p.teamId === g.home.id ? g.home : g.away });
+        all.push({ p, g, team: p.teamId === g.home.id ? g.home : g.away });
       }
     }
-    rows.sort((a, b) => val(b.p) - val(a.p));
+    // Today's average player in each sport, on the current metric.
+    const mean = {};
+    for (const r of all) (mean[r.g.league] ??= []).push(val(r.p));
+    for (const k in mean) mean[k] = mean[k].reduce((s, x) => s + x, 0) / mean[k].length;
+    const rel = (r) => val(r.p) - mean[r.g.league];
+    const sports = Object.keys(mean);
+    if (playersSport !== 'all' && !sports.includes(playersSport)) playersSport = 'all';
+    const rows = all.filter((r) => playersSport === 'all' || r.g.league === playersSport);
+    const key = playersRank === 'rel' ? rel : (r) => val(r.p);
+    rows.sort((a, b) => key(b) - key(a));
+    const chip = (attr, v, label, on) => `<button type="button" ${attr}="${v}" class="${on ? 'on' : ''}" aria-pressed="${on}">${label}</button>`;
+    const filters =
+      sports.length > 1 || playersRank === 'rel'
+        ? `<div class="ss-controls"><div class="seg" role="group" aria-label="Sport">${chip('data-psport', 'all', 'All', playersSport === 'all')}${sports
+            .map((l) => chip('data-psport', l, SB.league.name(l), playersSport === l))
+            .join('')}</div><div class="seg" role="group" aria-label="Rank by">${chip('data-prank', 'raw', metric === 'imp' ? 'Impact' : 'WPA', playersRank === 'raw')}${chip(
+            'data-prank',
+            'rel',
+            'vs sport avg',
+            playersRank === 'rel'
+          )}</div></div>`
+        : '';
+    const relCol = playersRank === 'rel' ? ' class="sorted"' : '';
     const top = rows.slice(0, 60);
     const crown = top[0];
     const crownHTML = crown
@@ -918,7 +952,7 @@
           <span class="potd-k">Player of the Day${soFar}</span>
           ${headshot(crown.p)}
           <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${SB.league.name(crown.g.league)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
-          <div class="potd-v"><b>${fmtWPA(val(crown.p))}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'}</small></div>
+          <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'}${playersRank === 'rel' ? ' vs sport avg' : ''}</small></div>
         </div>`
       : '';
     const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
@@ -927,6 +961,7 @@
           <td class="gm">${gameLabel(g)}</td>
           <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
           <td${col('wpa')}><span class="${(p.wpa || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa || 0)}</span></td>
+          <td${relCol}><span class="${rel({ p, g }) >= 0 ? 'pos' : 'neg'}">${fmtWPA(rel({ p, g }))}</span></td>
           <td class="ln">${statLine(p)}</td>
         </tr>`;
     const body = top.map((r, i) => rowHTML(r, i)).join('');
@@ -936,14 +971,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
-    return `${crownHTML}${
+    return `${filters}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'
@@ -1024,5 +1059,5 @@
     }`;
   }
 
-  SB.ui = { isBlurred: (id) => blurred.has(id), statLine, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
+  SB.ui = { isBlurred: (id) => blurred.has(id), statLine, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

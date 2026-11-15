@@ -10,7 +10,7 @@ No build step and no dependencies. Either open `index.html` in a browser, or ser
 ruby server.rb
 ```
 
-No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit http://localhost:5173.
+No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit http://localhost:5173. On Windows, double-click **start-scoreboard.cmd**: it starts the server in a minimized window (close it to stop) and opens the board, or just opens the board if the server is already running.
 
 - `?replay` replays last night's slate from its play-by-play (handy when nothing is live).
 - `?replay=20261108&speed=30&skip=120` picks the date, the speed, and how many minutes to skip ahead.
@@ -56,7 +56,9 @@ replayed through the same engine as the board and its per-player Impact/WPA kept
 (`sb.final.v1.<event>`, ~1.3 KB a game), so each game is downloaded once and every player in it is free after.
 Bump `CACHE_VERSION` in `js/player.js` whenever the Impact or WPA math changes.
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by Impact or WPA, with their
-counting stats and a Player of the Day; **Plays** (`#plays`) ranks the day's biggest single plays, with who
+counting stats and a Player of the Day, filtered by sport if you like, and either by the raw number or **vs sport avg**
+(minus that day's average player in the same sport; sports aren't on one baseline: on Nov 14 the average player was
++7.2 Impact in the NBA, +4.3 in college basketball, +1.7 in college football, −0.5 for NHL skaters); **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
 
 **NBA season** (Rankings › NBA season, `#season`, `js/season.js`): every finished regular-season game is replayed
@@ -110,7 +112,8 @@ half a win; hockey then takes .05 off (`recordBias`), since overtime losses put 
 per game (top 10 = 1, next 15 = 0.6, next 25 = 0.3), NHL by points (10 / 10 / 10 at the same weights).
 Hockey overtime is sudden death, so it scores full swings even when nobody has scored for minutes.
 **Tension** extras (`CRUNCH`, `DECIDED` in `js/watch.js`): **crunch time** gives a close game still at 3–97% a tension
-floor that rises from .6 to .95 at the final horn (a 3-point game late is must-watch even at 85%). Basketball uses the
+floor that rises from .6 to .95 at the final horn (a 3-point game late is must-watch even at 85%); below 5% for the
+trailing side it fades, to nothing at 1% (`CRUNCH.full`/`none`), instead of cutting off. Basketball uses the
 NBA's clutch definition, the last 5 minutes within 5 points; football and hockey the last 2 minutes within one score
 (college football 5); `crunchSec`/`crunchMargin` in `SPORT`.
 in the last 10% of regulation a game at 98%+ stops getting credit for a close score (a kneel-down after the pick).
@@ -165,5 +168,5 @@ Live games rank first, then upcoming, then finals. Click a tile to pin it to the
 - **Win probability** is our own model (`js/engine-nhl.js`, constants at the top): each team scores at a steady rate set by its points % and home ice; a power play multiplies the rates for its remaining time; a team down 1 or 2 pulls its goalie for the last 90/120 seconds. The chance of winning is the chance of leading after regulation plus the chance of a tie times the overtime odds. On 25 games (Nov 7–10) it was well calibrated at the ends: under 10% → home won 0%, over 90% → 92%.
 - **Shootouts**: the feed's scores switch to the shootout tally in period 5. The engine keeps the game tied at the end-of-overtime score, shows the tally in the status (`SHOOTOUT 1-0`), gives the winner +1 at the end (the official final), and doesn't count shootout goals as goals or its odd play types as penalties.
 - **WPA** goes to the players named on goals (scorer 45%, assists 10% / 5%, the goalie beaten 40%) and penalties (the penalized player). Saves don't move win probability, so a shutout goalie's WPA is 0.
-- **Impact** adds shots that didn't go in, valued at expected goals × what a goal would swing right now: a save is split between shooter and goalie, a block between shooter and blocker, a miss is the shooter's. A goalie's share counts at 60% in Impact (`GOALIE_IMPACT`; at full credit goalies spread 3.2× wider than skaters and topped their game 43% of the time). Shares are balanced so an average night nets out near zero (on Nov 7–10: goalies at .880–.920 averaged about +1, at .920+ about +15, under .880 about −9).
+- **Impact** adds shots that didn't go in, valued at expected goals × what a goal would swing right now: a save is split between shooter and goalie, a block between shooter and blocker, a miss is the shooter's. A missed or blocked attempt costs the shooter half the chance that went begging (`MISS_SHARE`; at full cost Impact fell with every attempt, punishing shooting). A goalie's share counts at 60% in Impact (`GOALIE_IMPACT`; at full credit goalies spread 3.2× wider than skaters and topped their game 43% of the time). Shares are balanced so an average night nets out near zero (on Nov 7–10: goalies at .880–.920 averaged about +1, at .920+ about +15, under .880 about −9).
 - Player stats are rebuilt from the play-by-play (so the stream delay holds); on 25 games they matched ESPN's box score on all 3,704 goals, assists, shots, hits, saves and goals-against. Power-play chances match on 45 of 50 team-games (the rest are off by one).

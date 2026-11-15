@@ -927,6 +927,11 @@
     });
     $('players').addEventListener('click', (e) => {
       if (openPlayerFrom(e)) return; // a player's name, even inside a play row
+      const filter = e.target.closest('[data-psport],[data-prank]');
+      if (filter) {
+        SB.ui.setPlayersFilter({ sport: filter.dataset.psport, rank: filter.dataset.prank });
+        return tick();
+      }
       const when = e.target.closest('[data-when]');
       if (when) {
         SB.ui.setPlaysWhen(when.dataset.when);
