@@ -78,6 +78,16 @@ position over the last **3 weeks** (2+ games in the window, 2+ before it), rated
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
 every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
 
+**Game floor** (on everywhere by default; settings › **Game floor** off = swing only): Impact pays for swings, so a
+game that stayed one-sided hands out little credit and the winner's dominance never shows (GSW–SA, Nov 13: 37 in total
+against a median NBA game of 165; Wembanyama's 12-12-6 with 2 blocks was +4.8). When a finished game's pool (the
+positive Impact it handed out) is below its sport's floor, 75% of a median game (`FLOOR` in `js/engine.js`: NBA 123,
+NFL 59, college basketball 49, college football 45, NHL 35, measured Nov 9–14), the winning team gets the shortfall,
+split by each player's share of its positive Impact. Games above the floor are untouched, so a thriller still pays more
+than a blowout. Every view keeps `impRaw` and `impFloor`; saved games store both, so the switch applies instantly to the
+board, Rankings, the drawer and the season pages. Through Nov 14 it topped up 50 of 188 NBA games; Wembanyama went from
+#12 to #4 in Impact/36, the top three stayed (Wembanyama in that game: +4.8 → +19.1).
+
 **Movers** (between the chart and the table, like DARKO's widget): the six biggest risers and fallers in Impact per 36
 over the last 7 or 30 days. A player's rating is their season Impact/36 to date; the change is the rating now minus
 the rating when the window opened, with a sparkline of the rating game by game. It takes 2+ games in the window and

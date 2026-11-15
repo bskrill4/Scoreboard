@@ -525,6 +525,7 @@
         players: [...players.values()],
         playCount: n,
       };
+      SB.impact.applyFloor(view, tape, 'nhl');
       tape._n = n;
       tape._final = !!forceFinal;
       tape._view = view;

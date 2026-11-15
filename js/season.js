@@ -137,6 +137,7 @@
         for (const [id, row] of Object.entries(g.players)) {
           const box = cfg.box(row);
           if (!box) continue;
+          const imp = SB.impact.rowImpact(row); // with the game floor unless it's switched off
           let p = map.get(id);
           if (!p) {
             p = { id, name: box.name, teamId: '', gp: 0, m: 0, s: {}, imp: 0, wpa: 0, games: [] };
@@ -146,9 +147,9 @@
           p.gp++;
           p.m += box.m;
           for (const k in box.stats) p.s[k] = (p.s[k] || 0) + box.stats[k];
-          p.imp += row[0];
+          p.imp += imp;
           p.wpa += row[1];
-          p.games.push({ t: g.t, v: row[0] * 100, m: box.m });
+          p.games.push({ t: g.t, v: imp * 100, m: box.m });
         }
       }
       return [...map.values()].sort((a, b) => b.imp - a.imp);
@@ -522,7 +523,7 @@
       lastDraw = Date.now();
       // Re-total only when games (or NFL positions) arrived, and re-group only
       // when that or the position changed; search, sort and paging reuse them.
-      const dataKey = `${state.results.size}|${cfg.version ? cfg.version() : ''}`;
+      const dataKey = `${state.results.size}|${cfg.version ? cfg.version() : ''}|${SB.impact.floorOn()}`;
       if (dataKey !== aggKey) [all, aggKey, groupKey] = [aggregate(), dataKey, ''];
       if (`${aggKey}|${state.group}` !== groupKey) [players, groupKey] = [grouped(), `${aggKey}|${state.group}`];
       if (!root.querySelector('.ss-chart-slot')) {
@@ -612,7 +613,14 @@
       else if (dirty || !root.querySelector('.ss-chart-slot')) draw();
     }
 
-    return { render };
+    // Redraw after a setting changes (the game floor), now or when next shown.
+    function refresh() {
+      if (!root) return;
+      dirty = true;
+      if (!root.hidden) draw();
+    }
+
+    return { render, refresh };
   }
 
   // ---------- NBA ----------
@@ -671,6 +679,7 @@
       note: 'Players with 2+ games in the window and 60+ minutes before it. Rating = season Impact per 36 to date.',
     },
     note: `<b>Impact</b> and <b>WPA</b> are season totals from our own replay of every game (the same numbers as the board and the player drawer).
+      Impact includes the <b>game floor</b> (switch it off in settings for swing only): a game that stayed one-sided still credits the winner, up to 75% of a typical game, split by the winning players' share of its swings. Close games are untouched, so a thriller still pays more than a blowout.
       <b>Per 36</b> scales a player's total to 36 minutes: total ÷ minutes × 36, so a reserve can be compared with a starter; it's noisy for players with few minutes, which is what the minutes filter is for.
       The chart's tiers are the top 1 / 5 / 20 / 80% of players by season Impact, or everyone. The table's top six rows, in whatever order it's sorted, are colored in the chart (and drawn even if the tier leaves them out); everyone else is gray, fainter the more players are drawn. Hover a line to see who it is. A search (a name, or a team: BOS, Boston, Celtics, Boston Celtics) narrows the table and the chart to the same players; pick a tier to go back to the league. Regular season only (NBA Cup group games count; the Cup final doesn't).`,
   };

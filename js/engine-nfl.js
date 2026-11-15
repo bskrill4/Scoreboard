@@ -597,6 +597,7 @@
         drive,
         downText,
       };
+      SB.impact.applyFloor(view, tape, college ? 'ncaaf' : 'nfl');
       tape._n = n;
       tape._final = !!forceFinal;
       tape._view = view;

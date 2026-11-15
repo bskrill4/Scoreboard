@@ -20,7 +20,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the Impact or WPA math changes.
-  const CACHE_VERSION = 11; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share
+  const CACHE_VERSION = 12; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -128,10 +128,13 @@
                 const mins = league === 'nba' ? boxMinutes(s) : null;
                 for (const pl of view.players) {
                   if (!SB.league.football(league) && league !== 'nhl' && !pl.played) continue;
-                  const row = [+(pl.imp || 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl)];
-                  if (mins) row.push([pl.teamId, mins.get(String(pl.id)) || 0, pl.pts, pl.reb, pl.ast, pl.stl, pl.blk, pl.name]);
-                  if (league === 'nfl') row.push([pl.teamId, pl.name, ...NFL_BOX.map((k) => pl[k] || 0)]);
-                  out[pl.id] = row;
+                  // [swing-only Impact, WPA, line, box (NBA/NFL) or null, game-floor top-up]
+                  const box = mins
+                    ? [pl.teamId, mins.get(String(pl.id)) || 0, pl.pts, pl.reb, pl.ast, pl.stl, pl.blk, pl.name]
+                    : league === 'nfl'
+                    ? [pl.teamId, pl.name, ...NFL_BOX.map((k) => pl[k] || 0)]
+                    : null;
+                  out[pl.id] = [+(pl.impRaw ?? pl.imp ?? 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl), box, +(pl.impFloor || 0).toFixed(5)];
                 }
                 if (league === 'nfl') {
                   for (const [id, a] of boxAthletes(s)) if (!out[id]) out[id] = [0, 0, 'No credited plays', [a.teamId, a.name]];
@@ -216,7 +219,7 @@
         Object.assign(r, {
           pending: false,
           played: !!p,
-          imp: p ? p[0] : null,
+          imp: p ? SB.impact.rowImpact(p) : null,
           wpa: p ? p[1] : null,
           line: p ? p[2] : failed ? 'Couldn’t load' : players ? 'Did not play' : 'No play-by-play',
         });

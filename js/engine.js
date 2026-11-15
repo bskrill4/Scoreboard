@@ -80,7 +80,47 @@
     const lev = Math.min(IMPACT.maxLev, Math.max(IMPACT.minLev, 4 * w * (1 - w) * Math.sqrt(reg / left)));
     return Math.pow(lev, -IMPACT.exponent);
   }
-  SB.impact = { weight: impactWeight, IMPACT };
+  // ---- The game floor ----
+  // Impact pays for swings, so a game that stayed one-sided hands out little
+  // credit and the winner's dominance never shows (GSW-SA, Nov 13: 37 in total
+  // against a median NBA game of 165; Wembanyama's 12-12-6 was +4.8). When a
+  // finished game's pool (the positive Impact it handed out) is below FLOOR for
+  // its sport (75% of a median game, measured Nov 9-14), the winning team gets
+  // the shortfall, split by each player's share of its positive Impact. Games
+  // above the floor are left alone, so a thriller still pays more than a
+  // blowout. Every player keeps impRaw (swing only) and impFloor (the top-up);
+  // imp includes the top-up unless the floor is switched off (settings).
+  const FLOOR = { nba: 1.23, ncaam: 0.49, nfl: 0.59, ncaaf: 0.45, nhl: 0.35 };
+  let floorOn = true;
+  try {
+    floorOn = localStorage.getItem('sb.floor') !== 'off';
+  } catch (e) {}
+  function applyFloor(view, tape, league) {
+    for (const p of view.players) {
+      p.impRaw = p.imp || 0;
+      p.impFloor = 0;
+    }
+    if (view.state !== 'final' || view.homeScore === view.awayScore || !FLOOR[league]) return;
+    const pool = view.players.reduce((s, p) => s + Math.max(0, p.impRaw), 0);
+    if (pool >= FLOOR[league]) return;
+    const winner = String(view.homeScore > view.awayScore ? tape.homeId : tape.awayId);
+    const mine = view.players.filter((p) => String(p.teamId) === winner && p.impRaw > 0);
+    const pos = mine.reduce((s, p) => s + p.impRaw, 0);
+    for (const p of mine) {
+      p.impFloor = ((FLOOR[league] - pool) * p.impRaw) / pos;
+      if (floorOn) p.imp = p.impRaw + p.impFloor;
+    }
+  }
+  function setFloor(on) {
+    floorOn = !!on;
+    try {
+      localStorage.setItem('sb.floor', floorOn ? 'on' : 'off');
+    } catch (e) {}
+  }
+  // A saved game's row [imp, wpa, line, box, floor] -> Impact under the current setting.
+  const rowImpact = (row) => row[0] + (floorOn ? row[4] || 0 : 0);
+
+  SB.impact = { weight: impactWeight, IMPACT, FLOOR, applyFloor, setFloor, floorOn: () => floorOn, rowImpact };
 
   // Who is responsible for a basketball play, and their share of its swing.
   // Each credited player gets the swing from their own team's side, so a miss,
@@ -189,7 +229,7 @@
 
   // One engine per basketball league. The NBA plays four 12-minute quarters;
   // college plays two 20-minute halves. Overtime is 5 minutes in both.
-  function create({ periods, periodSec, otSec, label, ftPct }) {
+  function create({ league, periods, periodSec, otSec, label, ftPct }) {
     const REG_PERIOD = periodSec;
     const OT_PERIOD = otSec;
     const REG_GAME = REG_PERIOD * periods;
@@ -569,6 +609,7 @@
         players: [...players.values()].filter((p) => p.played),
         playCount: n,
       };
+      SB.impact.applyFloor(view, tape, league);
       tape._n = n;
       tape._final = !!forceFinal;
       tape._view = view;
@@ -579,6 +620,6 @@
   }
 
   // ftPct: a typical free-throw percentage, the baseline for a trip's expected value.
-  SB.engine = create({ periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78 });
-  SB.ncaam = create({ periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72 });
+  SB.engine = create({ league: 'nba', periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78 });
+  SB.ncaam = create({ league: 'ncaam', periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72 });
 })();

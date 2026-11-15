@@ -910,6 +910,20 @@
       SB.chime.set(!SB.chime.isOn());
       showSound();
     });
+    const floorBtn = $('floorSwitch');
+    const showFloor = () => {
+      floorBtn.classList.toggle('on', SB.impact.floorOn());
+      floorBtn.setAttribute('aria-checked', String(SB.impact.floorOn()));
+    };
+    showFloor();
+    floorBtn.addEventListener('click', () => {
+      SB.impact.setFloor(!SB.impact.floorOn());
+      showFloor();
+      for (const t of tapes.values()) t._n = -1; // views cache Impact: rebuild them
+      SB.season.refresh();
+      SB.nflSeason.refresh();
+      tick();
+    });
     const alertBtn = $('alertSwitch');
     const showAlerts = () => {
       alertBtn.classList.toggle('on', SB.alerts.isOn());
