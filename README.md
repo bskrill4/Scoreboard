@@ -170,6 +170,14 @@ receiving leaders at smaller weights than the NFL's. Plan length is an estimated
 Live games rank first, then upcoming, then finals. Click a tile to pin it to the top. Per-sport tuning
 (margins, record weighting, what counts as a big night) lives in `SPORT` and the `performance` functions in `js/watch.js`.
 
+**The Bone Zone** (`#bonezone`, `js/bonezone.js`): is BONES real yet? A floating 3D skull (Three.js r128, loaded from cdnjs
+only when the page opens) reads out a reliability check on this NBA regular season in speech bubbles, from the same
+per-game cache as the season pages. Players with 8+ games and 15+ minutes a game; everything per 36 minutes.
+**Consistency**: odd games vs even games (and the whole-season reliability by Spearman-Brown, 2r/(1+r)); **holding up**:
+first half of a player's season vs second half; **winning**: a team's BONES in a game vs its final margin, and
+BONES per game vs point differential over the season. Points and on-court WPA run through the same checks for scale.
+Grades: .70+ solid, .50 getting there, .30 shaky, below that mostly noise. "The numbers" opens the table.
+
 ## Not built yet
 
 - Career milestones, debuts and returns from injury in the index (needs a player-history source).

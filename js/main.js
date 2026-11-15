@@ -512,6 +512,7 @@
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
     else if (view() === 'season') SB.season.render();
     else if (view() === 'nflseason') SB.nflSeason.render();
+    else if (view() === 'bonezone') SB.boneZone.render();
     else SB.ui.render(models, { heroId, pinnedId, toTop });
 
     const live = models.filter((m) => m.state === 'live').length;
@@ -811,8 +812,9 @@
   }
 
   // ---------- views & player metric ----------
-  // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab) and the viewing plan (#plan).
-  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan' };
+  // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab), the viewing plan (#plan)
+  // and the Bone Zone (#bonezone, a check of how reliable BONES is).
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone' };
   const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
@@ -822,6 +824,8 @@
     $('plan').hidden = v !== 'plan';
     $('season').hidden = v !== 'season';
     $('nflseason').hidden = v !== 'nflseason';
+    $('bonezone').hidden = v !== 'bonezone';
+    document.body.classList.toggle('view-bonezone', v === 'bonezone');
     const nav = v === 'season' || v === 'nflseason' ? 'players' : v; // both season tabs live under Rankings
     for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === nav);
     document.body.classList.toggle('view-players', v !== 'board');
