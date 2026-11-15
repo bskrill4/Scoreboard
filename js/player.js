@@ -305,7 +305,7 @@
     const trend = f
       ? `<line class="pl-trend" x1="${x(pts[0].i)}" y1="${y(f.at(pts[0].i))}" x2="${x(pts[pts.length - 1].i)}" y2="${y(f.at(pts[pts.length - 1].i))}"/>`
       : '';
-    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${metric === 'imp' ? 'Impact' : 'WPA'} by game over the last week">${grid}${zero}${ticks}${trend}${line}${dots}</svg>`;
+    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${metric === 'imp' ? 'BONES' : 'WPA'} by game over the last week">${grid}${zero}${ticks}${trend}${line}${dots}</svg>`;
 
     let note;
     if (data.loaded < data.games.length) note = `Loading ${data.loaded} of ${data.games.length} games…`;
@@ -359,7 +359,7 @@
       .map((p) => `<circle class="pl-dot ${p.v >= 0 ? 'pos' : 'neg'}${small ? ' sm' : ''}" cx="${x(p.i)}" cy="${y(p.v)}" r="${small ? 2.6 : 3.6}"><title>${esc(`${dayShort(p.g.day)} ${dayNum(p.g.day)} ${p.g.opp} · ${fmt(p.v)}`)}</title></circle>`)
       .join('');
     const labels = label(best, false) + (worst && worst !== best && worst.v < 0 ? label(worst, true) : '');
-    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${metric === 'imp' ? 'Impact' : 'WPA'} by game this season">${months}${zero}${ticks}${avgLine}${thin}${rollLine}${dots}${labels}</svg>`;
+    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${metric === 'imp' ? 'BONES' : 'WPA'} by game this season">${months}${zero}${ticks}${avgLine}${thin}${rollLine}${dots}${labels}</svg>`;
 
     let note;
     if (!rows.length) note = 'No finished games this season yet.';
@@ -465,7 +465,7 @@
       body = `${(range === 'week' ? chartWeek : chartSeason)(data, metric)}
         ${
           data.games.length
-            ? `<table class="pl-games"><thead><tr><th>Day</th><th>Opp</th><th>Result</th><th>Line</th><th class="${metric === 'imp' ? 'sorted' : ''}">IMP</th><th class="${metric === 'wpa' ? 'sorted' : ''}">WPA</th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table class="pl-games"><thead><tr><th>Day</th><th>Opp</th><th>Result</th><th>Line</th><th class="${metric === 'imp' ? 'sorted' : ''}">BONES</th><th class="${metric === 'wpa' ? 'sorted' : ''}">WPA</th></tr></thead><tbody>${rows}</tbody></table>`
             : ''
         }`;
     }
@@ -483,7 +483,7 @@
       <div class="pl-sec">
         <div class="pl-sec-h">
           <div class="pl-range" role="group" aria-label="Range">${rng('season', 'Season')}${rng('week', 'Last 7 days')}</div>
-          <div class="seg" role="group" aria-label="Metric">${seg('imp', 'Impact <small>beta</small>')}${seg('wpa', 'WPA')}</div>
+          <div class="seg" role="group" aria-label="Metric">${seg('imp', 'BONES <small>beta</small>')}${seg('wpa', 'WPA')}</div>
         </div>
         ${body}
       </div>`;

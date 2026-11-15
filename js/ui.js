@@ -58,7 +58,7 @@
   let metric = 'imp';
   const val = (p) => (metric === 'imp' ? p.imp || 0 : p.wpa || 0);
   const momentVal = (m) => (metric === 'imp' ? m.imp ?? 0 : m.wpa ?? 0);
-  const metricShort = () => (metric === 'imp' ? 'IMP' : 'WPA');
+  const metricShort = () => (metric === 'imp' ? 'BONES' : 'WPA');
   const setMetric = (m) => (metric = m === 'imp' ? 'imp' : 'wpa');
 
   // ---------- formatting ----------
@@ -486,7 +486,7 @@
         .filter((m) => m.play && m[key])
         .sort((a, b) => Math.abs(b[key]) - Math.abs(a[key]))
         .slice(0, 3);
-      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays${key !== metric ? ' <small>by Impact</small>' : ''}</div>`;
+      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays${key !== metric ? ' <small>by BONES</small>' : ''}</div>`;
       if (!top.length) return `<div class="swings">${head}<div class="swing"><span>No credited plays yet</span></div></div>`;
       return `<div class="swings">${head}${top
         .map(
@@ -503,7 +503,7 @@
         .map((s) => {
           const t = s.swing > 0 ? g.home : g.away;
           return `<div class="swing" style="--tc:${t.css}">
-            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} IMP</b>
+            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} BONES</b>
             <span>${esc(playWhen(g, s.play))} · <em class="sc">${esc(scoreAt(g, s.play))}</em> · ${esc(s.play.text)}</span>
           </div>`;
         })
@@ -549,7 +549,7 @@
             ? ' sr'
             : ' sl';
         return `<i class="bub" tabindex="0" style="left:${left.toFixed(2)}%;top:${top}%;--s:${size}px;--tc:${t.css}">
-          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} IMP</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
+          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} BONES</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
           <span class="tip-t">${esc(s.play.text)}</span>${who ? `<small>${who}</small>` : ''}</span>
         </i>`;
       })
@@ -632,7 +632,7 @@
     const leadersTitle = !g.players.length
       ? 'Players to watch'
       : metric === 'imp'
-      ? 'Impact leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
+      ? 'BONES leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
       : SB.league.football(g.league) || g.league === 'nhl'
       ? 'Top performers <small>WPA on plays they were part of</small>'
       : 'WPA leaders <small>win probability added while on court</small>';
@@ -887,15 +887,15 @@
           <h2>Rankings</h2>
           <p>${opts.dayLabel} · ${played.length} game${played.length === 1 ? '' : 's'} with play-by-play</p>
         </div>
-        <div class="seg" role="group" aria-label="Rank by">${seg('imp', 'Impact <small>beta</small>')}${seg('wpa', 'WPA')}</div>
+        <div class="seg" role="group" aria-label="Rank by">${seg('imp', 'BONES <small>beta</small>')}${seg('wpa', 'WPA')}</div>
       </div>
       ${rankTabs(tab)}`;
 
     const body = tab === 'plays' ? playsTab(played, opts, col, soFar) : playersTab(played, col, soFar);
 
     const html = `${head}${body}
-      <p class="players-note"><b>Impact</b> (beta) credits each play's win-probability swing only to the players responsible for it (shooter and assister, the player who turned it over or fouled, the rebounder or stopper; a free-throw trip is split between the fouler and the shooter), then divides it by the square root of the play's leverage, so a blowout or a heavy underdog's game still counts and a thriller doesn't count five times over. Because it's all in win probability, it ranks every sport on one list.
-      <b>WPA</b> is the classic number: in basketball every player on the floor shares each swing, in football the players named on the play. Basketball and football WPA aren't on the same scale. A play's WPA is its raw swing for the team it helped. <b>Single plays</b> are ranked by their Impact swing: the free-throw and spike corrections without the leverage divide, which exists to make player totals fair across games and on one play would shrink clutch swings and inflate early ones. Win probability already makes a late play in a close game bigger than an early one, and a play after the game is decided nearly worthless, so there's no extra time factor; use When to compare early plays with each other.</p>`;
+      <p class="players-note"><b>BONES</b> (<b>B</b>ounded <b>O</b>dds <b>N</b>et <b>E</b>ffect <b>S</b>core, beta; named for our patron saint, Bones Hyland) credits each play's win-probability swing only to the players responsible for it (shooter and assister, the player who turned it over or fouled, the rebounder or stopper; a free-throw trip is split between the fouler and the shooter), then divides it by the square root of the play's leverage, so a blowout or a heavy underdog's game still counts and a thriller doesn't count five times over. Because it's all in win probability, it ranks every sport on one list.
+      <b>WPA</b> is the classic number: in basketball every player on the floor shares each swing, in football the players named on the play. Basketball and football WPA aren't on the same scale. A play's WPA is its raw swing for the team it helped. <b>Single plays</b> are ranked by their BONES swing: the free-throw and spike corrections without the leverage divide, which exists to make player totals fair across games and on one play would shrink clutch swings and inflate early ones. Win probability already makes a late play in a close game bigger than an early one, and a play after the game is decided nearly worthless, so there's no extra time factor; use When to compare early plays with each other.</p>`;
     if (html !== playersHTMLCache) {
       playersHTMLCache = html;
       root.innerHTML = html;
@@ -937,7 +937,7 @@
       sports.length > 1 || playersRank === 'rel'
         ? `<div class="ss-controls"><div class="seg" role="group" aria-label="Sport">${chip('data-psport', 'all', 'All', playersSport === 'all')}${sports
             .map((l) => chip('data-psport', l, SB.league.name(l), playersSport === l))
-            .join('')}</div><div class="seg" role="group" aria-label="Rank by">${chip('data-prank', 'raw', metric === 'imp' ? 'Impact' : 'WPA', playersRank === 'raw')}${chip(
+            .join('')}</div><div class="seg" role="group" aria-label="Rank by">${chip('data-prank', 'raw', metric === 'imp' ? 'BONES' : 'WPA', playersRank === 'raw')}${chip(
             'data-prank',
             'rel',
             'vs sport avg',
@@ -952,7 +952,7 @@
           <span class="potd-k">Player of the Day${soFar}</span>
           ${headshot(crown.p)}
           <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${SB.league.name(crown.g.league)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
-          <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'}${playersRank === 'rel' ? ' vs sport avg' : ''}</small></div>
+          <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metric === 'imp' ? 'BONES' : 'WPA'}${playersRank === 'rel' ? ' vs sport avg' : ''}</small></div>
         </div>`
       : '';
     const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
@@ -971,14 +971,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
     return `${filters}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'
@@ -1031,7 +1031,7 @@
           <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
             <small>${SB.league.name(crown.g.league)} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
             <div class="by-list">${by(crown.g, crown.s)}</div></div>
-          <div class="potd-v"><b>${fmtWPA(metric === 'imp' ? crown.imp : crown.wpa)}</b><small>${metric === 'imp' ? 'Impact' : 'WPA'} · ${esc(crown.team.abbr)}</small></div>
+          <div class="potd-v"><b>${fmtWPA(metric === 'imp' ? crown.imp : crown.wpa)}</b><small>${metric === 'imp' ? 'BONES' : 'WPA'} · ${esc(crown.team.abbr)}</small></div>
         </div>`
       : '';
     const body = top
@@ -1052,7 +1052,7 @@
     return `${whenSeg}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable plays">
-            <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>Impact</th><th${col('wpa')}>WPA</th></tr></thead>
+            <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>`
         : '<div class="empty-note">No plays with play-by-play yet today.</div>'

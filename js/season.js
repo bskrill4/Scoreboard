@@ -333,7 +333,7 @@
       const legend = `<p class="pl-legend ss-legend">${colored.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.p.name)}</span>`).join('')}${
         more > 0 ? `<span><i class="gray"></i>${more} more player${more === 1 ? '' : 's'}</span>` : ''
       }</p>`;
-      const what = state.mode === 'cum' ? 'Cumulative Impact' : state.smooth ? `Impact per game, ${ROLL}-game average` : 'Impact per game';
+      const what = state.mode === 'cum' ? 'Cumulative BONES' : state.smooth ? `BONES per game, ${ROLL}-game average` : 'BONES per game';
       return `<div class="ss-chart">
           ${legend}
           <svg class="ss-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(what)} for ${n} players">
@@ -376,7 +376,7 @@
       const date = new Date(d.t).toLocaleDateString([], { month: 'short', day: 'numeric' });
       const label = state.mode === 'cum' ? 'season so far' : state.smooth ? `${ROLL}-game avg` : 'that game';
       const among = cfg.groups ? ` among ${cfg.groups.find(([k]) => k === state.group)[1]}` : '';
-      tip.innerHTML = `<b>${esc(s.p.name)}</b> <small>${esc(team)} · #${s.p.rank + 1} in Impact${esc(among)}</small><br>${date} · ${label} <b class="${d.v >= 0 ? 'pos' : 'neg'}">${
+      tip.innerHTML = `<b>${esc(s.p.name)}</b> <small>${esc(team)} · #${s.p.rank + 1} in BONES${esc(among)}</small><br>${date} · ${label} <b class="${d.v >= 0 ? 'pos' : 'neg'}">${
         d.v >= 0 ? '+' : '−'
       }${Math.abs(d.v).toFixed(1)}</b>`;
       tip.hidden = false;
@@ -661,8 +661,8 @@
       { k: 'ast', label: 'AST', v: count('ast'), f: 1 },
       { k: 'stl', label: 'STL', v: count('stl'), f: 1 },
       { k: 'blk', label: 'BLK', v: count('blk'), f: 1 },
-      { k: 'imp', label: 'Impact', v: (p) => p.imp * 100, signed: true },
-      { k: 'imp36', label: 'Imp/36', v: (p) => per36(p.imp, p), signed: true },
+      { k: 'imp', label: 'BONES', v: (p) => p.imp * 100, signed: true },
+      { k: 'imp36', label: 'BONES/36', v: (p) => per36(p.imp, p), signed: true },
       { k: 'wpa', label: 'WPA', v: (p) => p.wpa * 100, signed: true },
       { k: 'wpa36', label: 'WPA/36', v: (p) => per36(p.wpa, p), signed: true },
     ],
@@ -675,13 +675,13 @@
       games: 2,
       before: 60, // minutes
       show: 6,
-      unit: 'Impact per 36',
-      note: 'Players with 2+ games in the window and 60+ minutes before it. Rating = season Impact per 36 to date.',
+      unit: 'BONES per 36',
+      note: 'Players with 2+ games in the window and 60+ minutes before it. Rating = season BONES per 36 to date.',
     },
-    note: `<b>Impact</b> and <b>WPA</b> are season totals from our own replay of every game (the same numbers as the board and the player drawer).
-      Impact includes the <b>game floor</b> (switch it off in settings for swing only): a game that stayed one-sided still credits the winner, up to 75% of a typical game, split by the winning players' share of its swings. Close games are untouched, so a thriller still pays more than a blowout.
+    note: `<b>BONES</b> and <b>WPA</b> are season totals from our own replay of every game (the same numbers as the board and the player drawer).
+      BONES includes the <b>game floor</b> (switch it off in settings for swing only): a game that stayed one-sided still credits the winner, up to 75% of a typical game, split by the winning players' share of its swings. Close games are untouched, so a thriller still pays more than a blowout.
       <b>Per 36</b> scales a player's total to 36 minutes: total ÷ minutes × 36, so a reserve can be compared with a starter; it's noisy for players with few minutes, which is what the minutes filter is for.
-      The chart's tiers are the top 1 / 5 / 20 / 80% of players by season Impact, or everyone. The table's top six rows, in whatever order it's sorted, are colored in the chart (and drawn even if the tier leaves them out); everyone else is gray, fainter the more players are drawn. Hover a line to see who it is. A search (a name, or a team: BOS, Boston, Celtics, Boston Celtics) narrows the table and the chart to the same players; pick a tier to go back to the league. Regular season only (NBA Cup group games count; the Cup final doesn't).`,
+      The chart's tiers are the top 1 / 5 / 20 / 80% of players by season BONES, or everyone. The table's top six rows, in whatever order it's sorted, are colored in the chart (and drawn even if the tier leaves them out); everyone else is gray, fainter the more players are drawn. Hover a line to see who it is. A search (a name, or a team: BOS, Boston, Celtics, Boston Celtics) narrows the table and the chart to the same players; pick a tier to go back to the league. Regular season only (NBA Cup group games count; the Cup final doesn't).`,
   };
 
   // ---------- NFL ----------
@@ -713,8 +713,8 @@
   const NFL_STATS = SB.player.NFL_BOX;
   const perGame = (v, p) => (p.gp ? (v * 100) / p.gp : 0);
   const NFL_TAIL = [
-    { k: 'imp', label: 'Impact', v: (p) => p.imp * 100, signed: true },
-    { k: 'impg', label: 'Imp/G', v: (p) => perGame(p.imp, p), signed: true },
+    { k: 'imp', label: 'BONES', v: (p) => p.imp * 100, signed: true },
+    { k: 'impg', label: 'BONES/G', v: (p) => perGame(p.imp, p), signed: true },
     { k: 'wpa', label: 'WPA', v: (p) => p.wpa * 100, signed: true },
     { k: 'wpag', label: 'WPA/G', v: (p) => perGame(p.wpa, p), signed: true },
   ];
@@ -777,12 +777,12 @@
       games: 2,
       before: 2, // games
       show: 6,
-      unit: 'Impact per game',
-      note: 'Every player, any position, with 2+ games in the window and 2+ before it. Rating = season Impact per game to date.',
+      unit: 'BONES per game',
+      note: 'Every player, any position, with 2+ games in the window and 2+ before it. Rating = season BONES per game to date.',
     },
-    note: `<b>Impact</b> and <b>WPA</b> are season totals from our own replay of every game; <b>Imp/G</b> and <b>WPA/G</b> are per game played (the NFL has no minutes in the feed).
+    note: `<b>BONES</b> and <b>WPA</b> are season totals from our own replay of every game; <b>BONES/G</b> and <b>WPA/G</b> are per game played (the NFL has no minutes in the feed).
       Credit goes to the players named on each play: passes are 65% the quarterback's and 35% the targeted receiver's, runs the runner's, kicks the kicker's, and on defense only sacks and interceptions name a defender. So a pass rusher or defensive back ranks by his sacks and picks; tackles and coverage don't show up yet.
-      Positions are from each team's current roster. The chart's tiers are the top 1 / 5 / 20 / 80% of the chosen position by season Impact, or all of it. Search and colors work as on the NBA page. Regular season only.`,
+      Positions are from each team's current roster. The chart's tiers are the top 1 / 5 / 20 / 80% of the chosen position by season BONES, or all of it. Search and colors work as on the NBA page. Regular season only.`,
   };
 
   SB.season = makeSeason(NBA);

@@ -33,7 +33,7 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 five players on the floor for the team it helped and debited from the five it hurt. The NFL feed has no
 substitutions, so a play's swing goes to the players named on it (passer and receiver split a catch).
 
-**Impact (beta, the default)** — the Player value switch in settings flips back to classic WPA. Impact is meant to rank players across
+**Impact (beta, the default), shown in the app as BONES**, the **B**ounded **O**dds **N**et **E**ffect **S**core, named for our patron saint Bones Hyland (the code and these notes still call it Impact; "bounded" is the game floor) — the Player value switch in settings flips back to classic WPA. Impact is meant to rank players across
 games, leagues and sports. Each play's swing goes only to the players responsible for it (shooter 80% /
 assister 20%; a miss to the shooter, shared with a blocker; turnovers shared with the stealer; fouls and
 rebounds to whoever made them; NFL as before), then is divided by √leverage, where leverage =
