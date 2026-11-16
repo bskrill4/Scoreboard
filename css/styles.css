@@ -1290,3 +1290,25 @@ body.view-bonezone .days, body.view-bonezone .today-btn, body.view-bonezone .sla
 }
 @media (max-width: 520px) { .bz-bubble { font-size: 15px; padding: 14px 16px; } }
 @media (prefers-reduced-motion: reduce) { .bz-stage, .bz-bubble, .bz-fallback { animation: none; } }
+
+/* Pre-game basketball: the BONES pick (hatched bar: a prediction, not a live
+   win probability), top BONES per 36, and the injury report */
+.wpbar.bones i { background-image: repeating-linear-gradient(135deg, rgba(0, 0, 0, .28) 0 3px, transparent 3px 7px) !important; opacity: .85; }
+.bones-pred { padding: 14px 4px 4px; }
+.bp-row { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; margin-bottom: 12px; }
+.bp-team { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--dim); }
+.bp-team img { width: 40px; height: 40px; object-fit: contain; }
+.bp-team b { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; color: var(--dim); }
+.bp-team small { font-size: 11px; font-weight: 700; letter-spacing: .06em; }
+.bp-team.pick b, .bp-team.pick small { color: var(--text); }
+.bp-call { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 2px; }
+.bp-call small { font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.bp-call b { font-size: 20px; font-weight: 900; color: var(--yellow); }
+.bp-note { margin: 10px 0 0; font-size: 11px; color: var(--dim); line-height: 1.4; }
+.injuries .inj-team { margin-bottom: 12px; }
+.inj-row { display: flex; gap: 8px; align-items: baseline; margin-top: 6px; font-size: 13px; }
+.inj-tag { flex: none; font-size: 10px; font-weight: 900; letter-spacing: .08em; padding: 2px 6px; border-radius: 4px; }
+.inj-tag.out { background: #e5484d; color: #fff; }
+.inj-tag.gtd { border: 1px solid var(--dim); color: var(--dim); }
+.inj-list { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.inj-name small { color: var(--dim); font-size: 11px; }

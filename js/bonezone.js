@@ -48,34 +48,9 @@
   };
 
   async function compute(onProgress) {
-    const boards = await Promise.all(SB.seasonMonths(9).map((m) => SB.api.scoreboardMonth(m, 'nba')));
-    const games = [];
-    const seen = new Set();
-    for (const b of boards) {
-      for (const e of b.events || []) {
-        if (seen.has(e.id) || e.season?.slug !== 'regular-season' || e.status?.type?.state !== 'post') continue;
-        seen.add(e.id);
-        const score = {};
-        for (const c of e.competitions[0].competitors) score[String(c.team.id)] = Number(c.score) || 0;
-        games.push({ id: e.id, t: Date.parse(e.date), score });
-      }
-    }
-    games.sort((a, b) => a.t - b.t);
-
+    const games = await SB.bones.seasonGames(onProgress);
     const players = new Map();
     const teamGames = [];
-    let done = 0;
-    const queue = games.slice();
-    async function worker() {
-      while (queue.length) {
-        const g = queue.shift();
-        try {
-          g.rows = await SB.player.finalPlayers(g.id, 'nba');
-        } catch (e) {}
-        onProgress(++done, games.length);
-      }
-    }
-    await Promise.all(Array.from({ length: 4 }, worker));
     for (const g of games) {
       if (!g.rows) continue;
       const team = {}; // BONES as shown (with the game floor if it's on): the prediction model's input
@@ -97,7 +72,7 @@
       }
       g.team = team;
     }
-    const model = buildModel(games.filter((g) => g.rows));
+    const model = await SB.bones.model();
 
     const qual = [...players.values()].filter((p) => p.g.length >= MIN_GAMES && p.g.reduce((s, x) => s + x.min, 0) / p.g.length >= MIN_MPG);
     const half = (p) => Math.ceil(p.g.length / 2);
@@ -140,98 +115,8 @@
     };
   }
 
-  // ---------- predictions: BONES and only BONES ----------
-  // A team's strength is the BONES its players produce a minute, times the
-  // minutes they've been playing lately (players ruled out removed, the rest
-  // scaled back up to 240). No home court, no records, no lines: just bones.
-  const RECENT = 10; // a team's last N games set each player's minutes
-  const SHRINK_MIN = 150; // a player's rate is pulled toward average until he has minutes
-  const CAL_MIN_GAMES = 5; // both teams need this many games before a game counts in the backtest
-
-  function buildModel(games) {
-    const teamGames = new Map(); // team -> [{ t, min: Map(player -> minutes) }]
-    const players = new Map(); // id -> { name, team, t, imp, min }
-    let leagueImp = 0;
-    let leagueMin = 0;
-    // Backtest: each team's BONES per game *before* the game, against who won.
-    const before = new Map(); // team -> { sum, n }
-    const cal = [];
-    for (const g of games) {
-      const ids = Object.keys(g.score);
-      if (ids.length === 2 && ids.every((id) => (before.get(id)?.n || 0) >= CAL_MIN_GAMES)) {
-        const [a, b] = ids.map((id) => before.get(id));
-        if (g.score[ids[0]] !== g.score[ids[1]]) cal.push({ diff: a.sum / a.n - b.sum / b.n, win: g.score[ids[0]] > g.score[ids[1]] ? 1 : 0 });
-      }
-      for (const id of ids) {
-        const x = before.get(id) || { sum: 0, n: 0 };
-        x.sum += g.team?.[id] || 0;
-        x.n++;
-        before.set(id, x);
-      }
-      const mins = new Map(ids.map((id) => [id, new Map()]));
-      for (const [pid, r] of Object.entries(g.rows)) {
-        if (!r[3]) continue;
-        const team = String(r[3][0]);
-        const min = r[3][1] || 0;
-        const imp = SB.impact.rowImpact(r) * 100;
-        const p = players.get(pid) || { name: r[3][7], team, t: 0, imp: 0, min: 0 };
-        p.imp += imp;
-        p.min += min;
-        if (g.t >= p.t) [p.t, p.team, p.name] = [g.t, team, r[3][7] || p.name];
-        players.set(pid, p);
-        mins.get(team)?.set(pid, min);
-        leagueImp += imp;
-        leagueMin += min;
-      }
-      for (const id of ids) {
-        if (!teamGames.has(id)) teamGames.set(id, []);
-        teamGames.get(id).push({ t: g.t, min: mins.get(id) });
-      }
-    }
-    const avgRate = leagueMin ? leagueImp / leagueMin : 0;
-    for (const p of players.values()) p.rate = (p.imp + avgRate * SHRINK_MIN) / (p.min + SHRINK_MIN);
-
-    // One number turns a BONES gap into a chance to win: the logistic slope
-    // that best fits this season's games (a coarse search is plenty).
-    let k = 0.05;
-    let best = -Infinity;
-    for (let kk = 0.002; kk <= 0.3; kk += 0.002) {
-      let ll = 0;
-      for (const c of cal) {
-        const pr = 1 / (1 + Math.exp(-kk * c.diff));
-        ll += Math.log(c.win ? pr : 1 - pr);
-      }
-      if (ll > best) [best, k] = [ll, kk];
-    }
-    const called = cal.filter((c) => c.diff !== 0);
-    const right = called.filter((c) => (c.diff > 0) === (c.win === 1)).length;
-    return { players, teamGames, k, record: { right, n: called.length } };
-  }
-
-  // A team's expected BONES tonight. out: Map(player id -> share of his minutes lost).
-  function teamStrength(model, teamId, out) {
-    const recent = (model.teamGames.get(teamId) || []).slice(-RECENT);
-    if (!recent.length) return null;
-    const lineup = [];
-    for (const [pid, p] of model.players) {
-      if (p.team !== teamId) continue; // traded away, or not on this team
-      const min = recent.reduce((s, g) => s + (g.min.get(pid) || 0), 0) / recent.length;
-      if (min > 0) lineup.push({ pid, p, min: min * (1 - (out.get(pid) || 0)) });
-    }
-    const total = lineup.reduce((s, x) => s + x.min, 0);
-    if (!total) return null;
-    const scale = 240 / total;
-    let bones = 0;
-    const missing = [];
-    for (const x of lineup) bones += x.p.rate * Math.min(42, x.min * scale);
-    for (const [pid, share] of out) {
-      const p = model.players.get(pid);
-      if (p && p.team === teamId && share >= 1) missing.push(p.name);
-    }
-    return { bones, missing };
-  }
-
-  const OUT_SHARE = { out: 1, doubtful: 1, questionable: 0.5, 'day-to-day': 0.3 };
+  // ---------- predictions: BONES and only BONES (the model is js/bones.js) ----------
+  const { RECENT } = SB.bones;
   const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
   const WINDOW_H = 36; // "the next day or so"
   const UPSET_MIN = 0.53; // below this BONES calls it a toss-up, not an upset
@@ -279,16 +164,9 @@
         try {
           sum = await SB.api.summary(e.id, 'nba');
         } catch (err) {}
-        const out = new Map();
-        for (const t of sum?.injuries || [])
-          for (const i of t.injuries || []) {
-            const share = OUT_SHARE[String(i.status || '').toLowerCase()];
-            if (share) out.set(String(i.athlete?.id), share);
-          }
-        const h = teamStrength(model, String(home.team.id), out);
-        const a = teamStrength(model, String(away.team.id), out);
-        if (!h || !a) return null;
-        const pHome = 1 / (1 + Math.exp(-model.k * (h.bones - a.bones)));
+        const pr = SB.bones.predict(model, String(home.team.id), String(away.team.id), SB.bones.injuries(sum).out);
+        if (!pr) return null;
+        const [h, a, pHome] = [pr.home, pr.away, pr.pHome];
         // Who's favored: the line's favorite flag, else ESPN's predictor.
         let favHome = null;
         const line = (sum?.pickcenter || []).find((x) => x.homeTeamOdds || x.awayTeamOdds);

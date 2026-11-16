@@ -361,6 +361,8 @@
           : seasonLeaders(comp),
     };
 
+    if (evState === 'pre' && PREGAME_LEAGUES.has(ev._league)) g.pre = pregameInfo(ev, g);
+
     const tape = tapes.get(ev.id);
     if (tape && tape.plays.length) {
       const v = sport.engine.viewAt(tape, T, evState === 'post');
@@ -785,6 +787,83 @@
     }
   }
 
+  // ---------- pre-game basketball: injury reports and the BONES pick ----------
+  // Before tip-off an NBA or college game's summary is small and carries the
+  // injury report; it's fetched every few minutes. NBA games also get the
+  // BONES pick and each team's top BONES per 36 (js/bones.js), from a model
+  // built once from the season (cached per game in localStorage).
+  const PREGAME_LEAGUES = new Set(['nba', 'ncaam']);
+  const PREGAME_EVERY = 10 * 60e3;
+  const PREGAME_POOL = 2;
+  const pregame = new Map(); // event id -> { at, inj }
+  let bonesModel = null;
+  let bonesProgress = null; // [done, total] while the season loads
+  let bonesFailed = 0;
+
+  async function pollPregame() {
+    if (replay) return;
+    const pre = events.filter((ev) => shown(ev) && PREGAME_LEAGUES.has(ev._league) && ev.status.type.state === 'pre');
+    if (pre.some((ev) => ev._league === 'nba') && Date.now() - bonesFailed > 60e3) {
+      SB.bones
+        .model((done, total) => {
+          bonesProgress = [done, total];
+        })
+        .then((m) => {
+          if (m === bonesModel) return;
+          bonesModel = m;
+          bonesProgress = null;
+          tick();
+        })
+        .catch(() => (bonesFailed = Date.now()));
+    }
+    const todo = pre.filter((ev) => Date.now() - (pregame.get(ev.id)?.at || 0) >= PREGAME_EVERY);
+    for (const ev of todo) pregame.set(ev.id, { ...pregame.get(ev.id), at: Date.now() });
+    let changed = false;
+    const queue = todo.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const ev = queue.shift();
+        try {
+          const inj = SB.bones.injuries(await SB.api.summary(ev.id, ev._league));
+          pregame.get(ev.id).inj = inj;
+          changed = true;
+        } catch (e) {
+          pregame.get(ev.id).at = Date.now() - PREGAME_EVERY + 60e3; // try again in a minute
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: PREGAME_POOL }, worker));
+    if (changed) tick();
+  }
+
+  // What a pre-game card shows. Memoized: it only changes with the model or the report.
+  const preMemo = new Map(); // event id -> { model, inj, info }
+  function pregameInfo(ev, g) {
+    const inj = pregame.get(ev.id)?.inj || null;
+    const memo = preMemo.get(ev.id);
+    if (memo && memo.model === bonesModel && memo.inj === inj && (bonesModel || ev._league !== 'nba')) return memo.info;
+    const info = {
+      inj: inj ? { away: inj.byTeam[g.away.id] || [], home: inj.byTeam[g.home.id] || [] } : null,
+      bones: null,
+      loading: null,
+    };
+    if (ev._league === 'nba') {
+      if (bonesModel) {
+        const out = inj?.out || new Map();
+        const pr = SB.bones.predict(bonesModel, g.home.id, g.away.id, out);
+        if (pr) {
+          info.bones = {
+            pHome: pr.pHome,
+            injKnown: !!inj,
+            top: { away: SB.bones.topPer36(bonesModel, g.away.id, out), home: SB.bones.topPer36(bonesModel, g.home.id, out) },
+          };
+        }
+      } else info.loading = bonesProgress || [0, 0];
+    }
+    if (bonesModel || ev._league !== 'nba') preMemo.set(ev.id, { model: bonesModel, inj, info });
+    return info;
+  }
+
   function wantsSummary(ev) {
     const meta = fetchMeta.get(ev.id) || { last: 0, busy: false, tries: 0 };
     fetchMeta.set(ev.id, meta);
@@ -844,6 +923,7 @@
           lastBoard = Date.now();
         }
         await pollSummaries();
+        await pollPregame();
         if (hidden) tick(); // the render loop may be throttled; this is what fires an alert
       }
       await new Promise((r) => setTimeout(r, 2000));

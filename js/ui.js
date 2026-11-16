@@ -97,6 +97,20 @@
     )}%;background:${g.home.css}"></i></div>`;
   }
 
+  // Pre-game NBA: the BONES pick drawn in the win-probability bar's place
+  // (hatched, so it never reads as a live win probability).
+  const bonesP = (g) => (g.state === 'pre' && g.pre?.bones ? g.pre.bones.pHome : null);
+  function bonesBar(g) {
+    const a = (1 - bonesP(g)) * 100;
+    return `<div class="wpbar bones" title="BONES prediction"><i style="width:${a.toFixed(1)}%;background:${g.away.css}"></i><i style="width:${(100 - a).toFixed(
+      1
+    )}%;background:${g.home.css}"></i></div>`;
+  }
+  const bonesPick = (g) => {
+    const p = bonesP(g);
+    return p >= 0.5 ? g.home : g.away;
+  };
+
   // ---------- tile (the rows of four) ----------
   function teamRow(g, side) {
     const t = g[side];
@@ -131,6 +145,11 @@
       g.wp == null || g.state === 'final'
         ? ''
         : `<div class="wplabels"><span>${pct(1 - g.wp)}</span><span>${esc(g.downText || 'win prob')}</span><span>${pct(g.wp)}</span></div>`;
+    const p = bonesP(g);
+    const wp =
+      p == null
+        ? `${wpBar(g)}${wpLabels}`
+        : `${bonesBar(g)}<div class="wplabels"><span>${pct(1 - p)}</span><span>BONES: ${Math.abs(p - 0.5) < 0.03 ? 'toss-up' : esc(bonesPick(g).abbr)}</span><span>${pct(p)}</span></div>`;
     return `
       <div class="g-top">
         ${statusPill(g)}
@@ -138,7 +157,7 @@
         <span class="widx" title="Watchability index">${g.index}</span>
       </div>
       <div class="g-teams">${teamRow(g, 'away')}${teamRow(g, 'home')}</div>
-      <div class="g-wp">${wpBar(g)}${wpLabels}</div>
+      <div class="g-wp">${wp}</div>
       ${tileFoot(g)}`;
   }
 
@@ -657,6 +676,67 @@
     return `<div class="note" aria-live="polite"><p>${esc(f.text)}</p>${dots}</div>`;
   }
 
+  // Pre-game: BONES's pick, where the win-probability chart goes once the game starts.
+  function bonesPredHTML(g) {
+    const b = g.pre?.bones;
+    if (!b) {
+      const [done, total] = g.pre?.loading || [0, 0];
+      const msg = total ? `Reading the bones… ${done} of ${total} games this season` : 'Reading the bones…';
+      return `<div class="chart empty"><span>${msg}</span></div>`;
+    }
+    const pick = bonesPick(g);
+    const conf = Math.max(b.pHome, 1 - b.pHome);
+    const call = conf < 0.53 ? 'Toss-up' : conf >= 0.62 ? 'Strong lean' : 'Lean';
+    const side = (t, p) => `<div class="bp-team${t === pick ? ' pick' : ''}"><img src="${esc(t.logo)}" alt=""><b>${pct(p)}</b><small>${esc(t.abbr)}</small></div>`;
+    return `<div class="bones-pred">
+      <div class="bp-row">${side(g.away, 1 - b.pHome)}
+        <div class="bp-call"><small>BONES picks</small><b>${conf < 0.53 ? 'Toss-up' : esc(pick.name)}</b><small>${call === 'Toss-up' ? 'too close to call' : `${call.toLowerCase()} · ${pct(conf)}`}</small></div>
+        ${side(g.home, b.pHome)}</div>
+      <p class="bp-note">BONES only: each player's BONES a minute × his recent minutes${b.injKnown ? ', injured players removed' : ' (injury report still loading)'}. No home court, no records.</p>
+    </div>`;
+  }
+
+  // Pre-game NBA: each team's top three by BONES per 36 (season), tonight's rotation.
+  function bonesTopHTML(g) {
+    const top = g.pre?.bones?.top;
+    const side = (t, list) =>
+      list.length
+        ? `<div class="five">
+          <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+          ${list
+            .map((p) => {
+              const pl = { id: p.id, name: p.name, headshot: `https://a.espncdn.com/i/headshots/nba/players/full/${p.id}.png` };
+              return `<div class="crow" ${playerAttrs(g, pl, t)}>
+              ${headshot(pl, 'sm')}
+              <span class="who">${esc(p.name)}</span>
+              <span class="line">${Math.round(p.mpg)}<small> MPG</small></span>
+              <span class="wpa ${p.per36 >= 0 ? 'pos' : 'neg'}">${p.per36 >= 0 ? '+' : '−'}${Math.abs(p.per36).toFixed(1)}</span>
+            </div>`;
+            })
+            .join('')}
+        </div>`
+        : '';
+    return side(g.away, top.away) + side(g.home, top.home);
+  }
+
+  // Pre-game basketball: each team's injury report, ruled-out players first.
+  function injuryHTML(g) {
+    const inj = g.pre?.inj;
+    if (!inj) return `<div class="empty-note">Loading the injury report…</div>`;
+    const side = (t, list) => {
+      const out = list.filter((x) => x.out);
+      const gtd = list.filter((x) => !x.out);
+      const names = (xs, tag) => xs.map((x) => `<span class="inj-name">${esc(x.name)}${tag ? ` <small>${esc(tag(x))}</small>` : ''}</span>`).join('');
+      return `<div class="inj-team">
+        <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+        ${out.length ? `<div class="inj-row"><span class="inj-tag out">Out</span><span class="inj-list">${names(out, (x) => (/doubtful/i.test(x.status) ? 'doubtful' : ''))}</span></div>` : ''}
+        ${gtd.length ? `<div class="inj-row"><span class="inj-tag gtd">GTD</span><span class="inj-list">${names(gtd, (x) => x.status.toLowerCase())}</span></div>` : ''}
+        ${!list.length ? `<div class="inj-row"><span class="inj-list dim">Nobody listed</span></div>` : ''}
+      </div>`;
+    };
+    return side(g.away, inj.away) + side(g.home, inj.home);
+  }
+
   function heroHTML(g, opts) {
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
@@ -668,8 +748,13 @@
         : hide
         ? `<b class="hidden">${g.state === 'final' ? 'Final' : 'Live'}</b><small>Score hidden</small>`
         : `<b>${esc(g.statusText)}</b><small class="lastplay">${esc(SB.league.football(g.league) ? g.downText : g.lastPlay)}</small>`;
-    const chart = chartHTML(g); // first: it sets g._cap for the heading
-    const leadersTitle = !g.players.length
+    const preBones = g.state === 'pre' && g.league === 'nba' && g.pre;
+    const chart = preBones ? bonesPredHTML(g) : chartHTML(g); // first: it sets g._cap for the heading
+    if (preBones) g._cap = '';
+    const topBones = preBones && g.pre.bones && (g.pre.bones.top.away.length || g.pre.bones.top.home.length);
+    const leadersTitle = topBones
+      ? 'Top BONES per 36 <small>this season · tonight\'s rotation</small>'
+      : !g.players.length
       ? 'Players to watch'
       : metric === 'imp'
       ? 'BONES leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
@@ -684,6 +769,9 @@
         : g.league === 'nhl'
         ? `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
            <section class="h-col"><h3>On ice</h3>${iceHTML(g)}${noteHTML(g, hide)}</section>`
+        : g.state === 'pre' && g.pre
+        ? `<section class="h-col"><h3>${leadersTitle}</h3><div class="${topBones ? 'court' : 'leaders'}">${topBones ? bonesTopHTML(g) : leadersHTML(g)}</div></section>
+           <section class="h-col"><h3>Injury report</h3><div class="court injuries">${injuryHTML(g)}</div>${noteHTML(g, hide)}</section>`
         : `<section class="h-col"><h3>${leadersTitle}</h3><div class="leaders">${leadersHTML(g)}</div></section>
            <section class="h-col"><h3>${courtTitle}</h3><div class="court">${courtHTML(g)}</div>${noteHTML(g, hide)}</section>`;
     return `
@@ -699,10 +787,10 @@
         <div class="h-mid">${mid}</div>
         ${heroTeam(g, 'home', hide)}
       </div>
-      <div class="g-wp">${wpBar(g)}</div>
+      <div class="g-wp">${bonesP(g) == null ? wpBar(g) : bonesBar(g)}</div>
       <div class="h-body">
         <section class="h-col">
-          <h3 class="wp-h">Win probability${chart && g._cap ? g._cap : ''}</h3>
+          <h3 class="wp-h">${preBones ? 'BONES prediction' : 'Win probability'}${chart && g._cap ? g._cap : ''}</h3>
           ${chart}
           ${hide ? '' : swingsHTML(g)}
           ${partsHTML(g)}
