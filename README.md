@@ -56,9 +56,14 @@ replayed through the same engine as the board and its per-player Impact/WPA kept
 (`sb.final.v1.<event>`, ~1.3 KB a game), so each game is downloaded once and every player in it is free after.
 Bump `CACHE_VERSION` in `js/player.js` whenever the Impact or WPA math changes.
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by Impact or WPA, with their
-counting stats and a Player of the Day, filtered by sport if you like, and either by the raw number or **vs sport avg**
-(minus that day's average player in the same sport; sports aren't on one baseline: on Nov 14 the average player was
-+7.2 Impact in the NBA, +4.3 in college basketball, +1.7 in college football, −0.5 for NHL skaters); **Plays** (`#plays`) ranks the day's biggest single plays, with who
+counting stats and a Player of the Day, filtered by sport if you like, and either **sport-adjusted** (the default) or by
+the raw number. Impact isn't zero-sum and each sport has its own baseline and spread: basketball credits a make without
+debiting a defender, hockey debits misses and goalies (Nov 15, total Impact per game: NBA +146, college basketball +87,
+NFL +73, NHL −11; spread per player 9.0 in the NBA, 3.6 in the NHL), so the raw list's top 50 was NBA 14, college
+basketball 32, NFL 3, NHL 0. Sport-adjusted is how many of its sport's standard deviations a player is above that
+sport's average player that day, times the spread of all players together, so it still reads in Impact (`ADJ_MIN` in
+`js/ui.js`: a sport with fewer than 25 players that day uses the all-sports spread). Same day, adjusted: NFL 19, NHL 13,
+NBA 11, college basketball 5, college football 2; **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
 
 **NBA season** (Rankings › NBA season, `#season`, `js/season.js`): every finished regular-season game is replayed
@@ -83,8 +88,12 @@ game that stayed one-sided hands out little credit and the winner's dominance ne
 against a median NBA game of 165; Wembanyama's 12-12-6 with 2 blocks was +4.8). When a finished game's pool (the
 positive Impact it handed out) is below its sport's floor, 75% of a median game (`FLOOR` in `js/engine.js`: NBA 123,
 NFL 59, college basketball 49, college football 45, NHL 35, measured Nov 9–14), the winning team gets the shortfall,
-split by each player's share of its positive Impact. Games above the floor are untouched, so a thriller still pays more
-than a blowout. Every view keeps `impRaw` and `impFloor`; saved games store both, so the switch applies instantly to the
+split half by each winner's share of its positive Impact and half by playing time (basketball minutes on the floor;
+football and hockey have no shift data, so that half is split evenly among the winners who played: counting credited
+plays handed it to goalies and quarterbacks), with no one taking more than a quarter of it (`FLOOR_CAP`).
+Split by positive Impact alone, a cupcake's tiny pool made noise huge (Nov 15: USC 122–46 UAPB had a pool of 2, and one
+player went +1.4 → +36.4, #4 on the day; Derrick White in a 37-point BOS win, +6 → +31). Games above the floor are
+untouched, so a thriller still pays more than a blowout. Every view keeps `impRaw` and `impFloor`; saved games store both, so the switch applies instantly to the
 board, Rankings, the drawer and the season pages. Through Nov 14 it topped up 50 of 188 NBA games; Wembanyama went from
 #12 to #4 in Impact/36, the top three stayed (Wembanyama in that game: +4.8 → +19.1).
 
@@ -116,7 +125,11 @@ change. The summary shows what the checks cost against the best unchecked plan. 
 **Stream delay** — every play carries a real-world timestamp, so the board shows the game exactly as
 it stood `delay` seconds ago. "Hold" freezes the board until you move the slider back.
 
-**Watchability** — `0.42·tension + 0.12·swings + 0.16·matchup + 0.15·stars + 0.15·big nights`.
+**Watchability** — `0.42·tension + 0.12·swings + alive·(0.16·matchup + 0.15·stars + 0.15·big nights)`.
+**Alive** (`DEAD` in `js/watch.js`) is 1 until a live game is all but over, then fades on crunch time's doubt curve to
+0.4 (the trailing side at 1% or less), so a decided game stops scoring for who's playing in it (Nov 15: PIT–CIN, 18–38 in
+the 4th at 99.9%, held the top for 40 minutes at 46 over a one-goal 3rd period; decided NFL games averaged 36, more than
+the average live NBA game; after: 16).
 Matchup uses win % shrunk toward .500, with a record's third number (NHL overtime losses, NFL ties) as
 half a win; hockey then takes .05 off (`recordBias`), since overtime losses put its average team at ~.550. Stars come from ESPN's leaders (`starLists` in `js/api.js`): NBA by points + rebounds + assists
 per game (top 10 = 1, next 15 = 0.6, next 25 = 0.3), NHL by points (10 / 10 / 10 at the same weights).
@@ -166,16 +179,25 @@ ranked team's game is missed. Index tilts (`SPORT.ncaaf`, `RANKED` in `js/watch.
 "Top-10 showdown" / "Ranked showdown" chip; **close and late** counts more (early quarters count less, `lateExp`, and the
 crunch-time floor covers the last 5 minutes, `crunchSec`); the **upset alert** covers any ranked favorite within one score
 (8 points); overtime scores full swings, since every possession can end it. Stars are FBS passing, rushing and
-receiving leaders at smaller weights than the NFL's. Plan length is an estimated 3h30.
-Live games rank first, then upcoming, then finals. Click a tile to pin it to the top. Per-sport tuning
+receiving leaders at smaller weights than the NFL's, plus a **ranked team's own leaders** (`RANKED_STAR` in `js/main.js`:
+.6 each for a top-10 team, .4 for 11–25; ESPN's team leaders before kickoff, the game's top passer, rusher and receiver
+once it starts, past 75 passing or 40 rushing/receiving yards; kept per game, never added to the shared star list), since the FBS lists are mostly Group of Five volume (Nov 15: #19 Ole Miss at Oklahoma had none; at the
+half it went from 33 to 41). Plan length is an estimated 3h30.
+NFL big nights are tiered to be as rare as the NBA's: 400 passing yards or 200 from scrimmage 1, 4 TD passes .8,
+150 from scrimmage or 3 TDs .7, 350 passing .6, 125 from scrimmage .5, 300 passing .35, 100 from scrimmage .3.
+Live games rank first, then upcoming, then finals. Upcoming games go by index until one is within 45 minutes of its
+start; then they go by start time, with the index breaking ties among games starting within 10 minutes of each other
+(`SOON_MIN` in `js/main.js`; Nov 15 the 7:20 PM PIT–CIN sat on top from 11:37 to noon with eight noon games about to start). Click a tile to pin it to the top. Per-sport tuning
 (margins, record weighting, what counts as a big night) lives in `SPORT` and the `performance` functions in `js/watch.js`.
 
 **The Bone Zone** (`#bonezone`, `js/bonezone.js`): is BONES real yet? A floating 3D skull (Three.js r128, loaded from cdnjs
 only when the page opens) reads out a reliability check on this NBA regular season in speech bubbles, from the same
 per-game cache as the season pages. Players with 8+ games and 15+ minutes a game; everything per 36 minutes.
 **Consistency**: odd games vs even games (and the whole-season reliability by Spearman-Brown, 2r/(1+r)); **holding up**:
-first half of a player's season vs second half; **winning**: a team's BONES in a game vs its final margin, and
-BONES per game vs point differential over the season. Points and on-court WPA run through the same checks for scale.
+first half of a player's season vs second half; **winning**: a team's swing-only BONES in a game vs its final margin,
+and per game vs point differential over the season (without the game floor, which is paid to the winner and made the
+check partly true by construction: .65/.81 with it, .42/.42 without, Nov 16). The numbers are counted again when the
+Game floor switch changes and after 6 hours; finished games are saved only once their tape has the closing play. Points and on-court WPA run through the same checks for scale.
 Grades: .70+ solid, .50 getting there, .30 shaky, below that mostly noise. "The numbers" opens the table.
 
 **Ask the skull** reads NBA games in the next 36 hours with BONES and nothing else. Team strength is each player's

@@ -160,6 +160,53 @@
     }
   }
 
+  // College football: the FBS star list is the season's volume leaders, mostly
+  // Group of Five quarterbacks, so a ranked game could score no stars at all
+  // (Nov 15: #19 Ole Miss at Oklahoma, 0). A ranked team's own leaders (ESPN's
+  // passing, rushing and receiving leader for each team; once the game is on,
+  // its top passer, rusher and receiver so far, past RANKED_STAR.min yards so a
+  // backup's one carry doesn't count) count as stars in that game:
+  // RANKED_STAR.top for a top-10 team, RANKED_STAR.rest for 11-25. They're kept
+  // per game (an overlay on the star list), never written into the shared list,
+  // so this week's rank doesn't follow a player into other games or days.
+  const RANKED_STAR = { top: 0.6, rest: 0.4, min: { passYd: 75, rushYd: 40, recYd: 40 } };
+  function rankedLeaders(g, comp) {
+    const out = new Map(); // id -> { weight, name }
+    for (const c of comp.competitors || []) {
+      const team = String(c.team.id) === String(g.home.id) ? g.home : String(c.team.id) === String(g.away.id) ? g.away : null;
+      if (!team || !team.rank) continue;
+      const weight = team.rank <= 10 ? RANKED_STAR.top : RANKED_STAR.rest;
+      const mark = (id, name) => {
+        if (!out.has(id) || out.get(id).weight < weight) out.set(id, { weight, name });
+      };
+      const leaders = (c.leaders || []).map((cat) => cat.leaders?.[0]?.athlete).filter((a) => a?.id);
+      for (const a of leaders) mark(String(a.id), a.displayName);
+      // ESPN drops team leaders once a game starts: use the game's own top passer, rusher and receiver.
+      if (!leaders.length) {
+        const mine = g.players.filter((p) => String(p.teamId) === String(team.id));
+        for (const [k, min] of Object.entries(RANKED_STAR.min)) {
+          const top = mine.reduce((best, p) => ((p[k] || 0) > (best?.[k] || 0) ? p : best), null);
+          if (top && top[k] >= min) mark(String(top.id), top.name);
+        }
+      }
+    }
+    return out;
+  }
+  // The star list as one game sees it: the shared list, plus its own extras at
+  // whichever weight is higher.
+  function starsWith(extra) {
+    if (!extra || !extra.size) return stars;
+    return {
+      get(id) {
+        const a = stars.get(id);
+        const b = extra.get(id);
+        if (!b) return a;
+        return a && a.weight >= b.weight ? a : { ...a, ...b };
+      },
+      has: (id) => stars.has(id) || extra.has(id),
+    };
+  }
+
   // ESPN's play-by-play can stall for minutes while its scoreboard stays live.
   // At zero stream delay, if the scoreboard is clearly ahead of the last play,
   // show its score and clock instead of freezing on the stale play. (With a
@@ -276,6 +323,7 @@
     const sport = SPORTS[ev._league];
     const g = {
       id: ev.id,
+      at: T, // the moment this model shows (Infinity: live, no delay)
       league: ev._league,
       reg: sport.reg,
       quarter: sport.quarter,
@@ -347,7 +395,6 @@
         g.story = SB.runs.story(tape, v.playCount, g.league, v.players);
         g.run = g.story && g.story.run;
         g.leadChanges = v.leadChanges || 0;
-        for (const p of g.players) p.star = stars.has(p.id);
         if (evState === 'in' && T === Infinity) scoreboardFallback(g, ev, ac, hc, sport);
       }
     } else if (evState !== 'pre') {
@@ -382,11 +429,13 @@
     }
 
     if (g.league === 'ncaam') tagProspects(g);
+    const gameStars = starsWith(g.league === 'ncaaf' ? rankedLeaders(g, comp) : null);
+    for (const p of g.players) p.star = gameStars.has(p.id); // after tagProspects, which adds to the list
     if (g.league === 'nba') {
       const played = teamsPlayedBefore(loadedDay);
       if (played) g.b2b = { away: played.has(g.away.id), home: played.has(g.home.id) };
     }
-    const rated = SB.watch.rate(g, stars);
+    const rated = SB.watch.rate(g, gameStars);
     g.index = rated.index;
     g.reasons = rated.reasons;
     g.parts = rated.parts;
@@ -441,10 +490,28 @@
   // Any stoppage a viewer would be sitting through: end of a period, halftime, a timeout.
   const atStoppage = (g) => g.state === 'live' && (g.inCommercial || /^(END|HALFTIME)\b/.test(g.statusText || ''));
 
+  // Upcoming games: one within SOON_MIN of its start goes ahead of later ones,
+  // by start time in STARTS_TOGETHER_MIN slots (index breaks ties within a slot),
+  // so the next kickoffs lead instead of a better game hours away (Nov 15: the
+  // 7:20 PM PIT-CIN sat on top from 11:37 to noon while eight noon games were
+  // about to start). One key per game, so the order is consistent (comparing
+  // pairs by "either one soon" could go in a circle).
+  const SOON_MIN = 45;
+  const STARTS_TOGETHER_MIN = 10;
+  function startKey(g) {
+    if (!g.start) return Infinity;
+    const now = Number.isFinite(g.at) ? g.at : baseNow();
+    return g.start - now <= SOON_MIN * 60000 ? Math.floor(g.start / (STARTS_TOGETHER_MIN * 60000)) : Infinity;
+  }
   function better(b, a, margin) {
     const gb = group(b);
     const ga = group(a);
     if (gb !== ga) return gb < ga;
+    if (gb === 1) {
+      const kb = startKey(b);
+      const ka = startKey(a);
+      if (kb !== ka) return kb < ka;
+    }
     // Only live games jitter; upcoming and finished games sort strictly.
     return b.index > a.index + (gb === 0 ? margin : 0);
   }
@@ -926,6 +993,7 @@
       for (const t of tapes.values()) t._n = -1; // views cache Impact: rebuild them
       SB.season.refresh();
       SB.nflSeason.refresh();
+      SB.boneZone.refresh();
       tick();
     });
     const alertBtn = $('alertSwitch');

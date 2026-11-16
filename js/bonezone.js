@@ -78,16 +78,20 @@
     await Promise.all(Array.from({ length: 4 }, worker));
     for (const g of games) {
       if (!g.rows) continue;
-      const team = {};
+      const team = {}; // BONES as shown (with the game floor if it's on): the prediction model's input
+      const swing = {}; // swing-only BONES: the "does it win" check
       for (const [id, r] of Object.entries(g.rows)) {
         if (!r[3]) continue;
         const row = { imp: SB.impact.rowImpact(r) * 100, wpa: r[1] * 100, team: String(r[3][0]), min: r[3][1], pts: r[3][2] };
         team[row.team] = (team[row.team] || 0) + row.imp;
+        swing[row.team] = (swing[row.team] || 0) + r[0] * 100;
         const p = players.get(id) || { name: r[3][7], g: [] };
         p.g.push(row);
         players.set(id, p);
       }
-      for (const [id, sum] of Object.entries(team)) {
+      // The game floor is paid to the winner because it won, so with it the
+      // team-vs-margin check would be partly true by construction: swing only.
+      for (const [id, sum] of Object.entries(swing)) {
         const opp = Object.keys(g.score).find((k) => k !== id);
         teamGames.push({ team: id, imp: sum, margin: g.score[id] - g.score[opp] });
       }
@@ -232,6 +236,20 @@
   const WINDOW_H = 36; // "the next day or so"
   const UPSET_MIN = 0.53; // below this BONES calls it a toss-up, not an upset
   const isUpset = (g) => g.fav && g.pick !== g.fav && g.conf >= UPSET_MIN;
+  const SUMMARY_POOL = 3;
+  // fn over items, at most n at a time; results in the items' order.
+  async function pool(items, n, fn) {
+    const out = new Array(items.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i]);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(n, items.length) }, worker));
+    return out;
+  }
 
   // Upcoming NBA games, each with BONES's pick and the favorite (from the
   // betting line once it's posted, else ESPN's matchup predictor). The line
@@ -249,8 +267,11 @@
         seen.add(e.id);
         events.push(e);
       }
-    const games = await Promise.all(
-      events.map(async (e) => {
+    // Each summary is a whole game file (~0.5 MB): a few at a time, not all at once.
+    const games = await pool(
+      events,
+      SUMMARY_POOL,
+      async (e) => {
         const comp = e.competitions[0];
         const side = (h) => comp.competitors.find((c) => c.homeAway === h);
         const [home, away] = [side('home'), side('away')];
@@ -288,7 +309,7 @@
           conf: Math.max(pHome, 1 - pHome),
           fav: favHome == null ? null : favHome ? 'home' : 'away',
         };
-      })
+      }
     );
     return games.filter(Boolean).sort((x, y) => x.t - y.t);
   }
@@ -313,8 +334,8 @@
       `First, consistency. If BONES measures something real about a player, his odd games should look like his even games. They line up at r = ${r2(b.oddEven)}. Points do ${r2(s.pts.oddEven)}; on-court WPA only ${r2(s.wpa.oddEven)}.`,
       `Stretched to a full season so far, that's a reliability of ${r2(rel)} for BONES against ${r2(relPts)} for points: ${grade(rel)}. BONES carries about ${ratio}% of the signal points do, and nearly four times WPA's.`,
       `Second, does it hold up? A player's first half of the season against his second: BONES ${r2(b.firstSecond)}, points ${r2(s.pts.firstSecond)}, WPA ${r2(s.wpa.firstSecond)}. ${b.firstSecond >= 0.5 ? 'A good BONES player mostly stays a good BONES player.' : 'It drifts a lot from half to half.'}`,
-      `Third, does it win? Add up a team's BONES in a game and compare it with the final margin: r = ${r2(s.teamGame)}. Over the season, across ${s.teams} teams, BONES per game tracks point differential at ${r2(s.teamSeason)}. ${s.teamSeason >= 0.7 ? 'The skull approves: BONES follows winning.' : 'Winning and BONES are only loosely tied so far.'}`,
-      `My verdict: BONES is ${grade(rel)}. It's steadier than WPA by a mile and tracks winning well, but swings make it noisier than points; with about ${Math.round(s.avgGames)} games a player, one wild night still moves it. Ask me again in a few weeks. The bones never lie, but they do take time.`,
+      `Third, does it win? Add up a team's BONES in a game (swings only, no game floor, since the floor goes to the winner) and compare it with the final margin: r = ${r2(s.teamGame)}. Over the season, across ${s.teams} teams, BONES per game tracks point differential at ${r2(s.teamSeason)}. ${s.teamSeason >= 0.7 ? 'The skull approves: BONES follows winning.' : 'Winning and BONES are only loosely tied so far.'}`,
+      `My verdict: BONES is ${grade(rel)}. It's steadier than WPA by a mile${s.teamSeason >= 0.7 ? ' and tracks winning well' : s.teamSeason >= 0.4 ? ', and it follows winning, loosely' : ', though it barely follows winning yet'}, but swings make it noisier than points; with about ${Math.round(s.avgGames)} games a player, one wild night still moves it. Ask me again in a few weeks. The bones never lie, but they do take time.`,
     ];
   }
 
@@ -518,12 +539,18 @@
     return `<table class="bz-table">
         <thead><tr><th></th><th>BONES</th><th>Points</th><th>WPA</th></tr></thead>
         <tbody>${row('Odd vs even games', 'oddEven')}${row('1st half vs 2nd half', 'firstSecond')}
-          <tr><th>Team BONES vs margin</th><td colspan="3">per game ${r2(s.teamGame)} · season ${r2(s.teamSeason)} (${s.teams} teams)</td></tr></tbody>
+          <tr><th>Team BONES (swings only) vs margin</th><td colspan="3">per game ${r2(s.teamGame)} · season ${r2(s.teamSeason)} (${s.teams} teams)</td></tr></tbody>
       </table>
       <p class="bz-fine">Correlations (r) per 36 minutes, ${s.players} players with ${MIN_GAMES}+ games and ${MIN_MPG}+ minutes a game, ${s.games} games. 1 is perfectly repeatable, 0 is coin flips.</p>`;
   }
 
-  async function start() {
+  // The page (and the skull) is built once; the numbers can be reloaded
+  // (refresh: the game-floor switch, or STALE_MS after they were counted).
+  const STALE_MS = 6 * 3600 * 1000;
+  let statsAt = 0;
+  let loading = false;
+  let needsLoad = false;
+  function start() {
     started = true;
     root.innerHTML = `<div class="bz">
         <div class="bz-stage"><canvas class="bz-skull" aria-label="A floating skull"></canvas></div>
@@ -547,18 +574,40 @@
     loadThree()
       .then(() => buildSkull(root.querySelector('.bz-skull')))
       .catch(() => (root.querySelector('.bz-stage').innerHTML = '<div class="bz-fallback">💀</div>'));
+    loadStats();
+  }
+
+  async function loadStats() {
+    if (loading) return void (needsLoad = true); // a refresh mid-count: count again after
+    loading = true;
+    needsLoad = false;
+    clearInterval(typing);
+    lines = [];
+    future = null;
+    mode = 'check';
+    const askBtn = root.querySelector('[data-bz="ask"]');
+    askBtn.textContent = '🔮 Ask the skull about upcoming games';
+    askBtn.disabled = true;
+    root.querySelector('[data-bz="next"]').disabled = true;
+    root.querySelector('[data-bz="prev"]').disabled = true;
+    root.querySelector('.bz-future').hidden = true;
+    root.querySelector('.bz-num-body').textContent = 'Still counting…';
+    root.querySelector('.bz-bubble p').textContent = 'Rattling the bones… loading the season.';
     try {
       stats = await compute((n, total) => {
         if (!lines.length) root.querySelector('.bz-bubble p').textContent = `Rattling the bones… ${n} of ${total} games.`;
       });
+      statsAt = Date.now();
       checkLines = lines = script(stats);
       root.querySelector('.bz-num-body').innerHTML = numbersHTML(stats);
       root.querySelector('[data-bz="next"]').disabled = false;
-      root.querySelector('[data-bz="ask"]').disabled = false;
+      askBtn.disabled = false;
       say(0);
     } catch (e) {
       root.querySelector('.bz-bubble p').textContent = 'The skull couldn’t reach ESPN to count the bones. Try again in a bit.';
     }
+    loading = false;
+    if (needsLoad && !root.hidden) loadStats();
   }
 
   let checkLines = [];
@@ -598,12 +647,21 @@
   // Called by main.js whenever the Bone Zone is showing.
   function render() {
     if (!root) root = document.getElementById('bonezone');
-    if (!started) start();
-    else if (three && !three.raf) {
+    if (!started) return start();
+    if (!loading && (needsLoad || (statsAt && Date.now() - statsAt > STALE_MS))) loadStats();
+    if (three && !three.raf) {
       three.resize();
       three.raf = requestAnimationFrame(three.frame); // resume after the page was hidden
     }
   }
 
-  SB.boneZone = { render };
+  // The numbers changed underneath (the game-floor switch): count again, now if
+  // the page is showing, else on the next visit.
+  function refresh() {
+    if (!started) return;
+    if (root && !root.hidden) loadStats();
+    else needsLoad = true;
+  }
+
+  SB.boneZone = { render, refresh };
 })();

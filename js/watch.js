@@ -1,7 +1,8 @@
 // Watchability index: one 0–100 number per game, plus the reasons behind it.
 // Every sport goes through the same formula, so NBA and NFL games rank on one list:
 //
-//   index = 100 × ( 0.42·tension + 0.12·volatility + 0.16·quality + 0.15·stars + 0.15·performance )
+//   index = 100 × ( 0.42·tension + 0.12·volatility + alive·(0.16·quality + 0.15·stars + 0.15·performance) )
+//   (alive: 1, fading to 0.4 once a live game is all but decided; see DEAD)
 //
 // Every component is 0..1. To tune how one sport compares with another, start
 // with SPORT below. Add new factors (career milestones, debuts, returns from
@@ -70,6 +71,19 @@
   // `none` (a hard 3% cutoff had a one-goal NHL finish at 2.6% scoring 7).
   const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, full: 0.05, none: 0.01 };
   const DECIDED = { played: 0.9, wp: 0.02 }; // last 10% of regulation at 98%+: margin stops counting
+  // A live game that's all but over: quality, stars and big stat lines fade to
+  // DEAD.keep of their worth, on the same doubt fade as crunch time (full worth
+  // while the trailing side is 5%+, DEAD.keep at 1% or less). Before this, a
+  // decided game kept up to 46 points from them (Nov 15: PIT-CIN, 18-38 in the
+  // 4th at 99.9%, held the top for 40 minutes at 46 over a one-goal 3rd period;
+  // decided NFL games averaged 36, more than the average live NBA game).
+  const DEAD = { keep: 0.4 };
+  function aliveFactor(g) {
+    if (g.state !== 'live' || g.wp == null) return 1;
+    const tail = Math.min(g.wp, 1 - g.wp);
+    const doubt = clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
+    return DEAD.keep + (1 - DEAD.keep) * doubt;
+  }
   function tension(g) {
     const cfg = SPORT[g.league];
     if (g.state === 'pre') {
@@ -335,14 +349,19 @@
     for (const p of g.players) {
       const offense = p.rushYd + p.recYd;
       const tds = p.passTd + p.rushTd + p.recTd;
+      // Tiers as rare as the NBA's: a 100-yard day or a 300-yard passer happens in
+      // most NFL games, so they score less than a 30-point night (Nov 15: NFL
+      // performance averaged .27 against the NBA's .08).
       const options = [
         [p.passYd >= 400, 1, `${p.last} ${p.passYd} YDS`],
         [p.passTd >= 4, 0.8, `${p.last} ${p.passTd} TD`],
-        [p.passYd >= 300, 0.5, `${p.last} ${p.passYd} YDS`],
+        [p.passYd >= 350, 0.6, `${p.last} ${p.passYd} YDS`],
+        [p.passYd >= 300, 0.35, `${p.last} ${p.passYd} YDS`],
         [offense >= 200, 1, `${p.last} ${offense} YDS`],
         [offense >= 150, 0.7, `${p.last} ${offense} YDS`],
         [p.passTd < 4 && tds >= 3, 0.7, `${p.last} ${tds} TD`],
-        [offense >= 100, 0.5, `${p.last} ${offense} YDS`],
+        [offense >= 125, 0.5, `${p.last} ${offense} YDS`],
+        [offense >= 100, 0.3, `${p.last} ${offense} YDS`],
       ];
       for (const [hit, score, label] of options) {
         if (hit && score > best.score) best = { score, label };
@@ -404,6 +423,7 @@
     const ranked = rankedBonus(g);
     const cup = cupBonus(g);
 
+    const alive = aliveFactor(g);
     const index = Math.round(
       goldBonus +
       run +
@@ -414,9 +434,7 @@
       100 *
         (WEIGHTS.tension * t +
           WEIGHTS.volatility * vol +
-          WEIGHTS.quality * q +
-          WEIGHTS.stars * s.score +
-          WEIGHTS.performance * perf.score +
+          alive * (WEIGHTS.quality * q + WEIGHTS.stars * s.score + WEIGHTS.performance * perf.score) +
           UPSET.bonus * up.score)
     );
 
@@ -471,9 +489,9 @@
     return {
       index: Math.max(0, Math.min(99, index)),
       reasons,
-      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run, redZone, ranked: ranked.bonus, cup: cup.bonus },
+      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run, redZone, ranked: ranked.bonus, cup: cup.bonus, alive },
     };
   }
 
-  SB.watch = { redZoneBump, RED_ZONE, cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
+  SB.watch = { aliveFactor, DEAD, redZoneBump, RED_ZONE, cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();

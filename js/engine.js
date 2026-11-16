@@ -86,11 +86,20 @@
   // against a median NBA game of 165; Wembanyama's 12-12-6 was +4.8). When a
   // finished game's pool (the positive Impact it handed out) is below FLOOR for
   // its sport (75% of a median game, measured Nov 9-14), the winning team gets
-  // the shortfall, split by each player's share of its positive Impact. Games
-  // above the floor are left alone, so a thriller still pays more than a
-  // blowout. Every player keeps impRaw (swing only) and impFloor (the top-up);
-  // imp includes the top-up unless the floor is switched off (settings).
+  // the shortfall. Games above the floor are left alone, so a thriller still
+  // pays more than a blowout. Every player keeps impRaw (swing only) and
+  // impFloor (the top-up); imp includes the top-up unless the floor is switched
+  // off (settings).
+  // The split: half by each winner's share of the team's positive Impact, half
+  // by playing time (basketball: minutes on the floor; football and hockey have
+  // no shift data, so that half is split evenly among the winners who played:
+  // counting credited plays instead handed it to goalies, credited on every save,
+  // and quarterbacks, on every pass), and no one gets more than FLOOR_CAP of it.
+  // Split by positive Impact alone, a cupcake's tiny pool made noise huge
+  // (Nov 15: USC 122-46 UAPB, pool 2, one player +1.4 -> +36, #4 on the day).
   const FLOOR = { nba: 1.23, ncaam: 0.49, nfl: 0.59, ncaaf: 0.45, nhl: 0.35 };
+  const FLOOR_CAP = 0.25;
+  const playTime = (p) => (p.stints ? p.stints.reduce((s, st) => s + Math.max(0, (st.e ?? st.s) - st.s), 0) : 1);
   let floorOn = true;
   try {
     floorOn = localStorage.getItem('sb.floor') !== 'off';
@@ -104,10 +113,32 @@
     const pool = view.players.reduce((s, p) => s + Math.max(0, p.impRaw), 0);
     if (pool >= FLOOR[league]) return;
     const winner = String(view.homeScore > view.awayScore ? tape.homeId : tape.awayId);
-    const mine = view.players.filter((p) => String(p.teamId) === winner && p.impRaw > 0);
-    const pos = mine.reduce((s, p) => s + p.impRaw, 0);
+    const mine = view.players.filter((p) => String(p.teamId) === winner);
+    if (!mine.length) return;
+    const pos = mine.reduce((s, p) => s + Math.max(0, p.impRaw), 0);
+    const time = mine.reduce((s, p) => s + playTime(p), 0);
+    const share = new Map(
+      mine.map((p) => {
+        const byTime = time ? playTime(p) / time : 1 / mine.length;
+        return [p, pos ? 0.5 * (Math.max(0, p.impRaw) / pos) + 0.5 * byTime : byTime];
+      })
+    );
+    // Cap each share, handing what's cut to the uncapped players by their share.
+    const cap = Math.max(FLOOR_CAP, 1 / mine.length);
+    for (let k = 0; k < 5; k++) {
+      const over = [...share].filter(([, v]) => v > cap + 1e-9);
+      if (!over.length) break;
+      let spare = 0;
+      for (const [p, v] of over) {
+        spare += v - cap;
+        share.set(p, cap);
+      }
+      const rest = [...share].filter(([, v]) => v < cap - 1e-9);
+      const restSum = rest.reduce((s, [, v]) => s + v, 0);
+      for (const [p, v] of rest) share.set(p, v + (restSum ? (spare * v) / restSum : spare / rest.length));
+    }
     for (const p of mine) {
-      p.impFloor = ((FLOOR[league] - pool) * p.impRaw) / pos;
+      p.impFloor = (FLOOR[league] - pool) * share.get(p);
       if (floorOn) p.imp = p.impRaw + p.impFloor;
     }
   }
@@ -120,7 +151,7 @@
   // A saved game's row [imp, wpa, line, box, floor] -> Impact under the current setting.
   const rowImpact = (row) => row[0] + (floorOn ? row[4] || 0 : 0);
 
-  SB.impact = { weight: impactWeight, IMPACT, FLOOR, applyFloor, setFloor, floorOn: () => floorOn, rowImpact };
+  SB.impact = { weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact };
 
   // Who is responsible for a basketball play, and their share of its swing.
   // Each credited player gets the swing from their own team's side, so a miss,
@@ -363,8 +394,13 @@
         // TIE_OFF from 50%, use the model (50%). Not while free throws are pending,
         // where a lopsided number is real.
         if (period !== curPeriod) [curPeriod, periodStartTotal] = [period, homeScore + awayScore];
-        if (/foul/i.test(p.type?.text || '')) ftPending = true;
-        else if (/^Free Throw/i.test(p.type?.text || '') && /(\d+) of \1\b/.test(p.text || '')) ftPending = false;
+        // Pending from a foul until its trip's last free throw, or until the next
+        // live-ball row when the foul gave none (offensive, loose ball, non-shooting).
+        const rowType = p.type?.text || '';
+        const freeThrow = /free throw/i.test(`${rowType} ${p.text || ''}`);
+        if (/foul/i.test(rowType)) ftPending = true;
+        else if (freeThrow && /(\d+) of \1\b/.test(p.text || '')) ftPending = false;
+        else if (ftPending && !freeThrow && !/substitution|timeout|review|ejection|technical/i.test(rowType)) ftPending = false;
         const tiedBreak =
           homeScore === awayScore &&
           period >= periods &&

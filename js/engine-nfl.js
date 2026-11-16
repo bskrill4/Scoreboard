@@ -160,8 +160,8 @@
         const scored = /Touchdown/i.test(type) ? 1 : 0;
         if ((m = text.match(/^(.+?) (\d+) Yd pass from (.+?)(?: \(|$)/))) {
           const y = Number(m[2]);
-          full(off, m[3], 0.5, { att: 1, cmp: 1, passYd: y, passTd: scored });
-          full(off, m[1], 0.5, { rec: 1, recYd: y, recTd: scored });
+          full(off, m[3], QB_SHARE, { att: 1, cmp: 1, passYd: y, passTd: scored });
+          full(off, m[1], 1 - QB_SHARE, { rec: 1, recYd: y, recTd: scored });
           return out;
         }
         if ((m = text.match(/^(.+?) (\d+) Yd (?:Run|Rush)\b/i))) {
@@ -343,7 +343,7 @@
         }
         const t = times[i];
 
-        let wp = hasFeedWP ? wpMap.get(pid) : modelWP(home - away, elapsed, REG_GAME);
+        let wp = hasFeedWP ? wpMap.get(pid) : modelWP(home - away, elapsed, REG_GAME, OT); // football's 10-minute OT, not the NBA's 5
         if (wp == null || phantom[i]) wp = prevWP == null ? 0.5 : prevWP;
         const delta = prevWP == null ? 0 : wp - prevWP;
         const weight = SB.impact.weight(prevWP, elapsed, REG_GAME, OT);

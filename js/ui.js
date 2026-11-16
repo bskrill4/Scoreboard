@@ -943,12 +943,18 @@
   }
 
   // Rankings › Players filters: one sport or all, ranked by the raw number or
-  // by how far above that sport's average player it is today. Sports aren't on
-  // one baseline (Nov 14: the average player was +7.2 Impact in the NBA, +4.3 in
-  // college basketball, +1.7 in college football, -0.5 for NHL skaters), so the
-  // "vs sport avg" view compares players across sports more fairly.
+  // sport-adjusted (the default). Sports aren't on one baseline or one spread:
+  // BONES isn't zero-sum, since basketball credits a make without debiting a
+  // defender and hockey debits misses and goalies (Nov 15, total per game: NBA
+  // +146, NCAAM +87, NFL +73, NHL -11; spread per player 9.0 in the NBA, 3.6 in
+  // the NHL). So the raw list's top 50 was NBA 14, NCAAM 32, NFL 3, NHL 0.
+  // Sport-adjusted: how many of that sport's standard deviations a player is
+  // above its average player today, times the spread of all players together,
+  // so it still reads in BONES. A sport with fewer than ADJ_MIN players today
+  // uses the all-sports spread.
+  const ADJ_MIN = 25;
   let playersSport = 'all';
-  let playersRank = 'raw'; // raw | rel
+  let playersRank = 'rel'; // raw | rel (sport-adjusted)
   function setPlayersFilter(o) {
     if (o.sport) playersSport = o.sport;
     if (o.rank) playersRank = o.rank === 'rel' ? 'rel' : 'raw';
@@ -962,11 +968,20 @@
         all.push({ p, g, team: p.teamId === g.home.id ? g.home : g.away });
       }
     }
-    // Today's average player in each sport, on the current metric.
+    // Today's average player and spread in each sport, on the current metric.
+    const moments = (xs) => {
+      const m = xs.reduce((s, x) => s + x, 0) / (xs.length || 1);
+      return { n: xs.length, mean: m, sd: Math.sqrt(xs.reduce((s, x) => s + (x - m) ** 2, 0) / (xs.length || 1)) };
+    };
+    const vals = {};
+    for (const r of all) (vals[r.g.league] ??= []).push(val(r.p));
+    const pooled = moments(all.map((r) => val(r.p))).sd || 1;
     const mean = {};
-    for (const r of all) (mean[r.g.league] ??= []).push(val(r.p));
-    for (const k in mean) mean[k] = mean[k].reduce((s, x) => s + x, 0) / mean[k].length;
-    const rel = (r) => val(r.p) - mean[r.g.league];
+    for (const k in vals) {
+      const m = moments(vals[k]);
+      mean[k] = { mean: m.mean, sd: m.n >= ADJ_MIN && m.sd > 0 ? m.sd : pooled };
+    }
+    const rel = (r) => ((val(r.p) - mean[r.g.league].mean) / mean[r.g.league].sd) * pooled;
     const sports = Object.keys(mean);
     if (playersSport !== 'all' && !sports.includes(playersSport)) playersSport = 'all';
     const rows = all.filter((r) => playersSport === 'all' || r.g.league === playersSport);
@@ -980,7 +995,7 @@
             .join('')}</div><div class="seg" role="group" aria-label="Rank by">${chip('data-prank', 'raw', metric === 'imp' ? 'BONES' : 'WPA', playersRank === 'raw')}${chip(
             'data-prank',
             'rel',
-            'vs sport avg',
+            'Sport-adjusted',
             playersRank === 'rel'
           )}</div></div>`
         : '';
@@ -992,7 +1007,7 @@
           <span class="potd-k">Player of the Day${soFar}</span>
           ${headshot(crown.p)}
           <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${SB.league.name(crown.g.league)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
-          <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metric === 'imp' ? 'BONES' : 'WPA'}${playersRank === 'rel' ? ' vs sport avg' : ''}</small></div>
+          <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metric === 'imp' ? 'BONES' : 'WPA'}${playersRank === 'rel' ? ' · sport-adjusted' : ''}</small></div>
         </div>`
       : '';
     const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
@@ -1011,14 +1026,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Standard deviations above today's average player in that sport, times the spread of all players: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
     return `${filters}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Minus today's average player in that sport">vs sport avg</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Standard deviations above today's average player in that sport, times the spread of all players: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'
