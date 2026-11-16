@@ -178,6 +178,15 @@ first half of a player's season vs second half; **winning**: a team's BONES in a
 BONES per game vs point differential over the season. Points and on-court WPA run through the same checks for scale.
 Grades: .70+ solid, .50 getting there, .30 shaky, below that mostly noise. "The numbers" opens the table.
 
+**Ask the skull** reads NBA games in the next 36 hours with BONES and nothing else. Team strength is each player's
+BONES a minute (shrunk toward league average over his first 150 minutes) times his average minutes over the team's last 10
+games. Players listed out or doubtful are removed, questionable players count at half and day-to-day at 30%, and the
+remaining minutes are scaled back up to 240. There's no home court. A logistic slope fit to this season's games turns the
+BONES gap into a win chance, and the skull quotes how often that call has been right. The favorite comes from the
+pre-game line's favorite flag (summary `pickcenter`), or from ESPN's matchup predictor before a line is posted. It's
+used only to spot disagreements: no odds are shown. An **upset pick** is BONES taking the non-favorite at 53% or better;
+anything under 53% is a toss-up.
+
 ## Not built yet
 
 - Career milestones, debuts and returns from injury in the index (needs a player-history source).

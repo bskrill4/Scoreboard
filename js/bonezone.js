@@ -7,6 +7,8 @@
 //     and over the season.
 // The numbers come from the same per-game cache as the season pages
 // (SB.player.finalPlayers), so a visit after the NBA season page is instant.
+// Ask the skull and it reads upcoming games with BONES alone, naming the
+// upsets it sees: games where it takes the team that isn't favored.
 // The skull is Three.js, loaded from a CDN only when this page opens.
 (function () {
   const SB = (window.SB = window.SB || {});
@@ -89,7 +91,9 @@
         const opp = Object.keys(g.score).find((k) => k !== id);
         teamGames.push({ team: id, imp: sum, margin: g.score[id] - g.score[opp] });
       }
+      g.team = team;
     }
+    const model = buildModel(games.filter((g) => g.rows));
 
     const qual = [...players.values()].filter((p) => p.g.length >= MIN_GAMES && p.g.reduce((s, x) => s + x.min, 0) / p.g.length >= MIN_MPG);
     const half = (p) => Math.ceil(p.g.length / 2);
@@ -128,7 +132,165 @@
         tv.map((t) => t.margin / t.n)
       ),
       teams: tv.length,
+      model,
     };
+  }
+
+  // ---------- predictions: BONES and only BONES ----------
+  // A team's strength is the BONES its players produce a minute, times the
+  // minutes they've been playing lately (players ruled out removed, the rest
+  // scaled back up to 240). No home court, no records, no lines: just bones.
+  const RECENT = 10; // a team's last N games set each player's minutes
+  const SHRINK_MIN = 150; // a player's rate is pulled toward average until he has minutes
+  const CAL_MIN_GAMES = 5; // both teams need this many games before a game counts in the backtest
+
+  function buildModel(games) {
+    const teamGames = new Map(); // team -> [{ t, min: Map(player -> minutes) }]
+    const players = new Map(); // id -> { name, team, t, imp, min }
+    let leagueImp = 0;
+    let leagueMin = 0;
+    // Backtest: each team's BONES per game *before* the game, against who won.
+    const before = new Map(); // team -> { sum, n }
+    const cal = [];
+    for (const g of games) {
+      const ids = Object.keys(g.score);
+      if (ids.length === 2 && ids.every((id) => (before.get(id)?.n || 0) >= CAL_MIN_GAMES)) {
+        const [a, b] = ids.map((id) => before.get(id));
+        if (g.score[ids[0]] !== g.score[ids[1]]) cal.push({ diff: a.sum / a.n - b.sum / b.n, win: g.score[ids[0]] > g.score[ids[1]] ? 1 : 0 });
+      }
+      for (const id of ids) {
+        const x = before.get(id) || { sum: 0, n: 0 };
+        x.sum += g.team?.[id] || 0;
+        x.n++;
+        before.set(id, x);
+      }
+      const mins = new Map(ids.map((id) => [id, new Map()]));
+      for (const [pid, r] of Object.entries(g.rows)) {
+        if (!r[3]) continue;
+        const team = String(r[3][0]);
+        const min = r[3][1] || 0;
+        const imp = SB.impact.rowImpact(r) * 100;
+        const p = players.get(pid) || { name: r[3][7], team, t: 0, imp: 0, min: 0 };
+        p.imp += imp;
+        p.min += min;
+        if (g.t >= p.t) [p.t, p.team, p.name] = [g.t, team, r[3][7] || p.name];
+        players.set(pid, p);
+        mins.get(team)?.set(pid, min);
+        leagueImp += imp;
+        leagueMin += min;
+      }
+      for (const id of ids) {
+        if (!teamGames.has(id)) teamGames.set(id, []);
+        teamGames.get(id).push({ t: g.t, min: mins.get(id) });
+      }
+    }
+    const avgRate = leagueMin ? leagueImp / leagueMin : 0;
+    for (const p of players.values()) p.rate = (p.imp + avgRate * SHRINK_MIN) / (p.min + SHRINK_MIN);
+
+    // One number turns a BONES gap into a chance to win: the logistic slope
+    // that best fits this season's games (a coarse search is plenty).
+    let k = 0.05;
+    let best = -Infinity;
+    for (let kk = 0.002; kk <= 0.3; kk += 0.002) {
+      let ll = 0;
+      for (const c of cal) {
+        const pr = 1 / (1 + Math.exp(-kk * c.diff));
+        ll += Math.log(c.win ? pr : 1 - pr);
+      }
+      if (ll > best) [best, k] = [ll, kk];
+    }
+    const called = cal.filter((c) => c.diff !== 0);
+    const right = called.filter((c) => (c.diff > 0) === (c.win === 1)).length;
+    return { players, teamGames, k, record: { right, n: called.length } };
+  }
+
+  // A team's expected BONES tonight. out: Map(player id -> share of his minutes lost).
+  function teamStrength(model, teamId, out) {
+    const recent = (model.teamGames.get(teamId) || []).slice(-RECENT);
+    if (!recent.length) return null;
+    const lineup = [];
+    for (const [pid, p] of model.players) {
+      if (p.team !== teamId) continue; // traded away, or not on this team
+      const min = recent.reduce((s, g) => s + (g.min.get(pid) || 0), 0) / recent.length;
+      if (min > 0) lineup.push({ pid, p, min: min * (1 - (out.get(pid) || 0)) });
+    }
+    const total = lineup.reduce((s, x) => s + x.min, 0);
+    if (!total) return null;
+    const scale = 240 / total;
+    let bones = 0;
+    const missing = [];
+    for (const x of lineup) bones += x.p.rate * Math.min(42, x.min * scale);
+    for (const [pid, share] of out) {
+      const p = model.players.get(pid);
+      if (p && p.team === teamId && share >= 1) missing.push(p.name);
+    }
+    return { bones, missing };
+  }
+
+  const OUT_SHARE = { out: 1, doubtful: 1, questionable: 0.5, 'day-to-day': 0.3 };
+  const ymd = (d) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  const WINDOW_H = 36; // "the next day or so"
+  const UPSET_MIN = 0.53; // below this BONES calls it a toss-up, not an upset
+  const isUpset = (g) => g.fav && g.pick !== g.fav && g.conf >= UPSET_MIN;
+
+  // Upcoming NBA games, each with BONES's pick and the favorite (from the
+  // betting line once it's posted, else ESPN's matchup predictor). The line
+  // itself is only used to know who's favored: nothing about it is shown.
+  async function predict(model) {
+    const now = Date.now();
+    const days = [0, 1, 2].map((d) => ymd(new Date(now + d * 864e5)));
+    const boards = await Promise.all(days.map((d) => SB.api.scoreboard(d, 'nba').catch(() => null)));
+    const seen = new Set();
+    const events = [];
+    for (const b of boards)
+      for (const e of b?.events || []) {
+        const t = Date.parse(e.date);
+        if (seen.has(e.id) || e.status?.type?.state !== 'pre' || t < now - 36e5 || t > now + WINDOW_H * 36e5) continue;
+        seen.add(e.id);
+        events.push(e);
+      }
+    const games = await Promise.all(
+      events.map(async (e) => {
+        const comp = e.competitions[0];
+        const side = (h) => comp.competitors.find((c) => c.homeAway === h);
+        const [home, away] = [side('home'), side('away')];
+        let sum = null;
+        try {
+          sum = await SB.api.summary(e.id, 'nba');
+        } catch (err) {}
+        const out = new Map();
+        for (const t of sum?.injuries || [])
+          for (const i of t.injuries || []) {
+            const share = OUT_SHARE[String(i.status || '').toLowerCase()];
+            if (share) out.set(String(i.athlete?.id), share);
+          }
+        const h = teamStrength(model, String(home.team.id), out);
+        const a = teamStrength(model, String(away.team.id), out);
+        if (!h || !a) return null;
+        const pHome = 1 / (1 + Math.exp(-model.k * (h.bones - a.bones)));
+        // Who's favored: the line's favorite flag, else ESPN's predictor.
+        let favHome = null;
+        const line = (sum?.pickcenter || []).find((x) => x.homeTeamOdds || x.awayTeamOdds);
+        if (line?.homeTeamOdds?.favorite || line?.awayTeamOdds?.underdog) favHome = true;
+        else if (line?.awayTeamOdds?.favorite || line?.homeTeamOdds?.underdog) favHome = false;
+        else {
+          const ph = Number(sum?.predictor?.homeTeam?.gameProjection);
+          if (Number.isFinite(ph) && ph !== 50) favHome = ph > 50;
+        }
+        const team = (c, s) => ({ id: String(c.team.id), abbr: c.team.abbreviation, name: c.team.shortDisplayName || c.team.displayName, logo: c.team.logo, missing: s.missing });
+        const pick = pHome >= 0.5 ? 'home' : 'away';
+        return {
+          id: e.id,
+          t: Date.parse(e.date),
+          home: team(home, h),
+          away: team(away, a),
+          pick,
+          conf: Math.max(pHome, 1 - pHome),
+          fav: favHome == null ? null : favHome ? 'home' : 'away',
+        };
+      })
+    );
+    return games.filter(Boolean).sort((x, y) => x.t - y.t);
   }
 
   // ---------- what the skull says ----------
@@ -154,6 +316,54 @@
       `Third, does it win? Add up a team's BONES in a game and compare it with the final margin: r = ${r2(s.teamGame)}. Over the season, across ${s.teams} teams, BONES per game tracks point differential at ${r2(s.teamSeason)}. ${s.teamSeason >= 0.7 ? 'The skull approves: BONES follows winning.' : 'Winning and BONES are only loosely tied so far.'}`,
       `My verdict: BONES is ${grade(rel)}. It's steadier than WPA by a mile and tracks winning well, but swings make it noisier than points; with about ${Math.round(s.avgGames)} games a player, one wild night still moves it. Ask me again in a few weeks. The bones never lie, but they do take time.`,
     ];
+  }
+
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  function whenText(t) {
+    const d = new Date(t);
+    const day = ymd(d) === ymd(new Date()) ? 'Tonight' : ymd(d) === ymd(new Date(Date.now() + 864e5)) ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'long' });
+    return `${day} at ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`;
+  }
+  const list = (xs) => (xs.length <= 2 ? xs.join(' and ') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
+
+  function predictScript(model, games) {
+    const { right, n } = model.record;
+    const intro = `You want the future? I'll read it in BONES and nothing else: no records, no home court, no lines. Each team's players, their BONES a minute, the minutes they've been playing, minus whoever is ruled out.${n ? ` This season that has picked the winner in ${right} of ${n} games (${pct(right / n)}).` : ''}`;
+    if (!games.length) return [intro, `But the court is empty: no NBA games in the next day and a half. Ask me again tomorrow.`];
+    const upsets = games.filter(isUpset).sort((a, b) => b.conf - a.conf);
+    const lines = [intro];
+    if (!upsets.length) {
+      const close = games.slice().sort((a, b) => a.conf - b.conf)[0];
+      const pick = close[close.pick];
+      lines.push(`No upsets in the bones this time. Across ${games.length} game${games.length === 1 ? '' : 's'} coming up, I side with the favorite every time. The closest call: ${pick.name} over ${close[close.pick === 'home' ? 'away' : 'home'].name}, ${pct(close.conf)}.`);
+    } else {
+      lines.push(`I see ${upsets.length === 1 ? 'one upset' : `${upsets.length} upsets`} in the next day or so${upsets.length < games.length ? `, out of ${games.length} games` : ''}. Most people expect otherwise. The bones disagree.`);
+      for (const g of upsets) {
+        const fav = g[g.fav];
+        const dog = g[g.pick];
+        const hurt = fav.missing.length ? ` The ${fav.name} will be without ${list(fav.missing.slice(0, 3))}, and the bones notice.` : '';
+        const strength = g.conf >= 0.62 ? 'And it isn’t close.' : g.conf >= 0.55 ? 'A real lean.' : 'Barely, but the bones lean that way.';
+        lines.push(`${whenText(g.t)}: the ${fav.name} are favored against the ${dog.name}. The bones say the ${dog.name} win, ${pct(g.conf)}. ${strength}${hurt}`);
+      }
+    }
+    lines.push(`That's the reading. The bones never lie, but basketball does. Check back after tip-off.`);
+    return lines;
+  }
+
+  function picksHTML(games) {
+    if (!games.length) return '';
+    const row = (g) => {
+      const upset = isUpset(g);
+      const toss = g.conf < UPSET_MIN;
+      const side = (k) => `<span class="bz-team${g.pick === k ? ' pick' : ''}"><img src="${esc(g[k].logo || '')}" alt="">${esc(g[k].abbr)}</span>`;
+      return `<li class="${upset ? 'upset' : ''}">
+          <span class="bz-when">${esc(whenText(g.t))}</span>
+          <span class="bz-match">${side('away')}<i>@</i>${side('home')}</span>
+          <span class="bz-call">${toss ? 'Toss-up' : `${esc(g[g.pick].abbr)} ${pct(g.conf)}`}${upset ? '<b>Upset pick</b>' : g.fav || toss ? '' : '<small>no favorite yet</small>'}</span>
+        </li>`;
+    };
+    return `<h3>The skull's picks</h3><ul class="bz-picks">${games.map(row).join('')}</ul>
+      <p class="bz-fine">BONES only: each player's BONES a minute × his minutes over his team's last ${RECENT} games, players listed out (or doubtful) removed, questionable at half. No home court. Win chances are fit to this season's results. An upset pick is a game where BONES takes the team that isn't favored, by at least ${pct(UPSET_MIN)}; closer than that is a toss-up.</p>`;
   }
 
   // ---------- the skull ----------
@@ -323,12 +533,15 @@
           <span class="bz-dots"></span>
           <button type="button" data-bz="next" disabled>Next ›</button>
         </div>
+        <button type="button" class="bz-ask" data-bz="ask" disabled>🔮 Ask the skull about upcoming games</button>
+        <div class="bz-future" hidden></div>
         <details class="bz-numbers"><summary>The numbers</summary><div class="bz-num-body">Still counting…</div></details>
       </div>`;
     root.addEventListener('click', (e) => {
       const b = e.target.closest('[data-bz]');
-      if (!b || !lines.length) return;
-      if (b.dataset.bz === 'prev') say(at - 1);
+      if (!b || !lines.length || b.disabled) return;
+      if (b.dataset.bz === 'ask') ask(b);
+      else if (b.dataset.bz === 'prev') say(at - 1);
       else say(at === lines.length - 1 ? 0 : at + 1);
     });
     loadThree()
@@ -338,13 +551,48 @@
       stats = await compute((n, total) => {
         if (!lines.length) root.querySelector('.bz-bubble p').textContent = `Rattling the bones… ${n} of ${total} games.`;
       });
-      lines = script(stats);
+      checkLines = lines = script(stats);
       root.querySelector('.bz-num-body').innerHTML = numbersHTML(stats);
       root.querySelector('[data-bz="next"]').disabled = false;
+      root.querySelector('[data-bz="ask"]').disabled = false;
       say(0);
     } catch (e) {
       root.querySelector('.bz-bubble p').textContent = 'The skull couldn’t reach ESPN to count the bones. Try again in a bit.';
     }
+  }
+
+  let checkLines = [];
+  let future = null; // { lines, html } once asked
+  let mode = 'check';
+  async function ask(btn) {
+    const box = root.querySelector('.bz-future');
+    if (mode === 'future') {
+      mode = 'check';
+      lines = checkLines;
+      box.hidden = true;
+      btn.textContent = '🔮 Ask the skull about upcoming games';
+      return say(0);
+    }
+    mode = 'future';
+    btn.textContent = '‹ Back to the BONES check';
+    if (!future) {
+      btn.disabled = true;
+      clearInterval(typing);
+      talking = 1;
+      root.querySelector('.bz-bubble p').textContent = 'Peering into the bones… reading the next day or so.';
+      try {
+        const games = await predict(stats.model);
+        future = { lines: predictScript(stats.model, games), html: picksHTML(games) };
+      } catch (e) {
+        future = { lines: ['The bones are cloudy: I couldn’t reach the upcoming schedule. Ask me again in a bit.'], html: '' };
+      }
+      btn.disabled = false;
+      if (mode !== 'future') return;
+    }
+    lines = future.lines;
+    box.innerHTML = future.html;
+    box.hidden = !future.html;
+    say(0);
   }
 
   // Called by main.js whenever the Bone Zone is showing.
