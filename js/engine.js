@@ -153,6 +153,51 @@
 
   SB.impact = { weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact };
 
+  // On-court defense (basketball, beta): on every field-goal attempt, the five
+  // defenders on the floor share ON_COURT_D of what the shot was worth against
+  // a typical one, × what a point is worth right now (the model's win-
+  // probability step for one point at this margin and time) × leverage weight,
+  // as Impact. NBA: by the shot's *expected* points (js/xpts.js: where it was
+  // taken, what kind of shot, how far into the possession) against the league's
+  // average shot, whether or not it went in: the defense is credited for the
+  // shots it allows, the shooter (credited as before) for making them. Crediting
+  // makes and misses instead mostly measured opponents' shooting luck, and it
+  // made the BONES picks worse (Nov 17 backtest: about 4 points of accuracy).
+  // College has no table yet: points scored − SHOT_PTS, against them on a make
+  // and for them on a miss. Before this a defender only
+  // showed up through blocks, steals, rebounds and fouls, so rim protection
+  // and on-ball defense that changed shots were invisible (Nov 16: Rudy Gobert
+  // at 7.7 BONES per 36, near the bottom of Minnesota's rotation, on the
+  // league's 4th-best defense). It's priced in points, not ESPN's swings:
+  // the feed's win probability moves ~+5% on a make but only ~-2.4% on a miss
+  // and its defensive rebound (it's driven by the score), so swing-based
+  // credit charged nearly every defense 20-55 BONES a night. In points, an
+  // average defense nets to about zero. Free throws are left out (the fouler
+  // is already charged).
+  const ON_COURT_D = 0.5;
+  // A defensive rebound ends the stop, but the miss was mostly forced by the
+  // defense as a whole: the rebounder keeps REB_SHARE of the row's credit and the
+  // other defenders on the floor split the rest (before, the rebounder took it
+  // all, so Defensive BONES was mostly big men's rebounds).
+  const REB_SHARE = 0.4;
+  // How much of a possession's worth a foul's free throws are measured against
+  // (1 = all of it): see the free-throw trip in impactAdjust.
+  const FOUL_BASELINE = 1;
+  const SHOT_PTS = 1.08; // points per field-goal attempt, league average (eFG ~54%)
+  SB.impact.ON_COURT_D = ON_COURT_D;
+
+  // Defensive BONES (the NBA season table's column): the part of a player's
+  // BONES from defense. On-court defense (above) plus his credit on plays he
+  // made as the defender: a block, a steal, a defensive rebound (and the
+  // blocker's half of one), and fouls he committed on defense (his share of a
+  // free-throw trip, or a non-shooting foul). Offensive fouls are the offense's.
+  function defensiveCredit(p, id) {
+    if (p.blockBy === id || p.blockedBy === id || p.stealBy === id) return true;
+    if (p.isRebound && /defensive/i.test(`${p.type} ${p.text}`)) return true;
+    if (p.ftTrip) return p.ftTrip.fouler === id;
+    return /foul/i.test(p.type) && !/offensive/i.test(`${p.type} ${p.text}`) && p.p0 === id;
+  }
+
   // Who is responsible for a basketball play, and their share of its swing.
   // Each credited player gets the swing from their own team's side, so a miss,
   // turnover or foul counts against them and a stop counts for the defender.
@@ -192,7 +237,8 @@
   const isFT = (p) => /free throw/i.test(p.text) && /\b(makes|misses)\b/.test(p.text);
   const isTripFoul = (p) => /foul/i.test(p.type) && !/offensive/i.test(`${p.type} ${p.text}`);
 
-  function impactAdjust(plays, ftPct) {
+  // possPts: what an average possession is worth (the fouler's baseline, below).
+  function impactAdjust(plays, ftPct, possPts) {
     for (const p of plays) p.impDelta = p.delta;
 
     // 1. One-row spikes, first and row by row, so a spike that is undone at the
@@ -244,11 +290,18 @@
       last.impDelta = net;
       last.rawDelta = raw; // the trip's classic WPA swing, for Rankings › Plays
       last.weight = plays[start].weight; // leverage as the trip began
-      // value_i = (their side) × net × share × weight; shares below conserve the trip's swing.
+      // value_i = (their side) × net × share × weight. The fouler is charged
+      // only for what the trip is worth above the possession the offense had
+      // anyway (FOUL_BASELINE): a two-shot foul is ~1.56 points against ~1.14
+      // for an average possession, so about a quarter of his old half; a
+      // one-shot trip (an and-one, a technical) is all extra, so in full.
+      // Charged half of every trip, aggressive defenders were buried by fouls
+      // (Nov 17: Lu Dort and Dillon Brooks about −43 BONES each from fouls).
       if (made > 0 && foul && foul.p0 && shooter) {
+        const owed = fts.length >= 2 ? Math.max(0, 1 - (FOUL_BASELINE * possPts) / expected) : 1;
         last.credits = [
           { id: shooter, share: expected / (2 * made) + (made - expected) / made },
-          { id: foul.p0, share: expected / (2 * made) },
+          { id: foul.p0, share: (expected / (2 * made)) * owed },
         ];
       } else if (shooter) {
         last.credits = [{ id: shooter, share: 1 }]; // 0-for-the-trip (or no foul found): the shooter's
@@ -260,7 +313,7 @@
 
   // One engine per basketball league. The NBA plays four 12-minute quarters;
   // college plays two 20-minute halves. Overtime is 5 minutes in both.
-  function create({ league, periods, periodSec, otSec, label, ftPct }) {
+  function create({ league, periods, periodSec, otSec, label, ftPct, possPts }) {
     const REG_PERIOD = periodSec;
     const OT_PERIOD = otSec;
     const REG_GAME = REG_PERIOD * periods;
@@ -367,6 +420,9 @@
       let curPeriod = 0;
       let periodStartTotal = 0; // combined score when the period began
       let ftPending = false; // a foul's free throws still to come
+      // Time into the possession, standing in for the shot clock (see js/xpts.js).
+      let possStart = 0;
+      let possPeriod = 0;
       for (let i = 0; i < rows.length; i++) {
         const p = rows[i];
         const homeScore = useSums ? sums[i][0] : p.homeScore;
@@ -414,6 +470,9 @@
 
         const type = p.type?.text || '';
         const text = (p.text || '').replace(/\s+/g, ' ');
+        if (period !== possPeriod) [possPeriod, possStart] = [period, elapsedAt(period, periodLen(period))];
+        // A field-goal attempt: the feed's shootingPlay flag (blocked shots included), less free throws.
+        const fga = p.shootingPlay != null ? !!p.shootingPlay && !/free throw/i.test(text) : /\b(makes|misses)\b/.test(text) && !/free throw/i.test(text);
         const p0 = p.participants?.[0]?.athlete?.id ? String(p.participants[0].athlete.id) : null;
         const p1 = p.participants?.[1]?.athlete?.id ? String(p.participants[1].athlete.id) : null;
         const play = {
@@ -435,6 +494,10 @@
           // "X subbing out" and "X subbing in" plays, one player each.
           subOut: /subbing out/i.test(text),
           isRebound: /Rebound/.test(type),
+          // A field-goal attempt (made, missed or blocked), for on-court defense,
+          // and its cell for expected points (zone, shot family, time into the possession).
+          fga,
+          shot: fga && SB.xpts ? SB.xpts.features(p, elapsed - possStart) : null,
           isAssist: /assists\)/.test(text),
           // NBA puts steals and blocks inside the play text (p1); college logs
           // them as their own "Steal" / "Block Shot" plays (p0).
@@ -446,6 +509,12 @@
         };
         play.credits = basketballCredits(play);
         plays.push(play);
+        // Possession changes: a make, a defensive rebound, a turnover, the last
+        // free throw made. An offensive rebound is the 14-second reset.
+        const what = `${type} ${text}`;
+        if ((fga && play.scoring) || /defensive (team )?rebound/i.test(what) || /turnover|traveling|offensive foul|steal/i.test(what) || (/free throw/i.test(text) && /(\d+) of \1\b/.test(text) && play.scoring))
+          possStart = elapsed;
+        else if (/offensive (team )?rebound/i.test(what)) possStart = elapsed - 10;
         ts.push(t);
       }
 
@@ -479,7 +548,7 @@
         else if (r.p0 !== blocker && roster.get(r.p0)?.teamId === blockTeam)
           r.credits = [{ id: r.p0, share: 0.5 }, { id: blocker, share: 0.5 }];
       }
-      impactAdjust(plays, ftPct);
+      impactAdjust(plays, ftPct, possPts);
       const complete = plays.length > 0 && plays[plays.length - 1].type === 'End Game';
       return { homeId, awayId, roster, plays, ts, hasFeedWP, complete, _n: -1, _view: null, _final: null };
     }
@@ -492,7 +561,7 @@
       const { homeId, awayId, roster } = tape;
       const players = new Map();
       for (const r of roster.values()) {
-        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, imp: 0, on: false, played: false, stints: [], moments: [] });
+        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, imp: 0, impDef: 0, defBones: 0, on: false, played: false, stints: [], moments: [] });
       }
       const lineup = { [homeId]: new Set(), [awayId]: new Set() };
       // Stints: the stretches of game time each player was on the floor, with the
@@ -540,16 +609,47 @@
         // on the corrected swing (free-throw trips as one unit, spikes netted).
         if (p.impDelta) {
           const credited = [];
+          const defReb = p.isRebound && /defensive/i.test(`${p.type} ${p.text}`);
           for (const c of p.credits) {
             const pl = players.get(c.id);
             if (!pl) continue;
-            const v = (pl.teamId === homeId ? 1 : -1) * p.impDelta * c.share * p.weight;
+            const v = (pl.teamId === homeId ? 1 : -1) * p.impDelta * c.share * p.weight * (defReb ? REB_SHARE : 1);
             pl.imp += v;
+            if (defensiveCredit(p, c.id)) pl.defBones += v;
             pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p });
             credited.push({ id: c.id, v });
           }
+          // A defensive rebound's other share: the rest of the defenders on the floor.
+          const rebTeam = defReb && credited.length && players.get(credited[0].id)?.teamId;
+          const others = rebTeam && lineup[rebTeam] ? [...lineup[rebTeam]].filter((id) => !credited.some((c) => c.id === id)) : [];
+          for (const id of others) {
+            const pl = players.get(id);
+            const v = ((rebTeam === homeId ? 1 : -1) * p.impDelta * (1 - REB_SHARE) * p.weight) / others.length;
+            pl.imp += v;
+            pl.defBones += v;
+            pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p, def: true });
+          }
           if (credited.length)
             impPlays.push({ play: p, v: p.impDelta * p.weight, swing: p.impDelta, credits: credited.map((c) => ({ ...c, s: c.v / p.weight })) });
+        }
+        // On-court defense (ON_COURT_D): the five on the other side of a shot.
+        const shooter = p.fga && p.p0 && players.get(p.p0);
+        if (shooter) {
+          const defTeam = shooter.teamId === homeId ? awayId : homeId;
+          const prev = i > 0 ? tape.plays[i - 1] : null;
+          const m0 = prev ? prev.home - prev.away : 0; // home margin before the shot
+          const pointValue = (modelWP(m0 + 1, p.elapsed) - modelWP(m0 - 1, p.elapsed)) / 2;
+          const above = league === 'nba' && p.shot && SB.xpts ? SB.xpts.xp(p.shot) - SB.xpts.avg() : (p.scoring ? p.pts : 0) - SHOT_PTS;
+          const v = (-above * pointValue * ON_COURT_D * p.weight) / 5;
+          if (v && lineup[defTeam]) {
+            for (const id of lineup[defTeam]) {
+              const pl = players.get(id);
+              pl.imp += v;
+              pl.impDef += v;
+              pl.defBones += v;
+              pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p, def: true });
+            }
+          }
         }
 
         if (p.isSub) {
@@ -656,6 +756,7 @@
   }
 
   // ftPct: a typical free-throw percentage, the baseline for a trip's expected value.
-  SB.engine = create({ league: 'nba', periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78 });
-  SB.ncaam = create({ league: 'ncaam', periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72 });
+  // possPts: points per possession, league average (NBA ~114 offensive rating; college ~102).
+  SB.engine = create({ league: 'nba', periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78, possPts: 1.14 });
+  SB.ncaam = create({ league: 'ncaam', periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72, possPts: 1.02 });
 })();

@@ -69,7 +69,10 @@
   // `top` at the final horn.
   // While the trailing side is below `full` the floor fades, to nothing at
   // `none` (a hard 3% cutoff had a one-goal NHL finish at 2.6% scoring 7).
-  const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, full: 0.05, none: 0.01 };
+  // Past the margin it fades too, over another `fade` of it (basketball: full
+  // at 5, gone at 8), instead of a cliff (Nov 16: PHI-BKN went 28 -> 65 -> 15
+  // in two minutes as the lead went 7 -> 4 -> 7).
+  const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, full: 0.05, none: 0.01, fade: 0.6 };
   const DECIDED = { played: 0.9, wp: 0.02 }; // last 10% of regulation at 98%+: margin stops counting
   // A live game that's all but over: quality, stars and big stat lines fade to
   // DEAD.keep of their worth, on the same doubt fade as crunch time (full worth
@@ -105,9 +108,11 @@
     const doubt = clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
     const win = cfg.crunchSec || CRUNCH.sec;
     const left = g.reg - g.elapsed;
+    const cm = cfg.crunchMargin ?? cfg.oneScore;
+    const near = margin <= cm ? 1 : clamp01(1 - (margin - cm) / (cm * CRUNCH.fade));
     const crunch =
-      g.period <= cfg.periods && left <= win && margin <= (cfg.crunchMargin ?? cfg.oneScore)
-        ? (CRUNCH.floor + (CRUNCH.top - CRUNCH.floor) * (1 - left / win)) * doubt
+      g.period <= cfg.periods && left <= win && near > 0
+        ? (CRUNCH.floor + (CRUNCH.top - CRUNCH.floor) * (1 - left / win)) * doubt * near
         : 0;
     return clamp01(Math.max(close * late, crunch));
   }

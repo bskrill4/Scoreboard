@@ -36,7 +36,14 @@ substitutions, so a play's swing goes to the players named on it (passer and rec
 **Impact (beta, the default), shown in the app as BONES**, the **B**ounded **O**dds **N**et **E**ffect **S**core, named for our patron saint Bones Hyland (the code and these notes still call it Impact; "bounded" is the game floor) — the Player value switch in settings flips back to classic WPA. Impact is meant to rank players across
 games, leagues and sports. Each play's swing goes only to the players responsible for it (shooter 80% /
 assister 20%; a miss to the shooter, shared with a blocker; turnovers shared with the stealer; fouls and
-rebounds to whoever made them; NFL as before), then is divided by √leverage, where leverage =
+rebounds to whoever made them; NFL as before; plus, in basketball (beta), **on-court defense**: on every field-goal
+attempt the five defenders on the floor share half of what the shot was worth against the league's average shot, × the
+win-probability value of a point at that margin and time (`ON_COURT_D` in `js/engine.js`). NBA: by the shot's
+**expected points** (below), whether or not it went in, so the defense is credited for the shots it allows and the
+shooter for making them; college, which has no table yet: points scored − 1.08. Priced in points because ESPN's win
+probability moves ~+5% on a make but only ~−2.4% on a miss and its rebound. Crediting makes and misses mostly measured
+opponents' shooting luck: Nov 16 had MIN +21.5 as a team on Portland's cold night, but by shot quality MIN allowed
+slightly above-average shots, −3.8), then is divided by √leverage, where leverage =
 4·wp·(1−wp)·√(game length ÷ time left) (1 = tied at tip-off). Clutch plays still count more, but a
 blowout or a heavy underdog's game isn't starved. Two feed corrections (Impact only; WPA is untouched):
 a **free-throw trip** (foul through last free throw) counts as one unit, split between the fouler (charged)
@@ -61,8 +68,11 @@ the raw number. Impact isn't zero-sum and each sport has its own baseline and sp
 debiting a defender, hockey debits misses and goalies (Nov 15, total Impact per game: NBA +146, college basketball +87,
 NFL +73, NHL −11; spread per player 9.0 in the NBA, 3.6 in the NHL), so the raw list's top 50 was NBA 14, college
 basketball 32, NFL 3, NHL 0. Sport-adjusted is how many of its sport's standard deviations a player is above that
-sport's average player that day, times the spread of all players together, so it still reads in Impact (`ADJ_MIN` in
-`js/ui.js`: a sport with fewer than 25 players that day uses the all-sports spread). Same day, adjusted: NFL 19, NHL 13,
+sport's average player that day, times the spread of all players together, so it still reads in Impact. The average
+and spread come from each sport's regulars only, the more involved half of its players that day (basketball: minutes on
+the floor; football and hockey: plays credited), so idle defenders and fourth-liners don't shrink the spread (`ADJ_MIN`
+in `js/ui.js`: a sport with fewer than 20 regulars that day uses the all-sports spread). That moved little on Nov 16
+(Will Cuylle's two goals still ranked first, +32.5 → +30.0): within hockey a +20 night is genuinely rare. Same day, adjusted: NFL 19, NHL 13,
 NBA 11, college basketball 5, college football 2; **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
 
@@ -71,7 +81,17 @@ through the same engine and kept in the drawer's cache (now with each player's m
 174 games is ~360 KB), so the first visit downloads the season once and later visits are instant. The chart shows
 Impact game by game (optionally a 5-game average) or cumulative, for the top 1 / 5 / 20 / 80% of players by season
 Impact or everyone (`TIERS`); the season's six best keep fixed colors and end labels in every view, everyone else
-is a thin gray line that gets fainter the more are drawn, and hovering picks out the nearest line. The table sorts on
+is a thin gray line that gets fainter the more are drawn, and hovering picks out the nearest line. **Defensive BONES**
+(beta, a season total before the game floor; saved per game as row `[5]`, `CACHE_VERSION` 20): on-court defense on the
+expected value of every shot allowed, plus the player's blocks, steals, defensive rebounds and the fouls he committed on
+defense (`defensiveCredit` in `js/engine.js`). Rebalanced Nov 17 (`CACHE_VERSION` 21), when it was mostly defensive
+rebounds minus fouls (Lu Dort and Dillon Brooks about −25, nearly all fouls): a **foul** is charged only for what its
+free throws are worth above an average possession (`FOUL_BASELINE` × `possPts`, NBA 1.14 points: a two-shot foul about a
+quarter of the old charge; a one-shot trip such as an and-one in full), and a **defensive rebound** keeps 40% for the
+rebounder while the other four defenders on the floor split the rest (`REB_SHARE`). This changes BONES itself, not just
+the column. After: Wembanyama +40.7, Adebayo +37.1, Giannis +36.6, Vassell +34.1, Franz Wagner +34.0, Thybulle +30.6
+(steals 21.1); the bottom is about −9 to −3 (Dort −6.0, still fouls −27 against steals +13). Backtest after: 64.6% with
+the home prior, log-loss −0.638; second half −0.601, better than point differential's −0.616 there. The table sorts on
 any column and pages 25 at a time: GP, minutes and counting stats (per game or totals), Impact, **Impact per 36**
 (total ÷ minutes × 36), WPA and WPA per 36, with a search (name or team) and a minutes filter (default 100+).
 **NFL season** (Rankings › NFL season, `#nfl-season`): the same page for the NFL, one position at a time (QB, RB, WR,
@@ -138,7 +158,8 @@ Hockey overtime is sudden death, so it scores full swings even when nobody has s
 floor that rises from .6 to .95 at the final horn (a 3-point game late is must-watch even at 85%); below 5% for the
 trailing side it fades, to nothing at 1% (`CRUNCH.full`/`none`), instead of cutting off. Basketball uses the
 NBA's clutch definition, the last 5 minutes within 5 points; football and hockey the last 2 minutes within one score
-(college football 5); `crunchSec`/`crunchMargin` in `SPORT`.
+(college football 5); `crunchSec`/`crunchMargin` in `SPORT`. Past the margin the floor fades over another 60% of it
+(`CRUNCH.fade`: basketball full at 5, gone at 8) instead of dropping off (PHI–BKN, Nov 16: 28 → 65 → 15 in two minutes).
 in the last 10% of regulation a game at 98%+ stops getting credit for a close score (a kneel-down after the pick).
 Hockey big nights (`HAT_TRICK`): hat-trick watch (2 goals) only in the 3rd and small (.25), since two goals are common;
 a finished hat trick .6; a shutout bid only for a goalie whose team leads (at 0-0 the tie already scores).
@@ -200,11 +221,38 @@ check partly true by construction: .65/.81 with it, .42/.42 without, Nov 16). Th
 Game floor switch changes and after 6 hours; finished games are saved only once their tape has the closing play. Points and on-court WPA run through the same checks for scale.
 Grades: .70+ solid, .50 getting there, .30 shaky, below that mostly noise. "The numbers" opens the table.
 
+**Expected points per shot** (`js/xpts.js`, NBA): every shot's cell is its zone (from the feed's court coordinates: the
+hoop sits at x 25, y 1 in feet, and distances match the play text's to within half a foot: rim, paint, midrange, corner
+three, above-the-break three, deep), its shot family (dunk, layup, putback, floater/hook, off-the-dribble jumper,
+catch-and-shoot jumper, from the feed's shot type) and time into the possession (transition under 7 seconds, early, mid,
+late 21+). The feed has no shot clock: time into the possession runs from the last make, defensive rebound, turnover or
+made last free throw, and an offensive rebound sets it to 10 (the 14-second reset); some resets aren't logged, so it's
+only good for coarse buckets. Each level is pulled toward the one above (league → zone → zone+family → cell) by 30 shots.
+The baseline is this season through Nov 16 (205 games, 36,299 shots: rim 1.31 points a shot, corner three 1.09, above the
+break 1.04, paint 0.87, midrange 0.84, deep 0.81; transition 1.20, late 0.92). Every final the board loads after that
+joins the table (`sb.xpts.v1` in localStorage, once per game, never shown). It can't see contests or closeouts.
+Backtest, Nov 17 (with the home prior / without / second half): make-or-miss defense 62.2% / 66.1% / 67.2%;
+expected-value defense 64.6% / 66.1% / 68.8% (log-loss −0.648 / −0.645 / −0.616, the second half level with point
+differential's −0.616); no defense credit 67.7% / 65.4% / 70.3%. Better than make-or-miss, still a shade behind none.
+
 **Ask the skull** reads NBA games in the next 36 hours with BONES and nothing else. Team strength is each player's
 BONES a minute (shrunk toward league average over his first 150 minutes) times his average minutes over the team's last 10
-games. Players listed out or doubtful are removed, questionable players count at half and day-to-day at 30%, and the
-remaining minutes are scaled back up to 240. There's no home court. A logistic slope fit to this season's games turns the
-BONES gap into a win chance, and the skull quotes how often that call has been right. The favorite comes from the
+games. Players listed out or doubtful are removed, questionable players count at half and day-to-day at 30%. Their
+minutes go to whoever took them in the games they've already missed (each teammate's average without them minus with
+them; Nov 16: Jaylen Clark's minutes to Terrence Shannon Jr., projected 17, played 35), or evenly with fewer than two
+games each way; then everyone is scaled back up to 240 (42 at most). **Home court** is a fixed prior, 2.5 points
+(`HOME_LOGIT` 0.175 in log-odds): this season's home record (52.8%) is too small a sample to estimate it, and leaving it
+out was most of the gap with the line on POR at MIN (MIN −2.5, then −1.5: even on a neutral floor). A logistic slope
+turns the BONES gap into a win chance.
+**The honest backtest** (`SB.bones.backtest` in `js/bones.js`): every game this season replayed and called from only what
+was known before it (ratings and minutes to date; who sat that night taken as known, standing in for the injury report).
+The slope and the record the skull quotes come from it. It's graded against plain point differential per game to date,
+the baseline to beat, and a blend of the two (weights fit on the first half of the games, graded on the second). As of
+Nov 17: BONES 83 of 127 (65.4%), point differential 84 of 125 (67.2%); second half 68.8% vs 69.8%, and the blend took no
+BONES. (The earlier quoted record graded team BONES per game, a simpler predictor than the one making the picks.)
+After home court, replacement minutes and on-court defense (Nov 17, `CACHE_VERSION` 18): 79 of 127 (62.2%; 66.1%
+without the home prior, which flips near-even calls in a season where home teams win 52.8%), log-loss −0.655 against
+−0.643 before. A little worse so far, kept in to watch. The favorite comes from the
 pre-game line's favorite flag (summary `pickcenter`), or from ESPN's matchup predictor before a line is posted. It's
 used only to spot disagreements: no odds are shown. An **upset pick** is BONES taking the non-favorite at 53% or better;
 anything under 53% is a toss-up.
@@ -218,6 +266,10 @@ mode never locks or settles a pick.
 
 **Lineup edge** (live NBA, top of "On court"): each team's five on the floor, with their season BONES per 36 added up
 (a player with no season counts at league average). It shows the gap and what the last change of either five did to it.
+The Bone Zone tests it on every stint this season (same ten players on the floor; NBA games cache their stints as
+`_lineups`, `CACHE_VERSION` 16), with ratings as of before each game: as of Nov 17, 7,061 stints, minute-weighted r .06;
+a 10–20 edge was worth +10.3 points per 48 minutes and a 20+ edge +16.2, and fives ahead by 10+ outscored the other five
+in 57% of stints. A real signal, but one stint is a few possessions, so a single one is mostly noise.
 
 ## Not built yet
 

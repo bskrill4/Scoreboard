@@ -213,11 +213,41 @@
       `Stretched to a full season so far, that's a reliability of ${r2(rel)} for BONES against ${r2(relPts)} for points: ${grade(rel)}. BONES carries about ${ratio}% of the signal points do, and nearly four times WPA's.`,
       `Second, does it hold up? A player's first half of the season against his second: BONES ${r2(b.firstSecond)}, points ${r2(s.pts.firstSecond)}, WPA ${r2(s.wpa.firstSecond)}. ${b.firstSecond >= 0.5 ? 'A good BONES player mostly stays a good BONES player.' : 'It drifts a lot from half to half.'}`,
       `Third, does it win? Add up a team's BONES in a game (swings only, no game floor, since the floor goes to the winner) and compare it with the final margin: r = ${r2(s.teamGame)}. Over the season, across ${s.teams} teams, BONES per game tracks point differential at ${r2(s.teamSeason)}. ${s.teamSeason >= 0.7 ? 'The skull approves: BONES follows winning.' : 'Winning and BONES are only loosely tied so far.'}`,
+      ...testLines(s.model?.backtest),
       `My verdict: BONES is ${grade(rel)}. It's steadier than WPA by a mile${s.teamSeason >= 0.7 ? ' and tracks winning well' : s.teamSeason >= 0.4 ? ', and it follows winning, loosely' : ', though it barely follows winning yet'}, but swings make it noisier than points; with about ${Math.round(s.avgGames)} games a player, one wild night still moves it. Ask me again in a few weeks. The bones never lie, but they do take time.`,
     ];
   }
 
   const pct = (x) => `${Math.round(x * 100)}%`;
+  const pct1 = (x) => `${(x * 100).toFixed(1)}%`;
+  const signed1 = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}`;
+  // The honest backtest (js/bones.js): can BONES call games, and do better fives outscore worse ones?
+  function testLines(bt) {
+    if (!bt || !bt.n) return [];
+    const { bones, pd, later } = bt;
+    const beat = bones.acc - pd.acc;
+    const vs =
+      Math.abs(beat) < 0.01
+        ? 'dead even with'
+        : beat > 0
+        ? `ahead of`
+        : `behind`;
+    const out = [
+      `Fourth, can it see the future? I replayed every game this season, predicting each from only what was known before it. BONES picked ${bones.right} of ${bones.n} winners (${pct1(bones.acc)}). Plain point differential, the number to beat, picked ${pd.right} of ${pd.n} (${pct1(pd.acc)}). So BONES is ${vs} the simple way.${
+        later.n
+          ? ` Over the second half of the season BONES went ${pct1(later.bones.acc)} to point differential's ${pct1(later.pd.acc)}${bt.blend.kb > 0 ? ', and mixing the two helps' : ', and mixing the two adds nothing yet: the blend leaves BONES out'}.`
+          : ''
+      }`,
+    ];
+    const L = bt.lineup;
+    if (L) {
+      const [, , b1020, b20] = L.buckets.map(([, v]) => v);
+      out.push(
+        `Fifth, the lineup edge. Across ${L.stints.toLocaleString()} stretches this season with the same ten on the floor, the five with more BONES per 36 outscored the other five in ${L.big.won} of ${L.big.n} stretches where it led by 10 or more (${pct(L.big.won / L.big.n)}). A 10 to 20 point edge is worth ${signed1(b1020.per48)} points per 48 minutes, a 20+ edge ${signed1(b20.per48)}. Real, but small: one stint is a few possessions, so any single one is mostly noise (r = ${r2(L.r)}).`
+      );
+    }
+    return out;
+  }
   function whenText(t) {
     const d = new Date(t);
     const day = ymd(d) === ymd(new Date()) ? 'Tonight' : ymd(d) === ymd(new Date(Date.now() + 864e5)) ? 'Tomorrow' : d.toLocaleDateString([], { weekday: 'long' });
@@ -241,7 +271,7 @@
 
   function predictScript(model, games) {
     const { right, n } = model.record;
-    const intro = `You want the future? I'll read it in BONES and nothing else: no records, no home court, no lines. Each team's players, their BONES a minute, the minutes they've been playing, minus whoever is ruled out.${n ? ` This season that has picked the winner in ${right} of ${n} games (${pct(right / n)}).` : ''}${trackRecord()}`;
+    const intro = `You want the future? I'll read it in BONES and nothing else: no records, no home court, no lines. Each team's players, their BONES a minute, the minutes they've been playing, minus whoever is ruled out.${n ? ` Replayed over this season, each game called from what was known before it, that has picked ${right} of ${n} winners (${pct(right / n)})${model.backtest?.pd?.n ? `, where plain point differential picks ${pct(model.backtest.pd.acc)}` : ''}.` : ''}${trackRecord()}`;
     if (!games.length) return [intro, `But the court is empty: no NBA games in the next day and a half. Ask me again tomorrow.`];
     const upsets = games.filter(isUpset).sort((a, b) => b.conf - a.conf);
     const lines = [intro];
@@ -432,7 +462,7 @@
         <thead><tr><th></th><th>BONES</th><th>Points</th><th>WPA</th></tr></thead>
         <tbody>${row('Odd vs even games', 'oddEven')}${row('1st half vs 2nd half', 'firstSecond')}
           <tr><th>Team BONES (swings only) vs margin</th><td colspan="3">per game ${r2(s.teamGame)} · season ${r2(s.teamSeason)} (${s.teams} teams)</td></tr></tbody>
-      </table>
+      </table>${backtestHTML(s.model?.backtest)}
       <p class="bz-fine">Correlations (r) per 36 minutes, ${s.players} players with ${MIN_GAMES}+ games and ${MIN_MPG}+ minutes a game, ${s.games} games. 1 is perfectly repeatable, 0 is coin flips.</p>`;
   }
 
@@ -442,6 +472,25 @@
   let statsAt = 0;
   let loading = false;
   let needsLoad = false;
+  function backtestHTML(bt) {
+    if (!bt || !bt.n) return '';
+    const row = (label, x) => `<tr><th>${label}</th><td>${x.right}/${x.n}</td><td>${pct1(x.acc)}</td><td>${x.ll.toFixed(3)}</td></tr>`;
+    const L = bt.lineup;
+    return `<table class="bz-table">
+        <thead><tr><th>Picking winners, before each game</th><th>Right</th><th>Rate</th><th>Log-loss</th></tr></thead>
+        <tbody>${row('BONES model', bt.bones)}${row('Point differential', bt.pd)}${bt.later.n ? `${row('2nd half · BONES', bt.later.bones)}${row('2nd half · point differential', bt.later.pd)}${row('2nd half · blend', bt.later.blend)}` : ''}</tbody>
+      </table>
+      <p class="bz-fine">Each game predicted from ratings and minutes as of that morning; who sat that night is taken as known (standing in for the injury report). Log-loss: closer to 0 is better, a coin flip is −0.693. The blend's weights are fit on the first half of the games and graded on the second.</p>${
+        L
+          ? `<table class="bz-table">
+        <thead><tr><th>Lineup edge (BONES per 36, five vs five)</th><th>Minutes</th><th colspan="2">Better five, per 48</th></tr></thead>
+        <tbody>${L.buckets.map(([k, v]) => `<tr><th>${k}</th><td>${Math.round(v.min)}</td><td colspan="2">${Number.isFinite(v.per48) ? signed1(v.per48) : '—'}</td></tr>`).join('')}</tbody>
+      </table>
+      <p class="bz-fine">${L.stints.toLocaleString()} stints with the same ten players, ratings as of before each game. Minute-weighted r between edge and points per minute: ${r2(L.r)}.</p>`
+          : ''
+      }`;
+  }
+
   function start() {
     started = true;
     root.innerHTML = `<div class="bz">

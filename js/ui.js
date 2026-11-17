@@ -1087,9 +1087,16 @@
   // the NHL). So the raw list's top 50 was NBA 14, NCAAM 32, NFL 3, NHL 0.
   // Sport-adjusted: how many of that sport's standard deviations a player is
   // above its average player today, times the spread of all players together,
-  // so it still reads in BONES. A sport with fewer than ADJ_MIN players today
-  // uses the all-sports spread.
-  const ADJ_MIN = 25;
+  // so it still reads in BONES. The average and spread are each sport's
+  // regulars only: the more involved half of its players that day (basketball:
+  // minutes on the floor; football and hockey: plays credited). With everyone,
+  // the many near-zero bench players, idle defenders and fourth-liners shrank
+  // hockey's and football's spread, so one good night looked extreme (Nov 16:
+  // Will Cuylle's two goals, +20, ranked over Desmond Bane's +38; a tackler at
+  // +9 ranked 7th). A sport with fewer than ADJ_MIN regulars today uses the
+  // all-sports spread.
+  const ADJ_MIN = 20;
+  const involvement = (p) => (p.stints ? p.stints.reduce((s, st) => s + Math.max(0, (st.e ?? st.s) - st.s), 0) : (p.moments || []).length);
   let playersSport = 'all';
   let playersRank = 'rel'; // raw | rel (sport-adjusted)
   function setPlayersFilter(o) {
@@ -1110,9 +1117,15 @@
       const m = xs.reduce((s, x) => s + x, 0) / (xs.length || 1);
       return { n: xs.length, mean: m, sd: Math.sqrt(xs.reduce((s, x) => s + (x - m) ** 2, 0) / (xs.length || 1)) };
     };
+    const bySport = {};
+    for (const r of all) (bySport[r.g.league] ??= []).push(r);
     const vals = {};
-    for (const r of all) (vals[r.g.league] ??= []).push(val(r.p));
-    const pooled = moments(all.map((r) => val(r.p))).sd || 1;
+    for (const [k, rs] of Object.entries(bySport)) {
+      const inv = rs.map((r) => involvement(r.p)).sort((a, b) => a - b);
+      const median = inv[Math.floor(inv.length / 2)] || 0;
+      vals[k] = rs.filter((r) => involvement(r.p) >= median).map((r) => val(r.p));
+    }
+    const pooled = moments(Object.values(vals).flat()).sd || 1;
     const mean = {};
     for (const k in vals) {
       const m = moments(vals[k]);

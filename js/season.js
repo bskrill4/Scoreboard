@@ -651,7 +651,7 @@
       const b = row[3];
       if (!b) return null;
       const [teamId, min, pts, reb, ast, stl, blk, name] = b;
-      return { teamId, name, m: min, stats: { min, pts, reb, ast, stl, blk } };
+      return { teamId, name, m: min, stats: { min, pts, reb, ast, stl, blk, dbones: (row[5] || 0) * 100 } };
     },
     cols: (group, count) => [
       { k: 'gp', label: 'GP', v: (p) => p.gp, f: 0 },
@@ -663,6 +663,7 @@
       { k: 'blk', label: 'BLK', v: count('blk'), f: 1 },
       { k: 'imp', label: 'BONES', v: (p) => p.imp * 100, signed: true },
       { k: 'imp36', label: 'BONES/36', v: (p) => per36(p.imp, p), signed: true },
+      { k: 'dbones', label: 'Defensive BONES', v: (p) => p.s.dbones || 0, signed: true },
       { k: 'wpa', label: 'WPA', v: (p) => p.wpa * 100, signed: true },
       { k: 'wpa36', label: 'WPA/36', v: (p) => per36(p.wpa, p), signed: true },
     ],
@@ -680,6 +681,7 @@
     },
     note: `<b>BONES</b> and <b>WPA</b> are season totals from our own replay of every game (the same numbers as the board and the player drawer).
       BONES includes the <b>game floor</b> (switch it off in settings for swing only): a game that stayed one-sided still credits the winner, up to 75% of a typical game, split by the winning players' share of its swings. Close games are untouched, so a thriller still pays more than a blowout.
+      <b>Defensive BONES</b> is the part of a player's BONES (before the game floor) that came from defense: the five defenders on the floor credited for the expected value of every shot they allowed against the league's average shot (where it was taken, what kind, how far into the possession: whether it went in doesn't matter), plus his blocks, steals, defensive rebounds and the fouls he committed on defense. Beta.
       <b>Per 36</b> scales a player's total to 36 minutes: total ÷ minutes × 36, so a reserve can be compared with a starter; it's noisy for players with few minutes, which is what the minutes filter is for.
       The chart's tiers are the top 1 / 5 / 20 / 80% of players by season BONES, or everyone. The table's top six rows, in whatever order it's sorted, are colored in the chart (and drawn even if the tier leaves them out); everyone else is gray, fainter the more players are drawn. Hover a line to see who it is. A search (a name, or a team: BOS, Boston, Celtics, Boston Celtics) narrows the table and the chart to the same players; pick a tier to go back to the league. Regular season only (NBA Cup group games count; the Cup final doesn't).`,
   };
