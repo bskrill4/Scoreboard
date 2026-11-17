@@ -111,6 +111,20 @@
     return p >= 0.5 ? g.home : g.away;
   };
 
+  // In-game: how the pick BONES locked at tip-off is doing (from the view, so
+  // a stream delay never spoils it). Hidden while the score is hidden.
+  function pickStatus(g) {
+    const p = g.bonesPick;
+    if (!p || blurred.has(g.id)) return null;
+    const team = g[p.side];
+    const other = g[p.side === 'home' ? 'away' : 'home'];
+    if (g.state === 'final') return team.score > other.score ? { team, text: 'called it ✓', cls: 'ok' } : { team, text: 'missed ✗', cls: 'bad' };
+    if (g.state !== 'live' || g.wp == null) return null;
+    const w = p.side === 'home' ? g.wp : 1 - g.wp;
+    return w >= 0.6 ? { team, text: 'on track', cls: 'ok' } : w <= 0.4 ? { team, text: 'in trouble', cls: 'bad' } : { team, text: 'neck and neck', cls: 'even' };
+  }
+  const pickTitle = (g) => `BONES picked ${g.bonesPick[g.bonesPick.side]} at ${Math.round(g.bonesPick.conf * 100)}%${g.bonesPick.late ? ' (made after tip-off)' : ' before tip-off'}`;
+
   // ---------- tile (the rows of four) ----------
   function teamRow(g, side) {
     const t = g[side];
@@ -146,9 +160,15 @@
         ? ''
         : `<div class="wplabels"><span>${pct(1 - g.wp)}</span><span>${esc(g.downText || 'win prob')}</span><span>${pct(g.wp)}</span></div>`;
     const p = bonesP(g);
+    const ps = pickStatus(g);
+    const pickLabel = ps ? `<span class="pick-tag ${ps.cls}" title="${esc(pickTitle(g))}">BONES: ${esc(ps.team.abbr)} · ${ps.text}</span>` : '';
     const wp =
       p == null
-        ? `${wpBar(g)}${wpLabels}`
+        ? ps && g.state === 'final'
+          ? `${wpBar(g)}<div class="wplabels"><span></span>${pickLabel}<span></span></div>`
+          : ps && g.wp != null
+          ? `${wpBar(g)}<div class="wplabels"><span>${pct(1 - g.wp)}</span>${pickLabel}<span>${pct(g.wp)}</span></div>`
+          : `${wpBar(g)}${wpLabels}`
         : `${bonesBar(g)}<div class="wplabels"><span>${pct(1 - p)}</span><span>BONES: ${Math.abs(p - 0.5) < 0.03 ? 'toss-up' : esc(bonesPick(g).abbr)}</span><span>${pct(p)}</span></div>`;
     return `
       <div class="g-top">
@@ -372,6 +392,7 @@
       </div>`;
     };
     const html = side(g.away) + side(g.home);
+    if (html && !final) return lineupHTML(g) + html;
     return html || `<div class="empty-note">${g.noPbp ? 'No lineups without play-by-play' : 'On-court fives appear at tip-off'}</div>`;
   }
 
@@ -737,6 +758,34 @@
     return side(g.away, inj.away) + side(g.home, inj.home);
   }
 
+  function heroPickTag(g) {
+    const ps = pickStatus(g);
+    return ps ? ` <small class="pick-tag ${ps.cls}" title="${esc(pickTitle(g))}">BONES picked ${esc(ps.team.abbr)} · ${ps.text}</small>` : '';
+  }
+
+  // In-game NBA: the two fives on the floor, each player's season BONES per 36
+  // added up, and what the last substitution did to the gap.
+  const lineupMemo = new Map(); // game id -> { key, edge, change }
+  function lineupHTML(g) {
+    const L = g.lineup;
+    if (!L || g.state !== 'live') return '';
+    let m = lineupMemo.get(g.id);
+    if (!m) lineupMemo.set(g.id, (m = { key: L.key, edge: L.edge, change: null }));
+    else if (m.key !== L.key) [m.key, m.change, m.edge] = [L.key, L.edge - m.edge, L.edge];
+    else m.edge = L.edge;
+    const lead = Math.abs(L.edge) < 1 ? null : L.edge > 0 ? g.home : g.away;
+    const pos = Math.max(4, Math.min(96, 50 + L.edge * 1.5)); // home share of the bar
+    const change =
+      m.change != null && Math.abs(m.change) >= 0.5
+        ? `<small class="lu-change">Last sub: ${esc((m.change > 0 ? g.home : g.away).abbr)} +${Math.abs(m.change).toFixed(1)}</small>`
+        : '';
+    return `<div class="lineup-edge" title="Each team's five on the floor: their season BONES per 36, added up">
+      <div class="lu-head"><span>Lineup edge</span><b>${lead ? `${esc(lead.abbr)} +${Math.abs(L.edge).toFixed(1)}` : 'Even'}</b>${change}</div>
+      <div class="lu-bar"><i style="width:${(100 - pos).toFixed(1)}%;background:${g.away.css}"></i><i style="width:${pos.toFixed(1)}%;background:${g.home.css}"></i></div>
+      <div class="lu-vals"><span>${esc(g.away.abbr)} ${L.away.toFixed(1)}</span><small>BONES per 36, five on court</small><span>${L.home.toFixed(1)} ${esc(g.home.abbr)}</span></div>
+    </div>`;
+  }
+
   function heroHTML(g, opts) {
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
@@ -790,7 +839,7 @@
       <div class="g-wp">${bonesP(g) == null ? wpBar(g) : bonesBar(g)}</div>
       <div class="h-body">
         <section class="h-col">
-          <h3 class="wp-h">${preBones ? 'BONES prediction' : 'Win probability'}${chart && g._cap ? g._cap : ''}</h3>
+          <h3 class="wp-h">${preBones ? 'BONES prediction' : 'Win probability'}${chart && g._cap ? g._cap : ''}${heroPickTag(g)}</h3>
           ${chart}
           ${hide ? '' : swingsHTML(g)}
           ${partsHTML(g)}

@@ -142,7 +142,7 @@
     }
     const called = cal.filter((c) => c.diff !== 0);
     const right = called.filter((c) => (c.diff > 0) === (c.win === 1)).length;
-    return { players, teamGames, k, record: { right, n: called.length }, games: games.length };
+    return { players, teamGames, k, avgRate, record: { right, n: called.length }, games: games.length };
   }
 
   // A team's rotation tonight: each player's recent minutes, less his injury
@@ -213,5 +213,70 @@
     return { out, byTeam };
   }
 
-  SB.bones = { seasonGames, model, buildModel, teamStrength, predict, topPer36, injuries, RECENT };
+  // ---------- lineup edge ----------
+  // Two fives on the floor, each player's season BONES per 36 added up (a
+  // player with no season yet counts at the league average). edge > 0: home's five.
+  function lineupEdge(m, homeIds, awayIds) {
+    const per36 = (id) => (m.players.get(String(id))?.rate ?? m.avgRate) * 36;
+    const sum = (ids) => ids.reduce((s, id) => s + per36(id), 0);
+    const home = sum(homeIds);
+    const away = sum(awayIds);
+    return { home, away, edge: home - away };
+  }
+
+  // ---------- the pick tracker ----------
+  // Each NBA game's BONES pick, locked at tip-off (the last pick made before
+  // the game started) and settled at the final, kept in this browser.
+  // { [eventId]: { side: 'home'|'away', conf, t, home, away (abbrs), late?, won? } }
+  const PICKS_KEY = 'sb.bonesPicks';
+  const KEEP_DAYS = 120;
+  let picks = {};
+  try {
+    picks = JSON.parse(localStorage.getItem(PICKS_KEY) || '{}') || {};
+  } catch (e) {}
+  let saveTimer = null;
+  function savePicks() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      const cutoff = Date.now() - KEEP_DAYS * 864e5;
+      for (const [id, p] of Object.entries(picks)) if (p.t < cutoff) delete picks[id];
+      try {
+        localStorage.setItem(PICKS_KEY, JSON.stringify(picks));
+      } catch (e) {}
+    }, 500);
+  }
+  const pickStore = {
+    get: (id) => picks[id] || null,
+    // Before tip-off, each new reading replaces the last. late: made after tip-off
+    // (the board opened mid-game), from the model as of before the game.
+    lock(id, p) {
+      const cur = picks[id];
+      if (cur && cur.side === p.side && Math.abs(cur.conf - p.conf) < 0.005) return;
+      picks[id] = { ...p, conf: +p.conf.toFixed(3) };
+      savePicks();
+    },
+    settle(id, winner) {
+      const p = picks[id];
+      if (!p || p.won != null || !winner) return;
+      p.won = p.side === winner;
+      savePicks();
+    },
+    all: () => Object.entries(picks).map(([id, p]) => ({ id, ...p })),
+    // Unsettled picks from games that should be over: look the finals up.
+    async settleOld() {
+      const open = Object.entries(picks).filter(([, p]) => p.won == null && p.t < Date.now() - 4 * 36e5);
+      // The feed files a game under its (US) game day: the sports day it tipped on.
+      const days = [...new Set(open.map(([, p]) => SB.days.dayOf(p.t)))];
+      const boards = await Promise.all(days.map((d) => SB.api.scoreboard(d, 'nba').catch(() => null)));
+      for (const b of boards)
+        for (const e of b?.events || []) {
+          if (!picks[e.id] || picks[e.id].won != null || !e.status?.type?.completed) continue;
+          const cs = e.competitions[0].competitors;
+          const w = cs.find((c) => c.winner) || cs.slice().sort((a, b) => Number(b.score) - Number(a.score))[0];
+          pickStore.settle(e.id, w?.homeAway);
+        }
+    },
+  };
+
+  SB.bones = { seasonGames, model, buildModel, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
 })();

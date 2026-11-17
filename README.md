@@ -209,6 +209,16 @@ pre-game line's favorite flag (summary `pickcenter`), or from ESPN's matchup pre
 used only to spot disagreements: no odds are shown. An **upset pick** is BONES taking the non-favorite at 53% or better;
 anything under 53% is a toss-up.
 
+**Pick tracker** (`SB.bones.picks`, localStorage `sb.bonesPicks`): each NBA game's last pre-game BONES pick is locked at
+tip-off. If the board is first opened mid-game, the pick is made then from the game file's injury report and flagged late.
+Picks are settled at the final, or by the skull, which looks up finals the board missed. Live cards show
+"BONES: PHX · on track / neck and neck / in trouble" (pick side's live win probability ≥ 60% / between / ≤ 40%), finals
+show "called it ✓" or "missed ✗", and the skull opens with the latest night's record and the running total. Replay
+mode never locks or settles a pick.
+
+**Lineup edge** (live NBA, top of "On court"): each team's five on the floor, with their season BONES per 36 added up
+(a player with no season counts at league average). It shows the gap and what the last change of either five did to it.
+
 ## Not built yet
 
 - Career milestones, debuts and returns from injury in the index (needs a player-history source).

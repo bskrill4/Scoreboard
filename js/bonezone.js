@@ -225,9 +225,23 @@
   }
   const list = (xs) => (xs.length <= 2 ? xs.join(' and ') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
 
+  // The record of the picks BONES locked at tip-off in this browser.
+  function trackRecord() {
+    const done = SB.bones.picks.all().filter((p) => p.won != null);
+    if (!done.length) return '';
+    const wl = (xs) => `${xs.filter((p) => p.won).length}–${xs.filter((p) => !p.won).length}`;
+    const last = done.map((p) => SB.days.dayOf(p.t)).sort().at(-1);
+    const today = SB.days.today();
+    const when = last === today ? 'tonight' : last === SB.days.shiftDay(today, -1) ? 'last night' : SB.days.parseDay(last).toLocaleDateString([], { weekday: 'long' });
+    const night = done.filter((p) => SB.days.dayOf(p.t) === last);
+    return night.length === done.length
+      ? ` My picks locked at tip-off went ${wl(night)} ${when}.`
+      : ` My picks locked at tip-off went ${wl(night)} ${when}, and ${wl(done)} since you started tracking.`;
+  }
+
   function predictScript(model, games) {
     const { right, n } = model.record;
-    const intro = `You want the future? I'll read it in BONES and nothing else: no records, no home court, no lines. Each team's players, their BONES a minute, the minutes they've been playing, minus whoever is ruled out.${n ? ` This season that has picked the winner in ${right} of ${n} games (${pct(right / n)}).` : ''}`;
+    const intro = `You want the future? I'll read it in BONES and nothing else: no records, no home court, no lines. Each team's players, their BONES a minute, the minutes they've been playing, minus whoever is ruled out.${n ? ` This season that has picked the winner in ${right} of ${n} games (${pct(right / n)}).` : ''}${trackRecord()}`;
     if (!games.length) return [intro, `But the court is empty: no NBA games in the next day and a half. Ask me again tomorrow.`];
     const upsets = games.filter(isUpset).sort((a, b) => b.conf - a.conf);
     const lines = [intro];
@@ -508,6 +522,7 @@
       talking = 1;
       root.querySelector('.bz-bubble p').textContent = 'Peering into the bones… reading the next day or so.';
       try {
+        await SB.bones.picks.settleOld().catch(() => {}); // finals the board didn't see
         const games = await predict(stats.model);
         future = { lines: predictScript(stats.model, games), html: picksHTML(games) };
       } catch (e) {

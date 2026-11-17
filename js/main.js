@@ -430,6 +430,7 @@
       }
     }
 
+    if (g.league === 'nba') bonesLive(ev, g, evState, ac, hc);
     if (g.league === 'ncaam') tagProspects(g);
     const gameStars = starsWith(g.league === 'ncaaf' ? rankedLeaders(g, comp) : null);
     for (const p of g.players) p.star = gameStars.has(p.id); // after tagProspects, which adds to the list
@@ -801,9 +802,9 @@
   let bonesFailed = 0;
 
   async function pollPregame() {
-    if (replay) return;
     const pre = events.filter((ev) => shown(ev) && PREGAME_LEAGUES.has(ev._league) && ev.status.type.state === 'pre');
-    if (pre.some((ev) => ev._league === 'nba') && Date.now() - bonesFailed > 60e3) {
+    const nbaOn = events.some((ev) => shown(ev) && ev._league === 'nba' && (replay || ev.status.type.state !== 'post'));
+    if (nbaOn && Date.now() - bonesFailed > 60e3) {
       SB.bones
         .model((done, total) => {
           bonesProgress = [done, total];
@@ -816,6 +817,7 @@
         })
         .catch(() => (bonesFailed = Date.now()));
     }
+    if (replay) return;
     const todo = pre.filter((ev) => Date.now() - (pregame.get(ev.id)?.at || 0) >= PREGAME_EVERY);
     for (const ev of todo) pregame.set(ev.id, { ...pregame.get(ev.id), at: Date.now() });
     let changed = false;
@@ -852,6 +854,14 @@
         const out = inj?.out || new Map();
         const pr = SB.bones.predict(bonesModel, g.home.id, g.away.id, out);
         if (pr) {
+          if (!replay)
+            SB.bones.picks.lock(ev.id, {
+              side: pr.pHome >= 0.5 ? 'home' : 'away',
+              conf: Math.max(pr.pHome, 1 - pr.pHome),
+              t: g.start,
+              home: g.home.abbr,
+              away: g.away.abbr,
+            });
           info.bones = {
             pHome: pr.pHome,
             injKnown: !!inj,
@@ -862,6 +872,29 @@
     }
     if (bonesModel || ev._league !== 'nba') preMemo.set(ev.id, { model: bonesModel, inj, info });
     return info;
+  }
+
+  // In-game NBA: the BONES pick this game was locked with (made now, flagged
+  // late, if the board wasn't open before tip-off), settled at the final, and
+  // the lineup edge between the two fives on the floor.
+  function bonesLive(ev, g, evState, ac, hc) {
+    const picks = SB.bones.picks;
+    // Replay: the lineup edge works, but nothing is locked or settled.
+    if (!replay && evState === 'in' && bonesModel && !picks.get(ev.id) && pregame.get(ev.id)?.inj) {
+      const pr = SB.bones.predict(bonesModel, g.home.id, g.away.id, pregame.get(ev.id).inj.out);
+      if (pr) picks.lock(ev.id, { side: pr.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(pr.pHome, 1 - pr.pHome), t: g.start, home: g.home.abbr, away: g.away.abbr, late: true });
+    }
+    if (!replay && evState === 'post' && ev.status.type.completed) {
+      // From the real final (not the delayed view): nothing here is shown until the board gets there.
+      const w = ac.winner ? 'away' : hc.winner ? 'home' : Number(hc.score) > Number(ac.score) ? 'home' : Number(ac.score) > Number(hc.score) ? 'away' : null;
+      picks.settle(ev.id, w);
+    }
+    g.bonesPick = picks.get(ev.id);
+    if (g.state === 'live' && bonesModel) {
+      const on = (t) => g.players.filter((p) => p.on && p.teamId === t.id).map((p) => p.id);
+      const [h, a] = [on(g.home), on(g.away)];
+      if (h.length && a.length) g.lineup = { ...SB.bones.lineupEdge(bonesModel, h, a), key: `${h.slice().sort()}|${a.slice().sort()}` };
+    }
   }
 
   function wantsSummary(ev) {
@@ -892,7 +925,10 @@
         meta.last = Date.now();
         if (ev.status.type.state !== 'in') meta.tries++;
         try {
-          const tape = SPORTS[ev._league].engine.buildTape(await SB.api.summary(ev.id, ev._league));
+          const summary = await SB.api.summary(ev.id, ev._league);
+          // Opened mid-game: the injury report from the game file, for a late BONES pick.
+          if (ev._league === 'nba' && !pregame.get(ev.id)?.inj) pregame.set(ev.id, { at: Date.now(), inj: SB.bones.injuries(summary) });
+          const tape = SPORTS[ev._league].engine.buildTape(summary);
           // ESPN's CDN sometimes answers with an older copy; never step a game backwards.
           const prev = tapes.get(ev.id);
           if (tape && !(prev && tape.plays.length < prev.plays.length)) tapes.set(ev.id, tape);
