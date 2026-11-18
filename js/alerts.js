@@ -46,6 +46,25 @@
     show(title, body, lead.logo);
   }
 
+  // "Clutch time · NBA" / "DET 98–101 SA · Q4 4:12": a game further down the
+  // board got close late (js/clutch.js). One per game per stage, so no gap.
+  function clutch(g, label) {
+    if (!on || !g || Notification.permission !== 'granted') return;
+    const score = `${g.away.abbr} ${g.away.score}–${g.home.score} ${g.home.abbr}`;
+    try {
+      const n = new Notification(`${label} · ${SB.league.name(g.league)}`, {
+        body: `${score} · ${g.statusText}`,
+        icon: (g.home.score >= g.away.score ? g.home : g.away).logo || undefined,
+        tag: `sb-clutch-${g.id}`,
+      });
+      n.onclick = () => {
+        window.focus();
+        SB.clutch.onPick(g.id);
+        n.close();
+      };
+    } catch (e) {}
+  }
+
   async function set(v) {
     if (!supported) return;
     if (v && Notification.permission === 'default') {
@@ -67,5 +86,5 @@
       : 'A notification with the new top game, its score and watch index while you’re in another tab or app. Turning it on asks Chrome for permission.';
   }
 
-  SB.alerts = { newTop, set, note, isOn: () => on };
+  SB.alerts = { newTop, clutch, set, note, isOn: () => on };
 })();

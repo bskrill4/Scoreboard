@@ -51,8 +51,23 @@
     note(987.77, t + 0.16, 1.3, 0.1); // B5
   }
 
+  // Clutch time further down the board: two quick, quieter taps on a lower
+  // note, so it reads as "something's up" rather than "the top game changed".
+  // Its own switch (Clutch time alerts) decides, not the top-game chime's.
+  let lastTap = 0;
+  function tap(preview) {
+    if (preview) unlock();
+    if (!ctx || ctx.state !== 'running') return;
+    if (!preview && Date.now() - lastTap < 5000) return;
+    lastTap = Date.now();
+    const t = ctx.currentTime + 0.02;
+    note(523.25, t, 0.35, 0.07); // C5
+    note(523.25, t + 0.14, 0.5, 0.06);
+  }
+
   SB.chime = {
     play,
+    tap,
     isOn: () => on,
     set(v) {
       on = !!v;

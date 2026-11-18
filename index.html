@@ -62,6 +62,9 @@
             <button type="button" class="blur-switch" id="soundSwitch" role="switch" aria-checked="true"
               title="Play a soft chime when a new game takes the top spot"><i></i>Top game chime</button>
             <p class="set-note">A soft chime when a different game takes the top spot. Turning it on plays a preview.</p>
+            <button type="button" class="blur-switch" id="clutchSwitch" role="switch" aria-checked="true"
+              title="A small banner and two soft taps when a game further down the board gets close late"><i></i>Clutch time alerts</button>
+            <p class="set-note">A small banner and two soft taps when another game gets close late (last 5 minutes within one score, the NHL's last 10 within a goal) or goes to overtime. Click it to move that game to the top.</p>
             <button type="button" class="blur-switch" id="alertSwitch" role="switch" aria-checked="false"
               title="Show a browser notification when a new game takes the top spot"><i></i>Top game alerts</button>
             <p class="set-note" id="alertNote">A notification with the new top game, its score and watch index, while you're in another tab or app.</p>
@@ -132,6 +135,7 @@
   <script src="js/notes.js"></script>
   <script src="js/chime.js"></script>
   <script src="js/alerts.js"></script>
+  <script src="js/clutch.js"></script>
   <script src="js/ui.js"></script>
   <script src="js/player.js"></script>
   <script src="js/plan.js"></script>

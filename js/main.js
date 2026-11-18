@@ -599,6 +599,7 @@
       SB.alerts.newTop(models[0]);
     }
     chimeDay = loadedDay;
+    SB.clutch.check(models, { day: loadedDay, topId: shownTop });
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
     else if (view() === 'season') SB.season.render();
@@ -1168,6 +1169,23 @@
       SB.chime.set(!SB.chime.isOn());
       showSound();
     });
+    const clutchBtn = $('clutchSwitch');
+    const showClutch = () => {
+      clutchBtn.classList.toggle('on', SB.clutch.isOn());
+      clutchBtn.setAttribute('aria-checked', String(SB.clutch.isOn()));
+    };
+    showClutch();
+    clutchBtn.addEventListener('click', () => {
+      SB.clutch.set(!SB.clutch.isOn());
+      showClutch();
+    });
+    // A clutch banner (or its notification) moves that game to the top spot, like clicking its card.
+    SB.clutch.onPick = (id) => {
+      if (!events.some((ev) => ev.id === id)) return;
+      if (location.hash && view() !== 'board') location.hash = '';
+      pinnedId = id;
+      tick(true);
+    };
     const floorBtn = $('floorSwitch');
     const showFloor = () => {
       floorBtn.classList.toggle('on', SB.impact.floorOn());

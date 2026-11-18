@@ -1387,3 +1387,53 @@ body.view-players .filter, body.view-bonezone .filter { display: none; }
 @media (max-width: 680px) {
   .filter { order: 20; width: 100%; }
 }
+
+/* ---------------- clutch time banners ---------------- */
+.clutch-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 300px;
+  pointer-events: none;
+}
+.clutch-toast {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  width: 100%;
+  padding: 11px 14px 12px;
+  border: 2px solid var(--yellow);
+  border-radius: 12px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--away) 22%, transparent), transparent 45%, transparent 55%, color-mix(in srgb, var(--home) 22%, transparent)), var(--panel);
+  box-shadow: 4px 4px 0 var(--yellow-ink), 0 10px 30px rgba(0, 0, 0, .5);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  pointer-events: auto;
+  animation: clutch-in .35s cubic-bezier(.2, .9, .3, 1.2);
+  transition: opacity .25s, transform .25s;
+}
+.clutch-toast:hover { border-color: #fff; }
+.clutch-toast.out { opacity: 0; transform: translateX(30px); }
+@keyframes clutch-in { from { opacity: 0; transform: translateY(16px) scale(.96); } }
+.ct-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding-right: 18px; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.ct-tag { padding: 2px 8px; border-radius: 999px; background: var(--yellow); color: var(--yellow-ink); }
+.ct-clock { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
+.ct-score { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; letter-spacing: .02em; }
+.ct-team { display: inline-flex; align-items: center; gap: 6px; }
+.ct-team img { width: 20px; height: 20px; object-fit: contain; }
+.ct-team b { font-size: 18px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.ct-dash { color: var(--dim); }
+.ct-go { align-self: center; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; color: var(--yellow); }
+.ct-close { position: absolute; top: 6px; right: 8px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 16px; line-height: 1; color: var(--dim); }
+.ct-close:hover { background: var(--panel-2); color: var(--text); }
+@media (max-width: 680px) {
+  .clutch-stack { left: 12px; right: 12px; bottom: 12px; width: auto; }
+}
+@media (prefers-reduced-motion: reduce) { .clutch-toast { animation: none; } }

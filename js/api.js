@@ -234,7 +234,12 @@
           athleteCached(id, league).catch(() => null),
         ]).then(([d, a]) => {
           const names = d.names || [];
-          const reg = (d.seasonTypes || []).find((s) => /regular/i.test(s.displayName || '')) || { categories: [] };
+          // Pro logs say "2026-27 Regular Season"; college logs just "2026-27 Season"
+          // (Nov 17: reading that as no games made every NCAAM player a "season debut").
+          const types = d.seasonTypes || [];
+          const reg =
+            types.find((s) => /regular/i.test(s.displayName || '')) ||
+            types.find((s) => !/post|playoff|tournament|play-in|preseason/i.test(s.displayName || '')) || { categories: [] };
           const games = [];
           for (const c of reg.categories || []) {
             for (const e of c.events || []) {
