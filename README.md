@@ -70,7 +70,10 @@ the raw number. Impact isn't zero-sum and each sport has its own baseline and sp
 debiting a defender, hockey debits misses and goalies (Nov 15, total Impact per game: NBA +146, college basketball +87,
 NFL +73, NHL −11; spread per player 9.0 in the NBA, 3.6 in the NHL), so the raw list's top 50 was NBA 14, college
 basketball 32, NFL 3, NHL 0. Sport-adjusted is how many of its sport's standard deviations a player is above that
-sport's average player that day, times the spread of all players together, so it still reads in Impact. The average
+sport's average player that day, times the spread of all players together, so it still reads in Impact. The spread
+used is halfway (the geometric mean) between the sport's own and everyone's: with hockey's own narrow spread (5.0 against
+the NBA's 13.8, Nov 17) one-goal nights outranked 40-point games, and the top 30 was NHL 19, college basketball 8, NBA 3
+(halfway: 12, 9, 9). The average
 and spread come from each sport's regulars only, the more involved half of its players that day (basketball: minutes on
 the floor; football and hockey: plays credited), so idle defenders and fourth-liners don't shrink the spread (`ADJ_MIN`
 in `js/ui.js`: a sport with fewer than 20 regulars that day uses the all-sports spread). That moved little on Nov 16
@@ -161,7 +164,11 @@ floor that rises from .6 to .95 at the final horn (a 3-point game late is must-w
 trailing side it fades, to nothing at 1% (`CRUNCH.full`/`none`), instead of cutting off. Basketball uses the
 NBA's clutch definition, the last 5 minutes within 5 points; football and hockey the last 2 minutes within one score
 (college football 5); `crunchSec`/`crunchMargin` in `SPORT`. Past the margin the floor fades over another 60% of it
-(`CRUNCH.fade`: basketball full at 5, gone at 8) instead of dropping off (PHI–BKN, Nov 16: 28 → 65 → 15 in two minutes).
+(`CRUNCH.fade`: basketball full at 5, gone at 10) instead of dropping off (PHI–BKN, Nov 16: 28 → 65 → 15 in two minutes;
+at 5 → 8, DET–SA still went 77 → 58 → 79 → 57 in a minute on Nov 17). Hockey, one goal down in regulation: the doubt
+counts the trailing side's chance to tie, about twice its chance to win, since the tying goal is the drama of the
+extra-attacker minutes (`doubtOf`; Nov 17, DAL down one at VGK with 0:39 left was 2.9% to win, faded to 33 and lost the
+top spot to a 10-point NBA game, then tied it at 0:05). In the last 2 minutes a one-goal hockey game doesn't fade at all.
 in the last 10% of regulation a game at 98%+ stops getting credit for a close score (a kneel-down after the pick).
 Hockey big nights (`HAT_TRICK`): hat-trick watch (2 goals) only in the 3rd and small (.25), since two goals are common;
 a finished hat trick .6; a shutout bid only for a goalie whose team leads (at 0-0 the tie already scores).

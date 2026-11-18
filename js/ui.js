@@ -1230,7 +1230,12 @@
     const mean = {};
     for (const k in vals) {
       const m = moments(vals[k]);
-      mean[k] = { mean: m.mean, sd: m.n >= ADJ_MIN && m.sd > 0 ? m.sd : pooled };
+      // Halfway (geometric mean) between the sport's own spread and everyone's.
+      // With the sport's spread alone, hockey's narrow one (5.0 against the
+      // NBA's 13.8, Nov 17) made a one-goal night outrank 30- and 40-point
+      // games: the top 30 was NHL 19, NCAAM 8, NBA 3 on a night of 11, 11 and
+      // 5 games. Halfway: 12, 9, 9, and the two 46/47-point games rank 1 and 3.
+      mean[k] = { mean: m.mean, sd: m.n >= ADJ_MIN && m.sd > 0 ? Math.sqrt(m.sd * pooled) : pooled };
     }
     const rel = (r) => ((val(r.p) - mean[r.g.league].mean) / mean[r.g.league].sd) * pooled;
     const sports = Object.keys(mean);
@@ -1277,14 +1282,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Standard deviations above today's average player in that sport, times the spread of all players: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="How far above today's average player in that sport, scaled by a spread halfway between that sport's and all players': BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
     return `${filters}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Standard deviations above today's average player in that sport, times the spread of all players: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="How far above today's average player in that sport, scaled by a spread halfway between that sport's and all players': BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'

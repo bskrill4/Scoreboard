@@ -70,9 +70,31 @@
   // While the trailing side is below `full` the floor fades, to nothing at
   // `none` (a hard 3% cutoff had a one-goal NHL finish at 2.6% scoring 7).
   // Past the margin it fades too, over another `fade` of it (basketball: full
-  // at 5, gone at 8), instead of a cliff (Nov 16: PHI-BKN went 28 -> 65 -> 15
-  // in two minutes as the lead went 7 -> 4 -> 7).
-  const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, full: 0.05, none: 0.01, fade: 0.6 };
+  // at 5, gone at 10), instead of a cliff (Nov 16: PHI-BKN went 28 -> 65 -> 15
+  // in two minutes as the lead went 7 -> 4 -> 7). The fade was 5 -> 8 until
+  // Nov 18: DET-SA still went 77 -> 58 -> 79 -> 57 in a minute as the lead
+  // went 5 -> 7 -> 5 -> 7, about 20 points a basket.
+  const CRUNCH = { sec: 120, floor: 0.6, top: 0.95, full: 0.05, none: 0.01, fade: 1 };
+  // How much doubt is left: 1 while the trailing side is `full`+ to come back,
+  // 0 at `none`. Hockey, one goal down in regulation: what makes the extra-
+  // attacker minutes worth watching is the tying goal, and a tie is only a
+  // coin flip from a win, so the trailing side's chance to tie (about twice
+  // its chance to win) is what counts. Nov 17: DAL down 3-2 at VGK with 0:39
+  // left and the goalie pulled was 2.9% to win, so crunch time faded to 33
+  // and a Lakers game down 10 in the 3rd quarter took the top spot; DAL tied
+  // it at 0:05 off the board. In the last 2 minutes (the extra attacker) a
+  // one-goal game doesn't fade at all: even doubled, the tie chance sank under
+  // 2% at 0:12 and the spot went back to the Lakers for the seconds before the goal.
+  function doubtOf(g) {
+    if (g.wp == null) return 1;
+    let tail = Math.min(g.wp, 1 - g.wp);
+    const cfg = SPORT[g.league];
+    if (g.league === 'nhl' && g.period <= cfg.periods && Math.abs(g.home.score - g.away.score) === 1) {
+      if (g.reg - g.elapsed <= CRUNCH.sec) return 1;
+      tail = Math.min(0.5, 2 * tail);
+    }
+    return clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
+  }
   const DECIDED = { played: 0.9, wp: 0.02 }; // last 10% of regulation at 98%+: margin stops counting
   // A live game that's all but over: quality, stars and big stat lines fade to
   // DEAD.keep of their worth, on the same doubt fade as crunch time (full worth
@@ -83,9 +105,7 @@
   const DEAD = { keep: 0.4 };
   function aliveFactor(g) {
     if (g.state !== 'live' || g.wp == null) return 1;
-    const tail = Math.min(g.wp, 1 - g.wp);
-    const doubt = clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
-    return DEAD.keep + (1 - DEAD.keep) * doubt;
+    return DEAD.keep + (1 - DEAD.keep) * doubtOf(g);
   }
   function tension(g) {
     const cfg = SPORT[g.league];
@@ -104,8 +124,7 @@
     const late = g.period > cfg.periods ? 1.1 : 0.4 + 0.6 * Math.pow(progressOf(g), cfg.lateExp || 1.6);
     // Crunch time (see CRUNCH): a close game late is must-watch even when the
     // favorite is 85% to hold on, and more so the closer the horn.
-    const tail = g.wp == null ? 1 : Math.min(g.wp, 1 - g.wp);
-    const doubt = clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
+    const doubt = doubtOf(g);
     const win = cfg.crunchSec || CRUNCH.sec;
     const left = g.reg - g.elapsed;
     const cm = cfg.crunchMargin ?? cfg.oneScore;
@@ -145,8 +164,7 @@
     const margin = Math.abs(lead);
     const close = margin <= cfg.oneScore ? 1 : clamp01(1 - (margin - cfg.oneScore) / cfg.oneScore);
     const late = g.period > cfg.periods ? 1 : 0.4 + 0.6 * Math.pow(progressOf(g), cfg.lateExp || 1.6);
-    const tail = g.wp == null ? 1 : Math.min(g.wp, 1 - g.wp);
-    const doubt = clamp01((tail - CRUNCH.none) / (CRUNCH.full - CRUNCH.none));
+    const doubt = doubtOf(g);
     return RED_ZONE.max * close * late * doubt * (lead > 0 ? RED_ZONE.leading : 1);
   }
 
