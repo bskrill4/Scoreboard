@@ -77,11 +77,51 @@
     return `<span class="shot ${cls}"><img${src} alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>`;
   }
 
-  function chips(reasons, max) {
-    return reasons
-      .slice(0, max)
-      .map((r) => `<span class="chip ${r.tone}">${esc(r.text)}</span>`)
-      .join('');
+  // A shorter wording for each chip, used when the full one doesn't fit.
+  const SHORT = [
+    [/^Heavyweight matchup$/, 'Heavyweight'],
+    [/^One-possession game$/, 'One poss.'],
+    [/^One-(score|goal) game$/, 'One $1'],
+    [/^Comeback brewing$/, 'Comeback'],
+    [/^Down to the wire$/, 'To the wire'],
+    [/^Clutch time$/, 'Clutch'],
+    [/^Wild swings$/, 'Swings'],
+    [/^Both on a back-to-back$/, 'Both B2B'],
+    [/^(\S+) on a back-to-back$/, '$1 B2B'],
+    [/^(\S+) in the red zone$/, '$1 red zone'],
+    [/^(\S+) power play · 5 on 3$/, '$1 5-on-3'],
+    [/^(\S+) power play$/, '$1 PP'],
+    [/^(\S+) on a (\d+-\d+) run$/, '$1 $2'],
+    [/^(\S+): (\d+) (?:straight goals|unanswered)$/, '$1 +$2'],
+    [/^Top-10 showdown$/, 'Top 10'],
+    [/^Ranked showdown$/, 'Ranked'],
+    [/^NBA Cup (quarterfinal|semifinal|final)$/, 'Cup $1'],
+    [/^Triple-double watch: (.+)$/, '$1 TD watch'],
+    [/^Hat trick watch: (.+)$/, '$1 hat trick?'],
+    [/^(\S+) near 1st triple-double$/, '$1 1st TD?'],
+    [/^(\S+) quadruple-double watch$/, '$1 QD watch'],
+    [/^#(\d+) prospect (.+)$/, '#$1 $2'],
+    [/^(#\d+ [^+]+?) \+ #\d+ .+$/, '$1 +1'],
+    [/^★ ([^+]+?) \+ .+$/, '★ $1'],
+    [/^(.+) · \d+$/, '$1'],
+  ];
+  function shortChip(text) {
+    for (const [re, to] of SHORT) if (re.test(text)) return text.replace(re, to);
+    return '';
+  }
+
+  // Every chip is rendered; fitChips() then shortens or folds into "+N" the
+  // ones that don't fit the card's width.
+  function chips(reasons) {
+    return (
+      reasons
+        .map((r) => {
+          const sh = shortChip(r.text);
+          const body = sh && sh !== r.text ? `<b class="cf">${esc(r.text)}</b><b class="cs">${esc(sh)}</b>` : esc(r.text);
+          return `<span class="chip ${r.tone}" title="${esc(r.text)}">${body}</span>`;
+        })
+        .join('') + (reasons.length > 1 ? '<span class="chip more" hidden></span>' : '')
+    );
   }
 
   function statusPill(g) {
@@ -173,7 +213,7 @@
     return `
       <div class="g-top">
         ${statusPill(g)}
-        <span class="chips">${chips(g.reasons, 1)}</span>
+        <span class="chips">${chips(g.reasons)}</span>
         <span class="widx" title="Watchability index">${g.index}</span>
       </div>
       <div class="g-teams">${teamRow(g, 'away')}${teamRow(g, 'home')}</div>
@@ -828,7 +868,7 @@
         ${hide ? statusPill({ ...g, statusText: g.state === 'final' ? 'Final' : 'Live' }) : statusPill(g)}
         ${pin}
         ${g.state === 'pre' ? '' : blurSwitch(g)}
-        <span class="chips">${chips(g.reasons, 4)}</span>
+        <span class="chips">${chips(g.reasons)}</span>
         <span class="widx" title="Watchability index"><small>Watch index</small>${g.index}</span>
       </div>
       <div class="h-score">
@@ -869,28 +909,75 @@
     }
   }
 
-  // Top card: when its chips don't all fit, drop the outline (info) and dim
-  // (cold) ones, last first, so the yellow and red ones show in full instead
-  // of every chip getting cut off.
+  // Fit a card's chips to its width. In order, until nothing is cut off:
+  // 1. switch the other chips to their short wording, last first;
+  // 2. fold outline (info) and dim (cold) chips, last first, into a "+N" pill;
+  // 3. fold any other chip but the first, last first;
+  // 4. switch the first chip to its short wording.
+  // The first chip always stays; as a last resort it ends in an ellipsis.
+  // Hovering a chip, or the "+N" pill, shows the full wording.
   function fitChips(el) {
     const row = el.querySelector('.chips');
     if (!row) return;
-    const all = [...row.children];
-    for (const c of all) c.hidden = false;
-    const cut = () => all.some((c) => !c.hidden && c.scrollWidth > c.clientWidth + 1);
-    const droppable = all.filter((c) => c.classList.contains('info') || c.classList.contains('cold')).reverse();
-    for (const c of droppable) {
-      if (!cut()) break;
-      c.hidden = true;
+    const all = [...row.querySelectorAll('.chip:not(.more)')];
+    const more = row.querySelector('.chip.more');
+    for (const c of all) {
+      c.hidden = false;
+      c.classList.remove('sm');
     }
+    if (more) more.hidden = true;
+    if (!all.length) return;
+    const cut = () =>
+      row.scrollWidth > row.clientWidth + 1 || [...row.children].some((c) => !c.hidden && c.scrollWidth > c.clientWidth + 1);
+    if (!cut()) return;
+    const shorten = (list) => {
+      for (const c of list) {
+        if (c.hidden || !c.querySelector('.cs')) continue;
+        c.classList.add('sm');
+        if (!cut()) return true;
+      }
+      return false;
+    };
+    if (shorten(all.slice(1).reverse())) return;
+    const folded = [];
+    const fold = (c) => {
+      c.hidden = true;
+      folded.unshift(c.title);
+      more.hidden = false;
+      more.textContent = `+${folded.length}`;
+      more.title = folded.join('\n');
+    };
+    const rest = all.slice(1).reverse();
+    if (more) {
+      for (const c of rest.filter((c) => c.classList.contains('info') || c.classList.contains('cold'))) {
+        fold(c);
+        if (!cut()) return;
+      }
+      for (const c of rest) {
+        if (c.hidden) continue;
+        fold(c);
+        if (!cut()) return;
+      }
+    }
+    shorten([all[0]]);
   }
 
+  // Refit every card when the window size changes.
+  let fitTimer;
+  const refitAll = () => els.forEach((el) => fitChips(el));
+  addEventListener('resize', () => {
+    clearTimeout(fitTimer);
+    fitTimer = setTimeout(refitAll, 120);
+  });
+  if (document.fonts) document.fonts.ready.then(refitAll);
+
   function patch(el, html) {
-    if (el._html === html) return;
+    if (el._html === html) return false;
     el._html = html;
     const tpl = document.createElement('template');
     tpl.innerHTML = `<div>${html}</div>`;
     morphChildren(el, tpl.content.firstChild);
+    return true;
   }
 
   // ---------- board ----------
@@ -913,6 +1000,7 @@
   }
 
   let morphing = false;
+  let pending = null; // [models, opts] that arrived during a morph
   let lastPaint = null;
 
   // The browser snapshots the board, we rearrange it, and each card morphs in
@@ -942,6 +1030,11 @@
     t.finished.catch(() => {}).then(() => {
       for (const [el] of roles) el.style.viewTransitionName = `g${el.dataset.id}`;
       morphing = false;
+      if (pending) {
+        const [m, o] = pending;
+        pending = null;
+        render(m, o);
+      }
     });
   }
 
@@ -983,9 +1076,16 @@
       bindFocus(board);
     }
     const key = boardKey(models, opts);
-    if (key === lastKey || !lastKey) return paint(models, opts, false);
-    // Let a running morph finish; the next tick picks up the new order.
-    if (morphing) return;
+    if (key === lastKey || !lastKey) {
+      pending = null;
+      return paint(models, opts, false);
+    }
+    // Let a running morph finish, then show the latest board (a filter
+    // typed mid-morph shouldn't wait for the next poll).
+    if (morphing) {
+      pending = [models, opts];
+      return;
+    }
     if (canMorph()) morph(models, opts);
     else slide(models, opts);
   }
@@ -1017,8 +1117,9 @@
       el.style.setProperty('--away', g.away.css);
       el.style.setProperty('--home', g.home.css);
       if (board.children[i] !== el) board.insertBefore(el, board.children[i] || null);
-      patch(el, isHero ? heroHTML(g, { pinned: opts.pinnedId === g.id }) : tileHTML(g));
-      if (isHero) fitChips(el);
+      const changed = patch(el, isHero ? heroHTML(g, { pinned: opts.pinnedId === g.id }) : tileHTML(g));
+      if (changed || el._fitHero !== isHero) fitChips(el);
+      el._fitHero = isHero;
       popScores(el, g);
     });
     for (const [id, el] of els) {

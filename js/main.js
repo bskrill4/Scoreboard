@@ -46,6 +46,9 @@
   let prevOrder = [];
   let loaded = false;
   let chimeDay = null; // the day the last tick showed, so a day switch doesn't chime
+  let shownTop = null; // the game in the top spot on the last tick
+  let filterText = ''; // the board filter box
+  let chimeFilter = '';
 
   // Sports switched off in the top bar (remembered per browser).
   let hiddenLeagues = new Set();
@@ -519,7 +522,11 @@
     return b.index > a.index + (gb === 0 ? margin : 0);
   }
 
-  function arrange(models) {
+  // keep: the board filter. While one is on, the top spot is picked among the
+  // games it keeps, and tracked apart (filterHeroId) so clearing the filter
+  // goes straight back to the full board's top game.
+  let filterHeroId = null;
+  function arrange(models, keep) {
     const byId = new Map(models.map((m) => [m.id, m]));
     // Start from the previous order so near-ties don't flicker back and forth.
     let order = prevOrder.filter((id) => byId.has(id));
@@ -537,43 +544,57 @@
     prevOrder = order;
 
     if (pinnedId && !byId.has(pinnedId)) pinnedId = null;
-    if (pinnedId) heroId = pinnedId;
-    else {
-      // The top spot has no grace margin: any game with a higher index takes it.
-      // The current top game only keeps it on a tie.
-      // Games sitting in a break (halftime, end of Q1/Q3) can't hold it at all,
-      // unless every game on the board is in one.
-      // ...but when every live game is in a break, the live ones still outrank
-      // finals and upcoming games (a final once took the top during a quarter break).
-      const all = order.map((id) => byId.get(id));
-      const live = all.filter((m) => m.state === 'live');
-      const cands = live.some((m) => !onBreak(m)) ? all.filter((m) => !onBreak(m)) : live.length ? live : all;
-      const hero = byId.get(heroId);
-      let top = cands.includes(hero) ? hero : cands[0];
-      for (const m of cands) if (better(m, top, 0)) top = m;
-      // Calmer modes: a live top game keeps its spot until it reaches a stoppage
-      // (or, in 'breaks10', until another game is 10+ points better).
-      let keep = false;
-      if (switchMode !== 'best' && hero && hero.state === 'live' && top && top !== hero) {
-        const bigGap = switchMode === 'breaks10' && top.index >= hero.index + BIG_LEAD;
-        keep = !atStoppage(hero) && !bigGap;
-      }
-      heroId = keep ? hero.id : top ? top.id : null;
+    if (keep) {
+      order = order.filter((id) => keep(byId.get(id)));
+      filterHeroId = pinnedId && order.includes(pinnedId) ? pinnedId : pickTop(order.map((id) => byId.get(id)), byId.get(filterHeroId));
+      return [filterHeroId, ...order.filter((id) => id !== filterHeroId)].filter(Boolean).map((id) => byId.get(id));
     }
-
+    filterHeroId = null;
+    if (pinnedId) heroId = pinnedId;
+    else heroId = pickTop(order.map((id) => byId.get(id)), byId.get(heroId));
     return [heroId, ...order.filter((id) => id !== heroId)].filter(Boolean).map((id) => byId.get(id));
+  }
+
+  // The top game among `all` (in board order), given the current one.
+  function pickTop(all, hero) {
+    // The top spot has no grace margin: any game with a higher index takes it.
+    // The current top game only keeps it on a tie.
+    // Games sitting in a break (halftime, end of Q1/Q3) can't hold it at all,
+    // unless every game on the board is in one.
+    // ...but when every live game is in a break, the live ones still outrank
+    // finals and upcoming games (a final once took the top during a quarter break).
+    const live = all.filter((m) => m.state === 'live');
+    const cands = live.some((m) => !onBreak(m)) ? all.filter((m) => !onBreak(m)) : live.length ? live : all;
+    if (hero && !all.includes(hero)) hero = null;
+    let top = cands.includes(hero) ? hero : cands[0];
+    for (const m of cands) if (better(m, top, 0)) top = m;
+    // Calmer modes: a live top game keeps its spot until it reaches a stoppage
+    // (or, in 'breaks10', until another game is 10+ points better).
+    let keep = false;
+    if (switchMode !== 'best' && hero && hero.state === 'live' && top && top !== hero) {
+      const bigGap = switchMode === 'breaks10' && top.index >= hero.index + BIG_LEAD;
+      keep = !atStoppage(hero) && !bigGap;
+    }
+    return keep ? hero.id : top ? top.id : null;
   }
 
   // ---------- render ----------
   function tick(toTop = false) {
     if (!loaded) return;
     const T = cutoff();
-    const prevHero = heroId;
+    const prevHero = shownTop;
     const prevDay = loadedDay;
-    const models = arrange(events.filter(shown).map((ev) => buildModel(ev, T)));
+    const evs = events.filter(shown);
+    const terms = view() === 'board' ? SB.filter.parse(filterText) : [];
+    const built = new Map(evs.map((ev) => [ev.id, buildModel(ev, T)]));
+    const evById = new Map(evs.map((ev) => [ev.id, ev]));
+    const models = arrange([...built.values()], terms.length ? (m) => SB.filter.matches(terms, evById.get(m.id), m) : null);
+    shownTop = models[0]?.id || null;
     // Chime when a different game takes the top spot on its own: not on the
-    // first paint, a day change, a pin, or the old top game leaving the board.
-    if (prevHero && heroId && heroId !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && models.some((m) => m.id === prevHero)) {
+    // first paint, a day change, a pin, a filter change, or the old top game leaving the board.
+    const filterSame = filterText === chimeFilter;
+    chimeFilter = filterText;
+    if (prevHero && shownTop && shownTop !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && filterSame && models.some((m) => m.id === prevHero)) {
       SB.chime.play();
       SB.alerts.newTop(models[0]);
     }
@@ -583,7 +604,7 @@
     else if (view() === 'season') SB.season.render();
     else if (view() === 'nflseason') SB.nflSeason.render();
     else if (view() === 'bonezone') SB.boneZone.render();
-    else SB.ui.render(models, { heroId, pinnedId, toTop });
+    else SB.ui.render(models, { heroId: shownTop, pinnedId, toTop });
 
     const live = models.filter((m) => m.state === 'live').length;
     const pre = models.filter((m) => m.state === 'pre' || m.state === 'sync').length;
@@ -591,7 +612,10 @@
     $('slate').innerHTML = models.length
       ? `<b class="${live ? 'hot' : ''}">${live} live</b><span>${pre} upcoming</span><span>${fin} final</span>`
       : '';
-    if (!models.length) {
+    $('filterCount').textContent = terms.length ? `${models.length} of ${evs.length}` : '';
+    if (!models.length && terms.length && evs.length) {
+      showNotice(`Nothing on this day matches “${SB.ui.esc(filterText.trim())}”. <a href="#" id="filterClear2">Clear the filter</a>`);
+    } else if (!models.length) {
       const day = viewDay();
       const off = [...hiddenLeagues].map((l) => l.toUpperCase()).join(', ');
       if (hiddenLeagues.size === SB.api.leagues.length) showNotice('Every sport is switched off. Tap a sport above to bring it back.');
@@ -906,7 +930,7 @@
     if (replay) return !tape && meta.tries < 3;
     if (state === 'in') {
       const rank = prevOrder.indexOf(ev.id);
-      const top = ev.id === heroId || ev.id === pinnedId || rank < 0 || rank < SUMMARY_TOP;
+      const top = ev.id === heroId || ev.id === filterHeroId || ev.id === pinnedId || rank < 0 || rank < SUMMARY_TOP;
       return Date.now() - meta.last >= (top ? SUMMARY_EVERY : SUMMARY_SLOW);
     }
     if (state === 'post') {
@@ -1079,9 +1103,56 @@
     });
   }
 
+  // The board filter box. "/" focuses it; Escape clears it.
+  function initFilter() {
+    const box = $('filter');
+    const clear = $('filterClear');
+    let t;
+    const set = (v, now) => {
+      filterText = v;
+      clear.hidden = !v;
+      document.body.classList.toggle('filtering', !!v.trim());
+      clearTimeout(t);
+      if (now) tick(true);
+      else t = setTimeout(() => tick(true), 120);
+    };
+    box.addEventListener('input', () => set(box.value));
+    clear.addEventListener('click', () => {
+      box.value = '';
+      set('', true);
+      box.focus();
+    });
+    box.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        box.value = '';
+        set('', true);
+        box.blur();
+      }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey || view() !== 'board') return;
+      if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable) return;
+      e.preventDefault();
+      box.focus();
+      box.select();
+    });
+    $('notice').addEventListener('click', (e) => {
+      if (e.target.id !== 'filterClear2') return;
+      e.preventDefault();
+      clear.click();
+    });
+    SB.filter.onRosterLoad(() => {
+      if (filterText.trim()) {
+        clearTimeout(t);
+        t = setTimeout(() => tick(), 150);
+      }
+    });
+  }
+
   function initControls() {
     SB.player.onGame = showGame;
     initSettings();
+    initFilter();
     try {
       setMetric(localStorage.getItem('sb.playerValue') || 'imp');
     } catch (e) {

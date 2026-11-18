@@ -212,9 +212,9 @@
   function starPower(g, stars) {
     let total = 0;
     const names = [];
-    let prospect = null; // highest-ranked draft prospect in the game (college)
+    const prospects = []; // draft prospects in the game (college), best first
     const seeProspect = (p, s) => {
-      if (s.prospect && (!prospect || s.prospect < prospect.rank)) prospect = { rank: s.prospect, last: p.last };
+      if (s.prospect && !prospects.some((x) => x.last === p.last)) prospects.push({ rank: s.prospect, last: p.last });
     };
     if (g.players.length) {
       for (const p of g.players) {
@@ -236,7 +236,8 @@
       }
     }
     names.sort((a, b) => b.w - a.w);
-    return { score: clamp01(total / 2.5), names: names.slice(0, 2).map((n) => n.last), prospect };
+    prospects.sort((a, b) => a.rank - b.rank);
+    return { score: clamp01(total / 2.5), names: names.slice(0, 2).map((n) => n.last), prospects };
   }
 
   // Triple-double watch: two categories already in double figures and the third
@@ -478,15 +479,21 @@
       reasons.push({ text: perf.label, tone: 'hot' });
     // Gold (milestones, records) always lead, so a tile's one chip is the gold one.
     reasons.unshift(...gold.map((c) => ({ text: c.text, tone: 'gold' })));
-    // Lottery-level draft prospect (top 14 on the board).
-    if (s.prospect && s.prospect.rank <= 14) reasons.push({ text: `#${s.prospect.rank} prospect ${s.prospect.last}`, tone: 'info' });
+    // Draft prospects. College stars come only from the big board, so in a
+    // college game this one chip replaces the ★ chip: the top two lottery
+    // picks (top 14), or failing that the best prospect when star power is up.
+    const lottery = s.prospects.filter((x) => x.rank <= 14).slice(0, 2);
+    const shown = lottery.length ? lottery : s.score >= 0.4 ? s.prospects.slice(0, 1) : [];
+    if (shown.length === 1) reasons.push({ text: `#${shown[0].rank} prospect ${shown[0].last}`, tone: 'info' });
+    else if (shown.length) reasons.push({ text: shown.map((x) => `#${x.rank} ${x.last}`).join(' + '), tone: 'info' });
+    const college = g.league === 'ncaam';
     // A back-to-back takes the star chip's spot (dim, not yellow or red).
     if (b2bTeams.length)
       reasons.push({
         text: b2bTeams.length === 2 ? 'Both on a back-to-back' : `${b2bTeams[0].abbr} on a back-to-back`,
         tone: 'cold',
       });
-    else if (s.score >= 0.4 && s.names.length) reasons.push({ text: `★ ${s.names.join(' + ')}`, tone: 'info' });
+    else if (!college && s.score >= 0.4 && s.names.length) reasons.push({ text: `★ ${s.names.join(' + ')}`, tone: 'info' });
     if (cup.chip) reasons.push({ text: cup.chip, tone: 'info' });
     if (ranked.chip) reasons.push({ text: ranked.chip, tone: 'info' });
     else if (q >= 0.7) reasons.push({ text: 'Heavyweight matchup', tone: 'info' });

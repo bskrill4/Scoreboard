@@ -91,6 +91,13 @@
     </nav>
     <button type="button" class="today-btn" id="todayBtn" hidden>Return to today</button>
 
+    <div class="filter" role="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+      <input id="filter" type="text" placeholder="Filter: sport, team or player" aria-label="Filter games by sport, team or player" autocomplete="off" spellcheck="false">
+      <span class="filter-count" id="filterCount" aria-live="polite"></span>
+      <button type="button" class="filter-clear" id="filterClear" hidden aria-label="Clear filter" title="Clear (Esc)">×</button>
+    </div>
+
     <div class="slate" id="slate"></div>
 
     <div class="replay" id="replay" hidden>
@@ -131,6 +138,7 @@
   <script src="js/season.js"></script>
   <script src="js/bones.js"></script>
   <script src="js/bonezone.js"></script>
+  <script src="js/filter.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>
