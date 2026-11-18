@@ -1331,6 +1331,7 @@ body.view-bonezone .days, body.view-bonezone .today-btn, body.view-bonezone .sla
 .lineup-edge { grid-column: 1 / -1; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--line, #2a2a30); border-radius: 10px; }
 .lu-head { display: flex; align-items: baseline; gap: 10px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); font-weight: 700; }
 .lu-head b { color: var(--yellow); font-size: 15px; letter-spacing: 0; }
+.lu-head b small { font-size: 10px; font-weight: 600; color: var(--dim); text-transform: none; margin-left: 2px; }
 .lu-change { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 600; color: var(--text); }
 .lu-bar { display: flex; height: 6px; border-radius: 3px; overflow: hidden; margin: 8px 0 6px; }
 .lu-bar i { display: block; height: 100%; transition: width .6s ease; }

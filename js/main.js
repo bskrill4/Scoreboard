@@ -1339,6 +1339,15 @@
       .catch((e) => console.warn('No star list for', league, e));
   }
   pollLoop();
+  // Grade BONES picks from finals the board didn't see (closed before the
+  // game ended): on load, then every half hour, so the track record stays current.
+  // Before Nov 18 only asking the Bone Zone's skull did this, and no pick from
+  // Nov 16-17 had been graded.
+  if (!replay) {
+    const settle = () => SB.bones.picks.settleOld().catch(() => {});
+    settle();
+    setInterval(settle, 30 * 60e3);
+  }
 
   let lastFrame = performance.now();
   setInterval(() => {

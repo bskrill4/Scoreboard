@@ -174,8 +174,8 @@
   // the starters). With fewer than 2 games each way, they're spread evenly as
   // before. Then everyone is scaled to 240, capped at 42 a man.
   // replacement: false spreads an injured player's minutes evenly (for comparisons).
-  function projectMinutes(history, ids, out, replacement = true) {
-    const recent = history.slice(-RECENT);
+  function projectMinutes(history, ids, out, replacement = true, recentN = RECENT) {
+    const recent = history.slice(-recentN);
     if (!recent.length) return null;
     const mean = (games, id) => (games.length ? games.reduce((s, g) => s + (g.get(id) || 0), 0) / games.length : 0);
     const proj = new Map();
@@ -291,7 +291,14 @@
   // Lineups: every stint of two fives this season, its edge from ratings to
   // date, against the score while they were on the floor.
   // opts.replacement: false to project minutes without replacement (see projectMinutes).
+  // opts.shrink / opts.recent: SHRINK_MIN and RECENT to test other settings with.
+  // Each graded game is kept in `rows` (home side): BONES gap b, point-
+  // differential gap p, win, final margin, and how many rotation players
+  // (ROTATION_MIN+ minutes a game lately) each side was missing.
+  const ROTATION_MIN = 15;
   function backtest(games, opts = {}) {
+    const SHRINK = opts.shrink ?? SHRINK_MIN;
+    const RECENT_N = opts.recent ?? RECENT;
     const players = new Map(); // id -> { imp, min, team }
     const teamGames = new Map(); // team -> [Map(player -> minutes)]
     const pd = new Map(); // team -> { sum, n }
@@ -305,7 +312,7 @@
       const avg = leagueMin ? leagueImp / leagueMin : 0;
       const rate = (id) => {
         const p = players.get(id);
-        return p ? (p.imp + avg * SHRINK_MIN) / (p.min + SHRINK_MIN) : avg;
+        return p ? (p.imp + avg * SHRINK) / (p.min + SHRINK) : avg;
       };
       const played = new Set();
       for (const [pid, r] of Object.entries(g.rows)) if (r[3] && r[3][1] > 0) played.add(pid);
@@ -314,14 +321,30 @@
         if (history.length < CAL_MIN_GAMES) return null;
         const ids = [...players].filter(([, p]) => p.team === team).map(([id]) => id);
         const out = new Map(ids.filter((id) => !played.has(id)).map((id) => [id, 1])); // who sat: as if on the injury report
-        const proj = projectMinutes(history, ids, out, opts.replacement !== false);
-        return proj ? [...proj].reduce((s, [pid, m]) => s + rate(pid) * m, 0) : null;
+        const proj = projectMinutes(history, ids, out, opts.replacement !== false, RECENT_N);
+        if (!proj) return null;
+        const sat = [...proj].reduce((s, [pid, m]) => s + rate(pid) * m, 0);
+        if (opts.outWeight == null || opts.outWeight === 1) return sat;
+        // Testing: count only outWeight of what the absences cost.
+        const full = projectMinutes(history, ids, new Map(), opts.replacement !== false, RECENT_N);
+        const healthy = full ? [...full].reduce((s, [pid, m]) => s + rate(pid) * m, 0) : sat;
+        return healthy - opts.outWeight * (healthy - sat);
+      };
+      const missing = (team) => {
+        const recent = (teamGames.get(team) || []).slice(-RECENT);
+        if (!recent.length) return 0;
+        let n = 0;
+        for (const [id, p] of players) {
+          if (p.team !== team || played.has(id)) continue;
+          if (recent.reduce((s, g) => s + (g.get(id) || 0), 0) / recent.length >= ROTATION_MIN) n++;
+        }
+        return n;
       };
       if (ids.length === 2 && g.score[home] !== g.score[away]) {
         const [sh, sa] = [strength(home), strength(away)];
         const [ph, pa] = [pd.get(home), pd.get(away)];
         if (sh != null && sa != null && ph && pa)
-          rows.push({ b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0 });
+          rows.push({ b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0, margin: g.score[home] - g.score[away], outH: missing(home), outA: missing(away), t: g.t });
       }
       const L = g.rows._lineups;
       if (L && leagueMin) {
@@ -441,7 +464,24 @@
         big: { n: big.length, won: big.filter((x) => Math.sign(x.pd) === Math.sign(x.edge)).length },
       };
     }
-    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lineup };
+    // Confidence bands: how often the BONES favorite won at each level of confidence.
+    const bands = [
+      [0.5, 0.55],
+      [0.55, 0.6],
+      [0.6, 0.65],
+      [0.65, 0.7],
+      [0.7, 1.01],
+    ].map(([lo, hi]) => {
+      const xs = rows
+        .map((r) => {
+          const ph = 1 / (1 + Math.exp(-(bones.k * r.b + HOME_LOGIT)));
+          return { conf: Math.max(ph, 1 - ph), right: ph >= 0.5 ? r.win === 1 : r.win === 0 };
+        })
+        .filter((x) => x.conf >= lo && x.conf < hi);
+      const n = xs.length;
+      return { lo, hi: Math.min(hi, 1), n, right: xs.filter((x) => x.right).length, expected: n ? xs.reduce((s, x) => s + x.conf, 0) / n : NaN };
+    });
+    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lineup, bands, rows };
   }
 
   // A tape's lineup stints, compact for the per-game cache: { ids, st: [[home
@@ -491,12 +531,19 @@
   // ---------- lineup edge ----------
   // Two fives on the floor, each player's season BONES per 36 added up (a
   // player with no season yet counts at the league average). edge > 0: home's five.
+  // per48: the edge as the points per 48 minutes it has been worth, from the
+  // backtest's fit of every stint this season against the score while those
+  // fives were on the floor (Nov 18: 0.83 points per 48 for each point of edge,
+  // so a 10-point edge is about +8 per 48, under 2 points over 10 minutes).
+  const PER48_FALLBACK = 0.8;
   function lineupEdge(m, homeIds, awayIds) {
     const per36 = (id) => (m.players.get(String(id))?.rate ?? m.avgRate) * 36;
     const sum = (ids) => ids.reduce((s, id) => s + per36(id), 0);
     const home = sum(homeIds);
     const away = sum(awayIds);
-    return { home, away, edge: home - away };
+    const slope = m.backtest?.lineup?.per48PerEdge;
+    const k = Number.isFinite(slope) && slope > 0 ? slope : PER48_FALLBACK;
+    return { home, away, edge: home - away, per48: (home - away) * k, slope: k };
   }
 
   // ---------- the pick tracker ----------

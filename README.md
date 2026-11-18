@@ -266,15 +266,34 @@ pre-game line's favorite flag (summary `pickcenter`), or from ESPN's matchup pre
 used only to spot disagreements: no odds are shown. An **upset pick** is BONES taking the non-favorite at 53% or better;
 anything under 53% is a toss-up.
 
+Testing options (`backtest(games, { shrink, recent, outWeight, replacement })`): `shrink` and `recent` stand in for
+`SHRINK_MIN` and `RECENT`, `outWeight` counts only that share of what absences cost. It also returns `bands` (how often
+the favorite won at each confidence level) and `rows` (each graded game: BONES and point-differential gaps, final
+margin, rotation players, `ROTATION_MIN`+ a game, each side was missing). Nov 18, 210 games, 132 graded, each setting
+fit on the first half and graded on the second (current: 42 of 66, log-loss −0.6175):
+- Confidence bands roughly hold: 50–55% won 55%, 55–60% 55%, 60–65% 77%, 65–70% 48%, 70%+ 81% (22–32 games each).
+- `shrink` 0–600 × `recent` 5 to the whole season: 42–44 of 66, log-loss −0.613 to −0.626. Best (300, whole season)
+  −0.6125, within noise.
+- Blending point differential: fit on the first half it takes no BONES (PD alone: 45 of 66, −0.634). A 50/50 mix
+  went 46 of 66, −0.617, but that was chosen by looking at the second half, so it isn't an honest result.
+- Short-handed teams: with 2+ more rotation players out than the opponent they won 14 of 24 against 9.4 expected
+  (+5.2 points a game over projection); fully healthy teams won 55 of 120 against 63.6. Counting absences at half
+  weight scored −0.6159 on the second half, but the first half picks zero weight, which scores −0.621.
+No change made: nothing beat the current settings on an honest second-half test. Worth rerunning as games come in,
+the short-handed effect most of all.
+
 **Pick tracker** (`SB.bones.picks`, localStorage `sb.bonesPicks`): each NBA game's last pre-game BONES pick is locked at
 tip-off. If the board is first opened mid-game, the pick is made then from the game file's injury report and flagged late.
-Picks are settled at the final, or by the skull, which looks up finals the board missed. Live cards show
+Picks are settled at the final; finals the board missed are looked up when the board loads and every half hour after
+(`settleOld`; before Nov 18 only the skull did this, so picks from nights the board was closed early sat ungraded). Live cards show
 "BONES: PHX · on track / neck and neck / in trouble" (pick side's live win probability ≥ 60% / between / ≤ 40%), finals
 show "called it ✓" or "missed ✗", and the skull opens with the latest night's record and the running total. Replay
 mode never locks or settles a pick.
 
 **Lineup edge** (live NBA, top of "On court"): each team's five on the floor, with their season BONES per 36 added up
-(a player with no season counts at league average). It shows the gap and what the last change of either five did to it.
+(a player with no season counts at league average). The gap is shown as expected points per 48 minutes: the edge times the backtest's fit of stint scoring on edge
+(`per48PerEdge`, 0.83 on Nov 18, so +10 BONES per 36 reads about +8 per 48), with what the last change of either five
+did to it. The raw per-36 sums stay underneath.
 The Bone Zone tests it on every stint this season (same ten players on the floor; NBA games cache their stints as
 `_lineups`, `CACHE_VERSION` 16), with ratings as of before each game: as of Nov 17, 7,061 stints, minute-weighted r .06;
 a 10–20 edge was worth +10.3 points per 48 minutes and a 20+ edge +16.2, and fives ahead by 10+ outscored the other five

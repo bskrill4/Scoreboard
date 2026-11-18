@@ -810,17 +810,19 @@
     const L = g.lineup;
     if (!L || g.state !== 'live') return '';
     let m = lineupMemo.get(g.id);
-    if (!m) lineupMemo.set(g.id, (m = { key: L.key, edge: L.edge, change: null }));
-    else if (m.key !== L.key) [m.key, m.change, m.edge] = [L.key, L.edge - m.edge, L.edge];
-    else m.edge = L.edge;
-    const lead = Math.abs(L.edge) < 1 ? null : L.edge > 0 ? g.home : g.away;
-    const pos = Math.max(4, Math.min(96, 50 + L.edge * 1.5)); // home share of the bar
+    // Shown as expected points per 48 minutes (L.per48, see SB.bones.lineupEdge).
+    if (!m) lineupMemo.set(g.id, (m = { key: L.key, per48: L.per48, change: null }));
+    else if (m.key !== L.key) [m.key, m.change, m.per48] = [L.key, L.per48 - m.per48, L.per48];
+    else m.per48 = L.per48;
+    const lead = Math.abs(L.per48) < 1 ? null : L.per48 > 0 ? g.home : g.away;
+    const pos = Math.max(4, Math.min(96, 50 + L.per48 * 2.5)); // home share of the bar: ±18 per 48 fills it
     const change =
       m.change != null && Math.abs(m.change) >= 0.5
         ? `<small class="lu-change">Last sub: ${esc((m.change > 0 ? g.home : g.away).abbr)} +${Math.abs(m.change).toFixed(1)}</small>`
         : '';
-    return `<div class="lineup-edge" title="Each team's five on the floor: their season BONES per 36, added up">
-      <div class="lu-head"><span>Lineup edge</span><b>${lead ? `${esc(lead.abbr)} +${Math.abs(L.edge).toFixed(1)}` : 'Even'}</b>${change}</div>
+    const title = `Each five on the floor's season BONES per 36, added up, turned into the points per 48 minutes an edge that size has been worth this season (${L.slope.toFixed(2)} a point of edge). A small, noisy signal: +10 per 48 is about 2 points over 10 minutes.`;
+    return `<div class="lineup-edge" title="${esc(title)}">
+      <div class="lu-head"><span>Lineup edge</span><b>${lead ? `${esc(lead.abbr)} +${Math.abs(L.per48).toFixed(1)}<small> pts/48</small>` : 'Even'}</b>${change}</div>
       <div class="lu-bar"><i style="width:${(100 - pos).toFixed(1)}%;background:${g.away.css}"></i><i style="width:${pos.toFixed(1)}%;background:${g.home.css}"></i></div>
       <div class="lu-vals"><span>${esc(g.away.abbr)} ${L.away.toFixed(1)}</span><small>BONES per 36, five on court</small><span>${L.home.toFixed(1)} ${esc(g.home.abbr)}</span></div>
     </div>`;
