@@ -1207,7 +1207,9 @@
     if (o.rank) playersRank = o.rank === 'rel' ? 'rel' : 'raw';
   }
 
-  function playersTab(games, col, soFar) {
+  // Every player who played in `games`, and their sport-adjusted value on
+  // metric v (also used by the morning recap, js/recap.js).
+  function sportAdjusted(games, v = val) {
     const all = [];
     for (const g of games) {
       for (const p of g.players) {
@@ -1226,7 +1228,7 @@
     for (const [k, rs] of Object.entries(bySport)) {
       const inv = rs.map((r) => involvement(r.p)).sort((a, b) => a - b);
       const median = inv[Math.floor(inv.length / 2)] || 0;
-      vals[k] = rs.filter((r) => involvement(r.p) >= median).map((r) => val(r.p));
+      vals[k] = rs.filter((r) => involvement(r.p) >= median).map((r) => v(r.p));
     }
     const pooled = moments(Object.values(vals).flat()).sd || 1;
     const mean = {};
@@ -1239,8 +1241,12 @@
       // 5 games. Halfway: 12, 9, 9, and the two 46/47-point games rank 1 and 3.
       mean[k] = { mean: m.mean, sd: m.n >= ADJ_MIN && m.sd > 0 ? Math.sqrt(m.sd * pooled) : pooled };
     }
-    const rel = (r) => ((val(r.p) - mean[r.g.league].mean) / mean[r.g.league].sd) * pooled;
-    const sports = Object.keys(mean);
+    const rel = (r) => ((v(r.p) - mean[r.g.league].mean) / mean[r.g.league].sd) * pooled;
+    return { all, rel, sports: Object.keys(mean) };
+  }
+
+  function playersTab(games, col, soFar) {
+    const { all, rel, sports } = sportAdjusted(games);
     if (playersSport !== 'all' && !sports.includes(playersSport)) playersSport = 'all';
     const rows = all.filter((r) => playersSport === 'all' || r.g.league === playersSport);
     const key = playersRank === 'rel' ? rel : (r) => val(r.p);
@@ -1377,5 +1383,5 @@
     for (const id of lineupMemo.keys()) if (!keep.has(id)) lineupMemo.delete(id);
   }
 
-  SB.ui = { forget, isBlurred: (id) => blurred.has(id), statLine, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
+  SB.ui = { forget, isBlurred: (id) => blurred.has(id), statLine, headshot, fmtWPA, sportAdjusted, chartHTML, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

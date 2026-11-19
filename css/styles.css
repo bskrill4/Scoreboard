@@ -1439,6 +1439,91 @@ body.view-players .filter, body.view-bonezone .filter { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .clutch-toast { animation: none; } }
 
+/* ---------------- morning recap (js/recap.js) ---------------- */
+.recap {
+  max-width: 1680px;
+  margin: 22px auto 0;
+  padding: 0 24px;
+}
+.recap .rc-head, .recap .rc-cols { background: var(--panel); border: 2px solid var(--line); }
+.rc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 16px;
+  border-bottom: 0 !important;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.rc-head h2 { margin: 0; font-size: 15px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; color: var(--yellow); }
+.rc-head h2 small { margin-left: 8px; font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--dim); text-transform: none; }
+.rc-close {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-2);
+  font-size: 18px;
+  line-height: 1;
+  color: var(--dim);
+}
+.rc-close:hover { color: var(--yellow-ink); background: var(--yellow); border-color: var(--yellow); }
+.rc-cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  padding: 4px 16px 14px;
+  border-top: 0 !important;
+  border-radius: 0 0 var(--radius) var(--radius);
+}
+.rc-col h3 { margin: 6px 0 8px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+.rc-col h3 small { text-transform: none; letter-spacing: 0; font-weight: 600; opacity: .8; }
+.rc-empty { margin: 0; color: var(--dim); font-size: 13px; }
+.rc-big { margin: 0 0 6px; }
+.rc-big b { font-size: 28px; font-weight: 900; font-stretch: 90%; font-variant-numeric: tabular-nums; }
+.rc-big small { color: var(--dim); font-weight: 600; }
+.rc-up { margin: 0 0 8px; font-size: 13px; }
+.rc-up b { color: var(--yellow); }
+.rc-picks { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 13px; }
+.rc-picks li { display: flex; align-items: baseline; gap: 6px; color: var(--dim); }
+.rc-picks li b { color: var(--text); }
+.rc-picks li i { width: 14px; font-style: normal; font-weight: 900; text-align: center; }
+.rc-picks li.hit i { color: #4ade80; }
+.rc-picks li.miss i { color: var(--red); }
+.rc-picks li span { margin-left: auto; font-variant-numeric: tabular-nums; }
+.rc-players { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.rc-players li { display: flex; align-items: center; gap: 10px; padding: 4px 0 4px 8px; border-left: 3px solid var(--tc, var(--line)); }
+.rc-who { display: flex; flex-direction: column; min-width: 0; }
+.rc-who b { font-weight: 800; }
+.rc-who small { font-size: 12px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rc-v { margin-left: auto; font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.rc-v.pos { color: var(--yellow); }
+.rc-v.neg { color: var(--red); }
+.rc-col h4 { margin: 10px 0 4px; font-size: 11px; font-weight: 700; color: var(--dim); }
+.rc-picks li em { font-style: normal; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--yellow-ink); background: var(--yellow); border-radius: 4px; padding: 0 5px; }
+.rc-score { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.rc-team { display: flex; align-items: center; gap: 6px; }
+.rc-team img { width: 26px; height: 26px; object-fit: contain; }
+.rc-team small { font-size: 11px; font-weight: 700; color: var(--dim); }
+.rc-team b { font-weight: 900; font-size: 15px; }
+.rc-sc { font-size: 24px; font-weight: 900; font-stretch: 90%; font-variant-numeric: tabular-nums; }
+.rc-dash { color: var(--dim); }
+.rc-status { margin-left: auto; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); }
+.rc-best .chart { height: 140px; }
+.rc-peak { margin: 6px 0 0; font-size: 12px; color: var(--dim); }
+.rc-peak b { color: var(--yellow); }
+@media (max-width: 1020px) {
+  .rc-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rc-best { grid-column: 1 / -1; }
+}
+body.view-players .recap, html.duo body:not(.view-players) .recap { display: none; }
+@media (max-width: 680px) {
+  .recap { margin-top: 16px; padding: 0 16px; }
+  .rc-cols { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .rc-picks { grid-template-columns: 1fr 1fr; column-gap: 14px; font-size: 12px; }
+}
+
 /* ---------------- iPhone Duo ----------------
    Held like a laptop (two stacked screens, js/duo.js adds html.duo): the top
    game fills the top screen; the next two games share the bottom screen, side

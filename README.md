@@ -20,6 +20,13 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 
 ## How it works
 
+**Last night (morning recap).** A card above the Scores board that sums up last night in three columns:
+- **BONES picks:** the record, then at most four picks. The two best calls are upsets that hit first, then the surest picks that came in. The two worst beats are the surest picks that missed.
+- **Top players:** the night's top five by sport-adjusted BONES, the same ranking as Rankings › Players for that day.
+- **Best game:** the game with the highest watch index at its final, the number its card shows at the end of the night (same star list as the board), with its win probability chart.
+
+It builds itself from last night's scoreboards and play-by-play the first time it shows. A complete recap is kept in the browser, so a reload only refetches the best game's play-by-play for its chart. The × closes it until the next morning's recap, and that's remembered across reloads. It shows from 6am to noon, local time, and goes away on its own at noon (`WINDOW` in `js/recap.js`). It shows only on today's board, not in replay or on the Duo split layout.
+
 | File | Job |
 | --- | --- |
 | `js/api.js` | Fetches scores, play-by-play, win probability, logos and headshots from ESPN's public feed (CORS-open, no key; every request times out after 15s). Also `SB.league`: each league's label, whether it's football, and its engine, in one place. |
@@ -28,6 +35,7 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 | `js/engine-nhl.js` | NHL: same contract. ESPN has no hockey win probability, so it models one (goal rates from team records and home ice, power plays, the extra attacker late, 3-on-3 overtime then a shootout, or playoff sudden death). Also team shots, power plays, hits, faceoffs and the goalie in net. |
 | `js/prospects.js` | NCAAM: the 2027 NBA draft big board (hand-kept top 60). Board players count as stars, weighted by rank, and get a "#N prospect" tag; in an NCAAM game the prospect chip takes the place of the ★ chip. Refresh it every few weeks. |
 | `js/clutch.js` | Clutch-time banners: when a game that isn't in the top spot reaches the last 5 minutes within one score (NHL: last 10 within a goal) or overtime, a small banner with the score and two soft taps (Settings › Sound › Clutch time alerts). Once per game for clutch time and once for overtime, never on first load or a day change, never for a game whose score is hidden; it follows the stream delay and the board filter. Clicking the banner pins that game. In the background, with Top game alerts on, it's a browser notification. |
+| `js/recap.js` | The morning recap card on Scores (see Last night above): last night's best and worst BONES picks, top five players and best game, closed until the next morning by its ×. |
 | `js/filter.js` | The filter box on Scores (`/` to focus, Esc to clear). A term keeps games by sport ("NBA", "hockey", "college basketball"), team (name, city or abbreviation) or player (anyone on either roster; word starts work: "wemb"). Commas mean or: "Duke, Kansas". The top spot goes to the best game the filter keeps, and clearing it brings back the full board's top game; changing the filter never chimes. |
 | `js/watch.js` | The watchability index (0–99) and its reasons. Weights live at the top of the file. |
 | `js/ui.js` | Cards, hero layout, win-probability chart, in-place patching and slide animations. |

@@ -122,6 +122,16 @@
   const UPSET_MIN = 0.53; // below this BONES calls it a toss-up, not an upset
   const isUpset = (g) => g.fav && g.pick !== g.fav && g.conf >= UPSET_MIN;
   const SUMMARY_POOL = 3;
+  // Who's favored, from a game summary: the line's favorite flag, else ESPN's
+  // predictor. true = home, false = away, null = unknown. Only ever used to
+  // tell an upset pick apart; no odds are shown. (Also used by js/recap.js.)
+  function favoredHome(sum) {
+    const line = (sum?.pickcenter || []).find((x) => x.homeTeamOdds || x.awayTeamOdds);
+    if (line?.homeTeamOdds?.favorite || line?.awayTeamOdds?.underdog) return true;
+    if (line?.awayTeamOdds?.favorite || line?.homeTeamOdds?.underdog) return false;
+    const ph = Number(sum?.predictor?.homeTeam?.gameProjection);
+    return Number.isFinite(ph) && ph !== 50 ? ph > 50 : null;
+  }
   // fn over items, at most n at a time; results in the items' order.
   async function pool(items, n, fn) {
     const out = new Array(items.length);
@@ -167,15 +177,7 @@
         const pr = SB.bones.predict(model, String(home.team.id), String(away.team.id), SB.bones.injuries(sum).out);
         if (!pr) return null;
         const [h, a, pHome] = [pr.home, pr.away, pr.pHome];
-        // Who's favored: the line's favorite flag, else ESPN's predictor.
-        let favHome = null;
-        const line = (sum?.pickcenter || []).find((x) => x.homeTeamOdds || x.awayTeamOdds);
-        if (line?.homeTeamOdds?.favorite || line?.awayTeamOdds?.underdog) favHome = true;
-        else if (line?.awayTeamOdds?.favorite || line?.homeTeamOdds?.underdog) favHome = false;
-        else {
-          const ph = Number(sum?.predictor?.homeTeam?.gameProjection);
-          if (Number.isFinite(ph) && ph !== 50) favHome = ph > 50;
-        }
+        const favHome = favoredHome(sum);
         const team = (c, s) => ({ id: String(c.team.id), abbr: c.team.abbreviation, name: c.team.shortDisplayName || c.team.displayName, logo: c.team.logo, missing: s.missing });
         const pick = pHome >= 0.5 ? 'home' : 'away';
         return {
@@ -622,5 +624,5 @@
     else needsLoad = true;
   }
 
-  SB.boneZone = { render, refresh };
+  SB.boneZone = { render, refresh, favoredHome, UPSET_MIN };
 })();

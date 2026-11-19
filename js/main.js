@@ -600,6 +600,7 @@
     }
     chimeDay = loadedDay;
     SB.clutch.check(models, { day: loadedDay, topId: shownTop });
+    SB.recap.update({ day: loadedDay, board: view() === 'board', replay: !!replay });
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
     else if (view() === 'season') SB.season.render();
