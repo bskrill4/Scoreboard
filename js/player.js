@@ -20,7 +20,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the Impact or WPA math changes.
-  const CACHE_VERSION = 21; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared
+  const CACHE_VERSION = 22; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -152,7 +152,7 @@
               // version bump. Until then it isn't remembered, so the next ask refetches.
               if (done && tape?.complete && out) cacheSet(eventId, league, out);
               // A final NBA game's shots join the expected-points table (once; js/xpts.js).
-              if (league === 'nba' && done && tape?.complete && SB.xpts) SB.xpts.addGame(eventId, Date.parse(s.header.competitions[0].date), tape);
+              if ((league === 'nba' || league === 'ncaam') && done && tape?.complete && SB.xpts) SB.xpts.addGame(eventId, Date.parse(s.header.competitions[0].date), tape, league);
               else finals.delete(eventId); // (set synchronously before this resolves)
               return out;
             });

@@ -222,6 +222,15 @@
   const pct1 = (x) => `${(x * 100).toFixed(1)}%`;
   const signed1 = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}`;
   // The honest backtest (js/bones.js): can BONES call games, and do better fives outscore worse ones?
+  // How the blend of BONES and point differential did on the last third, and how much it leaned on BONES.
+  function blendLine(bt) {
+    const L = bt.lastThird;
+    if (!L || !L.n) return '';
+    const mix = bt.blend.mix ?? 0;
+    if (!(mix > 0)) return ` Mixed with point differential, BONES still adds nothing: fit on the middle third of the season, the best mix leaves it out.`;
+    const better = L.blend.ll > Math.max(L.bones.ll, L.pd.ll);
+    return ` The best mix with point differential, set on the middle third of the season, is ${pct(mix)} BONES; on the last ${L.n} games it went ${pct1(L.blend.acc)}${better ? ', with better odds than either alone' : ''}.`;
+  }
   function testLines(bt) {
     if (!bt || !bt.n) return [];
     const { bones, pd, later } = bt;
@@ -235,7 +244,7 @@
     const out = [
       `Fourth, can it see the future? I replayed every game this season, predicting each from only what was known before it. BONES picked ${bones.right} of ${bones.n} winners (${pct1(bones.acc)}). Plain point differential, the number to beat, picked ${pd.right} of ${pd.n} (${pct1(pd.acc)}). So BONES is ${vs} the simple way.${
         later.n
-          ? ` Over the second half of the season BONES went ${pct1(later.bones.acc)} to point differential's ${pct1(later.pd.acc)}${bt.blend.kb > 0 ? ', and mixing the two helps' : ', and mixing the two adds nothing yet: the blend leaves BONES out'}.`
+          ? ` Over the second half of the season BONES went ${pct1(later.bones.acc)} to point differential's ${pct1(later.pd.acc)}.${blendLine(bt)}`
           : ''
       }`,
     ];
@@ -271,7 +280,15 @@
 
   function predictScript(model, games) {
     const { right, n } = model.record;
-    const intro = `You want the future? I'll read it in BONES and nothing else: no records, no home court, no lines. Each team's players, their BONES a minute, the minutes they've been playing, minus whoever is ruled out.${n ? ` Replayed over this season, each game called from what was known before it, that has picked ${right} of ${n} winners (${pct(right / n)})${model.backtest?.pd?.n ? `, where plain point differential picks ${pct(model.backtest.pd.acc)}` : ''}.` : ''}${trackRecord()}`;
+    // The second half of the season is where BONES has its footing (players have
+    // minutes to read), so it leads with that stretch, then the whole season.
+    const later = model.backtest?.later;
+    const half2 =
+      later && later.bones.n
+        ? ` Over the second half of this season, the stretch where players have enough minutes to read, I've picked ${pct1(later.bones.acc)} of winners (${later.bones.right} of ${later.bones.n}) against ${pct1(later.pd.acc)} for plain point differential${later.bones.ll > later.pd.ll ? ', and my odds have been sharper too' : ''}.`
+        : '';
+    const whole = n ? ` Over the whole season, early weeks included, ${right} of ${n} (${pct(right / n)})${model.backtest?.pd?.n ? ` to point differential's ${pct(model.backtest.pd.acc)}` : ''}.` : '';
+    const intro = `You want the future? I'll read it in BONES and nothing else: no records and no lines, just a nudge for home court. Each team's players, their BONES a minute, the minutes they've been playing, minus whoever is ruled out.${half2}${whole}${trackRecord()}`;
     if (!games.length) return [intro, `But the court is empty: no NBA games in the next day and a half. Ask me again tomorrow.`];
     const upsets = games.filter(isUpset).sort((a, b) => b.conf - a.conf);
     const lines = [intro];
@@ -478,9 +495,9 @@
     const L = bt.lineup;
     return `<table class="bz-table">
         <thead><tr><th>Picking winners, before each game</th><th>Right</th><th>Rate</th><th>Log-loss</th></tr></thead>
-        <tbody>${row('BONES model', bt.bones)}${row('Point differential', bt.pd)}${bt.later.n ? `${row('2nd half · BONES', bt.later.bones)}${row('2nd half · point differential', bt.later.pd)}${row('2nd half · blend', bt.later.blend)}` : ''}</tbody>
+        <tbody>${row('BONES model', bt.bones)}${row('Point differential', bt.pd)}${bt.later.n ? `${row('2nd half · BONES', bt.later.bones)}${row('2nd half · point differential', bt.later.pd)}` : ''}${bt.lastThird?.n ? `${row('Last third · BONES', bt.lastThird.bones)}${row('Last third · point differential', bt.lastThird.pd)}${row('Last third · blend', bt.lastThird.blend)}` : ''}</tbody>
       </table>
-      <p class="bz-fine">Each game predicted from ratings and minutes as of that morning; who sat that night is taken as known (standing in for the injury report). Log-loss: closer to 0 is better, a coin flip is −0.693. The blend's weights are fit on the first half of the games and graded on the second.</p>${
+      <p class="bz-fine">Each game predicted from ratings and minutes as of that morning; who sat that night is taken as known (standing in for the injury report). Log-loss: closer to 0 is better, a coin flip is −0.693. The blend is one number, the share of BONES (each predictor keeps its own slope, fit before the last third); that share is set on the middle third of the games and graded on the last third (the first third is left out: BONES has too few minutes to read there).</p>${
         L
           ? `<table class="bz-table">
         <thead><tr><th>Lineup edge (BONES per 36, five vs five)</th><th>Minutes</th><th colspan="2">Better five, per 48</th></tr></thead>

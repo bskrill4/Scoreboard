@@ -163,8 +163,10 @@
   // shots it allows, the shooter (credited as before) for making them. Crediting
   // makes and misses instead mostly measured opponents' shooting luck, and it
   // made the BONES picks worse (Nov 17 backtest: about 4 points of accuracy).
-  // College has no table yet: points scored − SHOT_PTS, against them on a make
-  // and for them on a miss. Before this a defender only
+  // College has its own table (js/xpts.js) since Nov 19; before that it was
+  // make-or-miss against the NBA's 1.08 points a shot, while college shots
+  // average about 1.04, so every college defense got about +4.7 BONES a game
+  // for nothing. Without a table: points scored − the league's average. Before this a defender only
   // showed up through blocks, steals, rebounds and fouls, so rim protection
   // and on-ball defense that changed shots were invisible (Nov 16: Rudy Gobert
   // at 7.7 BONES per 36, near the bottom of Minnesota's rotation, on the
@@ -497,7 +499,7 @@
           // A field-goal attempt (made, missed or blocked), for on-court defense,
           // and its cell for expected points (zone, shot family, time into the possession).
           fga,
-          shot: fga && SB.xpts ? SB.xpts.features(p, elapsed - possStart) : null,
+          shot: fga && SB.xpts ? SB.xpts.features(p, elapsed - possStart, league) : null,
           isAssist: /assists\)/.test(text),
           // NBA puts steals and blocks inside the play text (p1); college logs
           // them as their own "Steal" / "Block Shot" plays (p0).
@@ -639,7 +641,7 @@
           const prev = i > 0 ? tape.plays[i - 1] : null;
           const m0 = prev ? prev.home - prev.away : 0; // home margin before the shot
           const pointValue = (modelWP(m0 + 1, p.elapsed) - modelWP(m0 - 1, p.elapsed)) / 2;
-          const above = league === 'nba' && p.shot && SB.xpts ? SB.xpts.xp(p.shot) - SB.xpts.avg() : (p.scoring ? p.pts : 0) - SHOT_PTS;
+          const above = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) - SB.xpts.avg(league) : (p.scoring ? p.pts : 0) - (SB.xpts ? SB.xpts.avg(league) : SHOT_PTS);
           const v = (-above * pointValue * ON_COURT_D * p.weight) / 5;
           if (v && lineup[defTeam]) {
             for (const id of lineup[defTeam]) {
@@ -702,7 +704,12 @@
       let statusText = '';
       let vol = 0;
       if (last) {
-        const ended = last.type === 'End Game' || (forceFinal && n === tape.plays.length);
+        // Over at the end of the 4th (2nd half) or an overtime with a winner, without
+        // waiting for the feed's End Game row, which can trail by minutes (Nov 18:
+        // CSUF-UCLA ended 75-71 at 11:40, End Game came at 11:46, and the finished
+        // game sat on top as "END 2H" in between).
+        const decidedAtHorn = last.type === 'End Period' && last.period >= periods && last.home !== last.away;
+        const ended = last.type === 'End Game' || decidedAtHorn || (forceFinal && n === tape.plays.length);
         state = ended ? 'final' : 'live';
         if (ended) statusText = last.period > periods ? `FINAL/${periodLabel(last.period)}` : 'FINAL';
         else if (last.type === 'End Period') statusText = last.period === periods / 2 ? 'HALFTIME' : `END ${periodLabel(last.period)}`;

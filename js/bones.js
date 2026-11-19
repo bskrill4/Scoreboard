@@ -411,20 +411,43 @@
     const bones = fitHome(rows);
     const bonesNoHome = fit1(rows, 'b');
     const pdOnly = fit1(rows, 'p');
-    // Blend: weights from the first half, graded on the second.
+    // The second half of the season, BONES against point differential.
     const half = Math.floor(rows.length / 2);
-    const [train, test] = [rows.slice(0, half), rows.slice(half)];
-    let w = { kb: 0, kp: 0, ll: -Infinity };
-    for (let kb = 0; kb <= 0.2; kb += 0.005)
-      for (let kp = 0; kp <= 0.2; kp += 0.005) {
-        const s = score(train, (r) => kb * r.b + kp * r.p);
-        if (s.ll > w.ll) w = { kb, kp, ll: s.ll };
-      }
+    const test = rows.slice(half);
     const later = {
       bones: score(test, (r) => bones.k * r.b + HOME_LOGIT),
       pd: score(test, (r) => pdOnly.k * r.p),
-      blend: score(test, (r) => w.kb * r.b + w.kp * r.p),
       n: test.length,
+    };
+    // Blend: one number, the mix. Each predictor keeps its own slope, fit on
+    // every game before the last third; the share `mix` of BONES (and 1 − mix
+    // of point differential) is fit on the middle third, and all of it is
+    // graded on the last third only.
+    //   blend = mix · (kB · BONES gap + home) + (1 − mix) · kP · point-diff gap
+    // History: fit on the first half, the blend learned from weeks when most
+    // players had too few minutes for BONES to say anything; with two free
+    // weights on the middle third (48 games, Nov 19) it left BONES out, fit point
+    // differential too steeply and did worse than a coin flip on the last third
+    // (log-loss −0.739), while BONES alone was best there (−0.658).
+    const [third1, third2] = [Math.floor(rows.length / 3), Math.floor((2 * rows.length) / 3)];
+    const [before, train, last] = [rows.slice(0, third2), rows.slice(third1, third2), rows.slice(third2)];
+    const kB = fitHome(before).k;
+    const kP = fit1(before, 'p').k;
+    const blendOf = (mix) => (r) => mix * (kB * r.b + HOME_LOGIT) + (1 - mix) * kP * r.p;
+    let w = { mix: 0, ll: -Infinity };
+    for (let mix = 0; mix <= 1.0001; mix += 0.05) {
+      const s = score(train, blendOf(mix));
+      if (s.ll > w.ll) w = { mix: Math.min(1, mix), ll: s.ll };
+    }
+    w.kb = w.mix * kB; // for older readers: BONES's effective weight
+    w.kp = (1 - w.mix) * kP;
+    const lastThird = {
+      bones: score(last, (r) => kB * r.b + HOME_LOGIT),
+      pd: score(last, (r) => kP * r.p),
+      blend: score(last, blendOf(w.mix)),
+      n: last.length,
+      trainN: train.length,
+      mix: w.mix,
     };
 
     // Lineups: minute-weighted correlation of edge with points per minute, and
@@ -481,7 +504,7 @@
       const n = xs.length;
       return { lo, hi: Math.min(hi, 1), n, right: xs.filter((x) => x.right).length, expected: n ? xs.reduce((s, x) => s + x.conf, 0) / n : NaN };
     });
-    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lineup, bands, rows };
+    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lastThird, lineup, bands, rows };
   }
 
   // A tape's lineup stints, compact for the per-game cache: { ids, st: [[home

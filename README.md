@@ -233,7 +233,7 @@ check partly true by construction: .65/.81 with it, .42/.42 without, Nov 16). Th
 Game floor switch changes and after 6 hours; finished games are saved only once their tape has the closing play. Points and on-court WPA run through the same checks for scale.
 Grades: .70+ solid, .50 getting there, .30 shaky, below that mostly noise. "The numbers" opens the table.
 
-**Expected points per shot** (`js/xpts.js`, NBA): every shot's cell is its zone (from the feed's court coordinates: the
+**Expected points per shot** (`js/xpts.js`, NBA and men's college, one table each): every shot's cell is its zone (from the feed's court coordinates: the
 hoop sits at x 25, y 1 in feet, and distances match the play text's to within half a foot: rim, paint, midrange, corner
 three, above-the-break three, deep), its shot family (dunk, layup, putback, floater/hook, off-the-dribble jumper,
 catch-and-shoot jumper, from the feed's shot type) and time into the possession (transition under 7 seconds, early, mid,
@@ -243,6 +243,11 @@ only good for coarse buckets. Each level is pulled toward the one above (league 
 The baseline is this season through Nov 16 (205 games, 36,299 shots: rim 1.31 points a shot, corner three 1.09, above the
 break 1.04, paint 0.87, midrange 0.84, deep 0.81; transition 1.20, late 0.92). Every final the board loads after that
 joins the table (`sb.xpts.v1` in localStorage, once per game, never shown). It can't see contests or closeouts.
+College (since Nov 19, `CACHE_VERSION` 22) has its own: hoop at x 25, y 0; coarser shot types (JumpShot, LayUpShot,
+DunkShot, TipShot); possession buckets for a 30-second clock (7 / 17 / 25); baseline ESPN's Top 25 slate through Nov 18
+(136 games, 16,692 shots, 1.02 points a shot: rim 1.37, corner three 1.09, midrange 0.68, late 0.82); `sb.xpts.ncaam.v1`.
+Before it, college defense was make-or-miss against the NBA's 1.08, while college shots average about 1.04, so every
+college defense got about +4.7 BONES a game for nothing. The board also adds every basketball final it sees to its table.
 Backtest, Nov 17 (with the home prior / without / second half): make-or-miss defense 62.2% / 66.1% / 67.2%;
 expected-value defense 64.6% / 66.1% / 68.8% (log-loss −0.648 / −0.645 / −0.616, the second half level with point
 differential's −0.616); no defense credit 67.7% / 65.4% / 70.3%. Better than make-or-miss, still a shade behind none.
@@ -259,7 +264,15 @@ turns the BONES gap into a win chance.
 **The honest backtest** (`SB.bones.backtest` in `js/bones.js`): every game this season replayed and called from only what
 was known before it (ratings and minutes to date; who sat that night taken as known, standing in for the injury report).
 The slope and the record the skull quotes come from it. It's graded against plain point differential per game to date,
-the baseline to beat, and a blend of the two (weights fit on the first half of the games, graded on the second). As of
+the baseline to beat, and a blend of the two. Since Nov 19 the blend's weights are fit on the middle third of the games
+and graded on the last third (fit on the first half, it learned from weeks when BONES had no minutes to read). Nov 19,
+144 games: the middle third (48) still gave BONES no weight and fit point differential too steeply, so on the last third
+the blend's odds were worse than a coin flip (log-loss −0.739); BONES alone was best there (60.4%, −0.658, against point
+differential's 61.7%, −0.677). 48 games is too few to fit two weights, so the blend is now one number, the share of
+BONES (`mix`; each predictor keeps its slope, fit before the last third). Nov 19 it still chose 0% BONES, because the
+thirds disagree (log-loss by share of BONES, 0 / 25 / 50 / 75 / 100%: first third −0.627 / −0.619 / −0.618 / −0.626 /
+−0.641; middle −0.562 / −0.573 / −0.590 / −0.613 / −0.644; last −0.697 / −0.674 / −0.661 / −0.655 / −0.659). Point
+differential won the middle third and was worse than a coin flip on the last; 50/50 is never the worst. As of
 Nov 17: BONES 83 of 127 (65.4%), point differential 84 of 125 (67.2%); second half 68.8% vs 69.8%, and the blend took no
 BONES. (The earlier quoted record graded team BONES per game, a simpler predictor than the one making the picks.)
 After home court, replacement minutes and on-court defense (Nov 17, `CACHE_VERSION` 18): 79 of 127 (62.2%; 66.1%

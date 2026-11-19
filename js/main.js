@@ -957,6 +957,8 @@
           // ESPN's CDN sometimes answers with an older copy; never step a game backwards.
           const prev = tapes.get(ev.id);
           if (tape && !(prev && tape.plays.length < prev.plays.length)) tapes.set(ev.id, tape);
+          // A basketball final's shots join the expected-points table (once; js/xpts.js).
+          if (tape?.complete && !replay && SB.xpts && (ev._league === 'nba' || ev._league === 'ncaam')) SB.xpts.addGame(ev.id, Date.parse(ev.date), tape, ev._league);
         } catch (e) {
           console.error(e);
         } finally {
