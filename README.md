@@ -14,9 +14,9 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 
 - `?replay` replays last night's slate from its play-by-play (handy when nothing is live).
 - `?replay=20261108&speed=30&skip=120` picks the date, the speed, and how many minutes to skip ahead.
-- `?duo` forces the iPhone Duo layout on any screen (split in half), for testing.
+- `?duo` turns on the iPhone Duo layout by hand and remembers it on that device (`?duo=off` forgets it); `?duo=info` shows what the device reports about its screens.
 
-**iPhone Duo.** Held half-open like a laptop, the top game fills the top screen and the next two games sit side by side on the bottom screen, with the menu under them; tap either to move it up. It uses Safari's Viewport Segments API, which is still a developer preview: turn on Settings > Apps > Safari > Advanced > Feature Flags > "Viewport Segments API". Flat (open or closed) it's the normal phone layout, and nothing changes on other screens. Code: `js/duo.js` and the "iPhone Duo" block at the end of `css/styles.css`.
+**iPhone Duo.** Held half-open like a laptop, the top game fills the top screen and the next two games sit side by side on the bottom screen, with the menu under them; tap either to move it up. It turns on by itself when Safari reports the fold (the Viewport Segments or Device Posture API, both developer previews: Settings > Apps > Safari > Advanced > Feature Flags), otherwise open the board once with `?duo`. The by-hand mode applies only on a big upright screen, so the outer screen keeps the normal phone layout, and it puts the fold at the middle of the physical screen. Add it to the home screen to lose Safari's bars. Nothing changes on other screens. Code: `js/duo.js` and the "iPhone Duo" block at the end of `css/styles.css`.
 
 ## How it works
 

@@ -1504,3 +1504,20 @@ html.duo body:not(.view-players) .settings-panel {
   width: auto;
   max-height: calc(var(--duo-top) - 24px);
 }
+/* `?duo=info`: what the device reports, big enough to read in a photo. */
+.duo-info {
+  position: fixed;
+  left: 8px;
+  right: 8px;
+  bottom: 70px;
+  z-index: 100;
+  margin: 0;
+  padding: 10px 12px;
+  background: #000;
+  border: 2px solid var(--yellow);
+  border-radius: 10px;
+  color: var(--text);
+  font: 700 15px/1.4 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}
