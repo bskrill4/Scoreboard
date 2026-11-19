@@ -14,10 +14,15 @@
 //
 // Cells: zone × shot family × possession time. Each level is pulled toward the
 // one above it (league → zone → zone+family → cell) by K shots, so a thin cell
-// leans on its zone. Each league has its own table: a baseline from this
+// leans on its zone. Each league has its own table, a baseline from this
 // season (NBA through Nov 16, 205 games; college through Nov 18, ESPN's Top 25
-// slate), plus every final the board loads after it (finalPlayers), kept in
-// this browser and never shown. College: the hoop sits at x 25, y 0, the shot
+// slate), and expected points come from the baseline alone, so every browser
+// and every cached game scores a shot the same way. Every final the board
+// loads after the baseline is still counted (finalPlayers, the board's own
+// finals), kept in this browser and never shown: fold those counts into a new
+// baseline when CACHE_VERSION bumps (SB.xpts.liveCounts). Until Nov 19 they
+// went straight into the table, so the same game's BONES depended on which
+// browser computed it and when. College: the hoop sits at x 25, y 0, the shot
 // types are coarser (JumpShot, LayUpShot, DunkShot, TipShot), and the shot clock
 // is 30 seconds, so its possession buckets are wider.
 (function () {
@@ -140,7 +145,7 @@
       x[1] += p;
     };
     const L = { league: [0, 0], zone: {}, zf: {}, cell: {} };
-    for (const src of [LEAGUES[league].base, st.live.c])
+    for (const src of [LEAGUES[league].base])
       for (const [k, [a, p]] of Object.entries(src)) {
         const [zone, fam] = k.split('|');
         L.league[0] += a;
@@ -178,8 +183,9 @@
     return shrink(L.cell[`${f.zone}|${f.fam}|${f.clk}`], zf);
   }
 
-  // A finished game's shots join its league's table, once (games before the
-  // baseline's cutoff are already in it).
+  // A finished game's shots are counted for the league's next baseline, once
+  // (games before the baseline's cutoff are already in it). They don't change
+  // expected points until then.
   function addGame(id, t, tape, league = 'nba') {
     const cfg = LEAGUES[league];
     const st = state[league];
@@ -190,7 +196,6 @@
       x[0] += a;
       x[1] += p;
     }
-    rebuild(league);
     try {
       localStorage.setItem(cfg.key, JSON.stringify(st.live));
     } catch (e) {}
@@ -210,5 +215,8 @@
     return c;
   }
 
-  SB.xpts = { features, xp, avg, has, addGame, count, table: (league = 'nba') => state[league].levels, K, LEAGUES };
+  // The counts gathered since the baseline: { games: n, c: { cell: [attempts, points] } }.
+  const liveCounts = (league = 'nba') => ({ games: Object.keys(state[league].live.games).length, c: state[league].live.c });
+
+  SB.xpts = { features, xp, avg, has, addGame, count, liveCounts, table: (league = 'nba') => state[league].levels, K, LEAGUES };
 })();

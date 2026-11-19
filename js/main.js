@@ -806,6 +806,7 @@
     if (day !== loadedDay) return;
     if (any) {
       events = next;
+      forgetOldGames();
       loaded = true;
       showNotice('');
     } else if (!loaded) {
@@ -920,6 +921,16 @@
       const [h, a] = [on(g.home), on(g.away)];
       if (h.length && a.length) g.lineup = { ...SB.bones.lineupEdge(bonesModel, h, a), key: `${h.slice().sort()}|${a.slice().sort()}` };
     }
+  }
+
+  // Per-game state for games no longer on the board (another day, or a game
+  // that dropped off): a parsed tape is about 1 MB, and the board is meant to
+  // stay open for days, so it's let go when the board's games change.
+  function forgetOldGames() {
+    const keep = new Set(events.map((ev) => ev.id));
+    if (pinnedId) keep.add(pinnedId);
+    for (const map of [tapes, fetchMeta, sbHistory, colorCache, pregame, preMemo]) for (const id of map.keys()) if (!keep.has(id)) map.delete(id);
+    SB.ui.forget(keep);
   }
 
   function wantsSummary(ev) {

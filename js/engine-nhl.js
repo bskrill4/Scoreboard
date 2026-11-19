@@ -482,7 +482,12 @@
       let vol = 0;
       let ppNow = null;
       if (last) {
-        const ended = /End of Game/i.test(last.type) || (forceFinal && n === tape.plays.length);
+        // Over at the end of the 3rd or an overtime with a winner, without waiting
+        // for the feed's End of Game row, which can trail by minutes (as
+        // basketball's did, Nov 18). A shootout is only over at End of Game: the
+        // score stays tied through it (see buildTape).
+        const decidedAtHorn = /Period End/.test(last.type) && last.period >= 3 && last.home !== last.away;
+        const ended = /End of Game/i.test(last.type) || decidedAtHorn || (forceFinal && n === tape.plays.length);
         state = ended ? 'final' : 'live';
         if (ended) statusText = last.period > 4 ? 'FINAL/SO' : last.period === 4 ? 'FINAL/OT' : 'FINAL';
         else if (/Period End/.test(last.type)) statusText = `END ${periodLabel(last.period)}`;

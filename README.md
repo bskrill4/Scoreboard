@@ -95,7 +95,9 @@ expected value of every shot allowed, plus the player's blocks, steals, defensiv
 defense (`defensiveCredit` in `js/engine.js`). Rebalanced Nov 17 (`CACHE_VERSION` 21), when it was mostly defensive
 rebounds minus fouls (Lu Dort and Dillon Brooks about −25, nearly all fouls): a **foul** is charged only for what its
 free throws are worth above an average possession (`FOUL_BASELINE` × `possPts`, NBA 1.14 points: a two-shot foul about a
-quarter of the old charge; a one-shot trip such as an and-one in full), and a **defensive rebound** keeps 40% for the
+quarter of the old charge; a one-shot trip such as an and-one in full; since Nov 19 a defensive foul that gave no free
+throws isn't charged at all, since ESPN's lagging win probability could pin the previous possession's swing on it,
+Dillon Brooks −12.5 for one with 1:01 left), and a **defensive rebound** keeps 40% for the
 rebounder while the other four defenders on the floor split the rest (`REB_SHARE`). This changes BONES itself, not just
 the column. After: Wembanyama +40.7, Adebayo +37.1, Giannis +36.6, Vassell +34.1, Franz Wagner +34.0, Thybulle +30.6
 (steals 21.1); the bottom is about −9 to −3 (Dort −6.0, still fouls −27 against steals +13). Backtest after: 64.6% with
@@ -242,12 +244,15 @@ made last free throw, and an offensive rebound sets it to 10 (the 14-second rese
 only good for coarse buckets. Each level is pulled toward the one above (league → zone → zone+family → cell) by 30 shots.
 The baseline is this season through Nov 16 (205 games, 36,299 shots: rim 1.31 points a shot, corner three 1.09, above the
 break 1.04, paint 0.87, midrange 0.84, deep 0.81; transition 1.20, late 0.92). Every final the board loads after that
-joins the table (`sb.xpts.v1` in localStorage, once per game, never shown). It can't see contests or closeouts.
+is counted (`sb.xpts.v1` in localStorage, once per game, never shown), but expected points come from the baseline alone,
+so every browser and every cached game scores a shot the same way; fold the counts (`SB.xpts.liveCounts()`) into a new
+baseline when `CACHE_VERSION` bumps. (Until Nov 19 they went straight into the table, so the same game's BONES depended on
+which browser computed it and when.) It can't see contests or closeouts.
 College (since Nov 19, `CACHE_VERSION` 22) has its own: hoop at x 25, y 0; coarser shot types (JumpShot, LayUpShot,
 DunkShot, TipShot); possession buckets for a 30-second clock (7 / 17 / 25); baseline ESPN's Top 25 slate through Nov 18
 (136 games, 16,692 shots, 1.02 points a shot: rim 1.37, corner three 1.09, midrange 0.68, late 0.82); `sb.xpts.ncaam.v1`.
 Before it, college defense was make-or-miss against the NBA's 1.08, while college shots average about 1.04, so every
-college defense got about +4.7 BONES a game for nothing. The board also adds every basketball final it sees to its table.
+college defense got about +4.7 BONES a game for nothing. The board also counts every basketball final it sees.
 Backtest, Nov 17 (with the home prior / without / second half): make-or-miss defense 62.2% / 66.1% / 67.2%;
 expected-value defense 64.6% / 66.1% / 68.8% (log-loss −0.648 / −0.645 / −0.616, the second half level with point
 differential's −0.616); no defense credit 67.7% / 65.4% / 70.3%. Better than make-or-miss, still a shade behind none.
@@ -257,10 +262,14 @@ BONES a minute (shrunk toward league average over his first 150 minutes) times h
 games. Players listed out or doubtful are removed, questionable players count at half and day-to-day at 30%. Their
 minutes go to whoever took them in the games they've already missed (each teammate's average without them minus with
 them; Nov 16: Jaylen Clark's minutes to Terrence Shannon Jr., projected 17, played 35), or evenly with fewer than two
-games each way; then everyone is scaled back up to 240 (42 at most). **Home court** is a fixed prior, 2.5 points
-(`HOME_LOGIT` 0.175 in log-odds): this season's home record (52.8%) is too small a sample to estimate it, and leaving it
-out was most of the gap with the line on POR at MIN (MIN −2.5, then −1.5: even on a neutral floor). A logistic slope
-turns the BONES gap into a win chance.
+games each way; then everyone is scaled back up to 240 (42 at most). **Home court**: the NBA's long-run edge (2.5 points,
+`HOME_LOGIT` 0.175 in log-odds) blended with this season's real home record, which counts as much as its games against
+400 games of prior (`homeEdge`). Nov 19: home teams 111–111, so an edge of 0.11 (52.8%). **Correction:** until Nov 19 the
+backtest took the lower team id as home (it read the home team from an object keyed by team id, which JavaScript orders
+numerically), so the home prior was graded on a random side and every "home teams have won 52.8% / 54.2%" figure here was
+the lower-id team's record. With real home teams (Nov 19, 144 games): BONES with the home edge 66.7% (log-loss −0.644),
+without 63.9% (−0.643); point differential 65.5% (−0.625); second half BONES 68.1% (−0.628) vs 64.8% (−0.637).
+A logistic slope turns the BONES gap into a win chance.
 **The honest backtest** (`SB.bones.backtest` in `js/bones.js`): every game this season replayed and called from only what
 was known before it (ratings and minutes to date; who sat that night taken as known, standing in for the injury report).
 The slope and the record the skull quotes come from it. It's graded against plain point differential per game to date,

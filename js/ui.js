@@ -1372,5 +1372,10 @@
     }`;
   }
 
-  SB.ui = { isBlurred: (id) => blurred.has(id), statLine, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
+  // Games no longer on the board (js/main.js): drop their per-game memos.
+  function forget(keep) {
+    for (const id of lineupMemo.keys()) if (!keep.has(id)) lineupMemo.delete(id);
+  }
+
+  SB.ui = { forget, isBlurred: (id) => blurred.has(id), statLine, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

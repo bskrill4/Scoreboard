@@ -47,8 +47,8 @@
       document.body.appendChild(stack);
       stack.addEventListener('click', (e) => {
         const t = e.target.closest('.clutch-toast');
-        if (!t) return;
-        if (!e.target.closest('.ct-close')) SB.clutch.onPick(t.dataset.id);
+        if (!t || !e.target.closest('button')) return;
+        if (e.target.closest('.ct-main')) SB.clutch.onPick(t.dataset.id);
         dismiss(t);
       });
     }
@@ -64,18 +64,20 @@
     const esc = SB.ui.esc;
     const label = s === 'ot' ? (/SHOOTOUT|\bSO\b/.test(g.statusText) ? 'Shootout' : 'Overtime') : 'Clutch time';
     const side = (t) => `<span class="ct-team"><img src="${esc(t.logo || '')}" alt="" onerror="this.style.visibility='hidden'">${esc(t.abbr)} <b>${t.score}</b></span>`;
-    const el = document.createElement('button');
-    el.type = 'button';
+    // Two sibling buttons (a button can't hold another): the card itself moves
+    // the game to the top spot, the × dismisses; both reachable by keyboard.
+    const el = document.createElement('div');
     el.className = 'clutch-toast';
     el.dataset.id = g.id;
     el.style.setProperty('--away', g.away.css);
     el.style.setProperty('--home', g.home.css);
-    el.title = 'Move this game to the top spot';
     el.innerHTML = `
-      <span class="ct-head"><span class="ct-tag">${label}</span><span class="ct-lg">${esc(SB.league.name(g.league))}</span><span class="ct-clock">${esc(g.statusText)}</span></span>
-      <span class="ct-score">${side(g.away)}<span class="ct-dash">–</span>${side(g.home)}</span>
-      <span class="ct-go">Watch ›</span>
-      <span class="ct-close" role="button" aria-label="Dismiss">×</span>`;
+      <button type="button" class="ct-main" title="Move this game to the top spot">
+        <span class="ct-head"><span class="ct-tag">${label}</span><span class="ct-lg">${esc(SB.league.name(g.league))}</span><span class="ct-clock">${esc(g.statusText)}</span></span>
+        <span class="ct-score">${side(g.away)}<span class="ct-dash">–</span>${side(g.home)}</span>
+        <span class="ct-go">Watch ›</span>
+      </button>
+      <button type="button" class="ct-close" aria-label="Dismiss">×</button>`;
     const box = host();
     // The same game again (clutch → overtime) replaces its old banner.
     for (const old of box.querySelectorAll(`.clutch-toast[data-id="${g.id}"]`)) old.remove();

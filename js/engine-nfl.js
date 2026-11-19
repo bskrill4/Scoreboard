@@ -609,7 +609,11 @@
       let statusText = '';
       let vol = 0;
       if (last) {
-        const ended = /^End of Game/i.test(last.type) || (forceFinal && n === tape.plays.length);
+        // Over at the end of the 4th quarter or an overtime with a winner, without
+        // waiting for the feed's End of Game row, which can trail by minutes (as
+        // basketball's did, Nov 18).
+        const decidedAtHorn = /^End (Period|of (Regulation|4th Quarter|Overtime|OT))/i.test(last.type) && last.period >= 4 && last.home !== last.away;
+        const ended = /^End of Game/i.test(last.type) || decidedAtHorn || (forceFinal && n === tape.plays.length);
         state = ended ? 'final' : 'live';
         if (ended) statusText = last.period > 4 ? `FINAL/${periodLabel(last.period)}` : 'FINAL';
         else if (/^End of Half/i.test(last.type) || (/^End Period/i.test(last.type) && last.period === 2)) statusText = 'HALFTIME';

@@ -311,6 +311,20 @@
       last.ftTrip = { made, att: fts.length, fouler: foul ? foul.p0 : null };
       i = end;
     }
+
+    // 3. A defensive foul that gave no free throws (non-shooting, not in the
+    //    bonus) costs the defense almost nothing: the offense keeps the ball.
+    //    ESPN's win probability often lags a row, so such a foul could carry
+    //    the previous possession's swing (Nov 19: Dillon Brooks charged −12.5
+    //    for a personal foul with 1:01 left and no free throws; Dort and Brooks
+    //    about −10 each from a handful of these). The fouler isn't charged.
+    //    Fouls in a free-throw trip were handled above (their rows' credits
+    //    are already cleared); offensive fouls are turnovers and stay.
+    for (const p of plays) {
+      if (p.ftTrip || !isTripFoul(p) || !p.credits.length) continue;
+      p.credits = [];
+      p.noShotFoul = true;
+    }
   }
 
   // One engine per basketball league. The NBA plays four 12-minute quarters;

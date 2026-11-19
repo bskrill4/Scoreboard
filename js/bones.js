@@ -17,12 +17,19 @@
   const SHRINK_MIN = 150; // a player's rate is pulled toward average until he has minutes
   const CAL_MIN_GAMES = 5; // both teams need this many games before a game counts in the backtest
   const CONCURRENCY = 3;
-  // Home court, as a fixed prior rather than fit: about 2.5 points, the NBA's
-  // long-run edge (home teams win ~55-58%). This season's 127 games (52.8% home)
-  // are too few to estimate it, and leaving it out was most of the gap with the
-  // line on POR at MIN, Nov 16-17 (MIN -2.5 / -1.5: even on a neutral floor).
-  // In log-odds: 2.5 points at the point-differential slope (~0.07 a point).
+  // Home court: the NBA's long-run edge (about 2.5 points, home teams winning
+  // ~54%; HOME_LOGIT in log-odds) blended with this season's actual home record,
+  // the season counting as much as its games against HOME_PRIOR_GAMES of prior.
+  // Nov 19: the season's home teams were 111-111, so the edge used was about 0.11
+  // (52.8%), not the full prior. (Earlier "home teams won 52.8%" figures came
+  // from a bug: the backtest took the lower team id as home.)
   const HOME_LOGIT = 0.175;
+  const HOME_PRIOR_GAMES = 400;
+  const logit = (q) => Math.log(q / (1 - q));
+  function homeEdge(wins, n) {
+    const prior = 1 / (1 + Math.exp(-HOME_LOGIT));
+    return logit((wins + HOME_PRIOR_GAMES * prior) / (n + HOME_PRIOR_GAMES));
+  }
   const MODEL_TTL = 3 * 36e5; // rebuild after a few hours, so last night's games count
   // Share of a player's minutes lost, by injury-report status.
   const OUT_SHARE = { out: 1, doubtful: 1, questionable: 0.5, 'day-to-day': 0.3 };
@@ -58,7 +65,10 @@
         seen.add(e.id);
         const score = {};
         for (const c of e.competitions[0].competitors) score[String(c.team.id)] = Number(c.score) || 0;
-        games.push({ id: e.id, t: Date.parse(e.date), score });
+        // Home and away explicitly: score's keys are team ids, which JavaScript
+        // orders numerically, not as the feed lists them.
+        const side = (h) => String(e.competitions[0].competitors.find((c) => c.homeAway === h)?.team.id);
+        games.push({ id: e.id, t: Date.parse(e.date), score, home: side('home'), away: side('away') });
       }
     }
     games.sort((a, b) => a.t - b.t);
@@ -95,6 +105,7 @@
         // team BONES per game, which is a different, simpler predictor.
         const bt = backtest(done);
         m.backtest = bt;
+        m.homeLogit = bt.home.logit; // the season's home record, blended with the long-run prior
         if (bt.bones.n) {
           m.k = bt.bones.k;
           m.record = { right: bt.bones.right, n: bt.bones.n };
@@ -246,7 +257,7 @@
     const h = teamStrength(m, homeId, out);
     const a = teamStrength(m, awayId, out);
     if (!h || !a) return null;
-    return { pHome: 1 / (1 + Math.exp(-(m.k * (h.bones - a.bones) + HOME_LOGIT))), home: h, away: a };
+    return { pHome: 1 / (1 + Math.exp(-(m.k * (h.bones - a.bones) + (m.homeLogit ?? HOME_LOGIT)))), home: h, away: a };
   }
 
   // A team's top players tonight by BONES per 36 (players ruled out left off),
@@ -304,10 +315,11 @@
     const pd = new Map(); // team -> { sum, n }
     let leagueImp = 0;
     let leagueMin = 0;
-    const rows = []; // { b, p, win } home side
+    const rows = []; // { hl (home edge to date), b, p, win } home side
+    const homeRec = { w: 0, n: 0 }; // the season's home record so far
     const stintRows = []; // { edge, dur (min), pd }
     for (const g of games) {
-      const ids = Object.keys(g.score); // the feed lists home first
+      const ids = g.home && g.away ? [g.home, g.away] : Object.keys(g.score);
       const [home, away] = ids;
       const avg = leagueMin ? leagueImp / leagueMin : 0;
       const rate = (id) => {
@@ -331,7 +343,7 @@
         return healthy - opts.outWeight * (healthy - sat);
       };
       const missing = (team) => {
-        const recent = (teamGames.get(team) || []).slice(-RECENT);
+        const recent = (teamGames.get(team) || []).slice(-RECENT_N);
         if (!recent.length) return 0;
         let n = 0;
         for (const [id, p] of players) {
@@ -344,7 +356,7 @@
         const [sh, sa] = [strength(home), strength(away)];
         const [ph, pa] = [pd.get(home), pd.get(away)];
         if (sh != null && sa != null && ph && pa)
-          rows.push({ b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0, margin: g.score[home] - g.score[away], outH: missing(home), outA: missing(away), t: g.t });
+          rows.push({ hl: homeEdge(homeRec.w, homeRec.n), b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0, margin: g.score[home] - g.score[away], outH: missing(home), outA: missing(away), t: g.t });
       }
       const L = g.rows._lineups;
       if (L && leagueMin) {
@@ -366,6 +378,10 @@
         mins.get(tid)?.set(pid, min);
         leagueImp += imp;
         leagueMin += min;
+      }
+      if (g.home && g.score[home] !== g.score[away]) {
+        homeRec.n++;
+        homeRec.w += g.score[home] > g.score[away] ? 1 : 0;
       }
       for (const id of ids) {
         if (!teamGames.has(id)) teamGames.set(id, []);
@@ -403,7 +419,7 @@
     const fitHome = (rs) => {
       let best = { ll: -Infinity, k: 0.05 };
       for (let k = 0.002; k <= 0.4; k += 0.002) {
-        const s = score(rs, (r) => k * r.b + HOME_LOGIT);
+        const s = score(rs, (r) => k * r.b + r.hl);
         if (s.ll > best.ll) best = { ...s, k };
       }
       return best;
@@ -415,7 +431,7 @@
     const half = Math.floor(rows.length / 2);
     const test = rows.slice(half);
     const later = {
-      bones: score(test, (r) => bones.k * r.b + HOME_LOGIT),
+      bones: score(test, (r) => bones.k * r.b + r.hl),
       pd: score(test, (r) => pdOnly.k * r.p),
       n: test.length,
     };
@@ -433,7 +449,7 @@
     const [before, train, last] = [rows.slice(0, third2), rows.slice(third1, third2), rows.slice(third2)];
     const kB = fitHome(before).k;
     const kP = fit1(before, 'p').k;
-    const blendOf = (mix) => (r) => mix * (kB * r.b + HOME_LOGIT) + (1 - mix) * kP * r.p;
+    const blendOf = (mix) => (r) => mix * (kB * r.b + r.hl) + (1 - mix) * kP * r.p;
     let w = { mix: 0, ll: -Infinity };
     for (let mix = 0; mix <= 1.0001; mix += 0.05) {
       const s = score(train, blendOf(mix));
@@ -442,7 +458,7 @@
     w.kb = w.mix * kB; // for older readers: BONES's effective weight
     w.kp = (1 - w.mix) * kP;
     const lastThird = {
-      bones: score(last, (r) => kB * r.b + HOME_LOGIT),
+      bones: score(last, (r) => kB * r.b + r.hl),
       pd: score(last, (r) => kP * r.p),
       blend: score(last, blendOf(w.mix)),
       n: last.length,
@@ -497,14 +513,14 @@
     ].map(([lo, hi]) => {
       const xs = rows
         .map((r) => {
-          const ph = 1 / (1 + Math.exp(-(bones.k * r.b + HOME_LOGIT)));
+          const ph = 1 / (1 + Math.exp(-(bones.k * r.b + r.hl)));
           return { conf: Math.max(ph, 1 - ph), right: ph >= 0.5 ? r.win === 1 : r.win === 0 };
         })
         .filter((x) => x.conf >= lo && x.conf < hi);
       const n = xs.length;
       return { lo, hi: Math.min(hi, 1), n, right: xs.filter((x) => x.right).length, expected: n ? xs.reduce((s, x) => s + x.conf, 0) / n : NaN };
     });
-    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lastThird, lineup, bands, rows };
+    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lastThird, lineup, bands, rows, home: { ...homeRec, logit: homeEdge(homeRec.w, homeRec.n) } };
   }
 
   // A tape's lineup stints, compact for the per-game cache: { ids, st: [[home
@@ -623,5 +639,5 @@
     },
   };
 
-  SB.bones = { HOME_LOGIT, projectMinutes, seasonGames, model, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
+  SB.bones = { HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
 })();
