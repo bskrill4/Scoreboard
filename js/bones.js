@@ -588,7 +588,8 @@
   // ---------- the pick tracker ----------
   // Each NBA game's BONES pick, locked at tip-off (the last pick made before
   // the game started) and settled at the final, kept in this browser.
-  // { [eventId]: { side: 'home'|'away', conf, t, home, away (abbrs), late?, won? } }
+  // { [eventId]: { side: 'home'|'away', conf, t, home, away (abbrs), late?, fav?, won? } }
+  // fav: who was favored, kept only to tell an upset pick apart (never shown).
   const PICKS_KEY = 'sb.bonesPicks';
   const KEEP_DAYS = 120;
   let picks = {};
@@ -612,7 +613,7 @@
     // (the board opened mid-game), from the model as of before the game.
     lock(id, p) {
       const cur = picks[id];
-      if (cur && cur.side === p.side && Math.abs(cur.conf - p.conf) < 0.005) return;
+      if (cur && cur.side === p.side && Math.abs(cur.conf - p.conf) < 0.005 && (cur.fav === p.fav || !p.fav)) return;
       picks[id] = { ...p, conf: +p.conf.toFixed(3) };
       savePicks();
     },

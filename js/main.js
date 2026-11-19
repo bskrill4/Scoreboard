@@ -433,7 +433,13 @@
       }
     }
 
-    if (g.league === 'nba') bonesLive(ev, g, evState, ac, hc);
+    if (g.league === 'nba') {
+      bonesLive(ev, g, evState, ac, hc);
+      // Before tip-off, the pick on the card; after, the one locked at tip-off.
+      const b = g.pre?.bones;
+      const pick = b ? { side: b.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(b.pHome, 1 - b.pHome) } : g.bonesPick;
+      g.bonesUpset = !!pick && bonesUpset(favoriteOf(ev), pick.side, pick.conf);
+    }
     if (g.league === 'ncaam') tagProspects(g);
     const gameStars = starsWith(g.league === 'ncaaf' ? rankedLeaders(g, comp) : null);
     for (const p of g.players) p.star = gameStars.has(p.id); // after tagProspects, which adds to the list
@@ -824,6 +830,26 @@
   const PREGAME_EVERY = 10 * 60e3;
   const PREGAME_POOL = 2;
   const pregame = new Map(); // event id -> { at, inj }
+  // Who's favored in each NBA game: 'home' | 'away'. Used only to tell a BONES
+  // upset pick apart (the "upset" filter); no odds are ever shown. From the
+  // scoreboard's line before tip-off (ESPN drops it at the final), else a game
+  // summary's, else the one saved with the locked pick.
+  const favorites = new Map();
+  function favoriteOf(ev) {
+    const o = ev.competitions[0].odds?.[0];
+    if (o?.homeTeamOdds?.favorite || o?.awayTeamOdds?.underdog) favorites.set(ev.id, 'home');
+    else if (o?.awayTeamOdds?.favorite || o?.homeTeamOdds?.underdog) favorites.set(ev.id, 'away');
+    return favorites.get(ev.id) || SB.bones.picks.get(ev.id)?.fav || null;
+  }
+  function noteFavorite(id, summary) {
+    if (favorites.has(id)) return;
+    const f = SB.boneZone.favoredHome(summary);
+    if (f != null) favorites.set(id, f ? 'home' : 'away');
+  }
+  // A BONES upset: the pick goes against the favorite, at upset confidence (as in the Bone Zone).
+  function bonesUpset(fav, side, conf) {
+    return !!fav && !!side && side !== fav && conf >= SB.boneZone.UPSET_MIN;
+  }
   let bonesModel = null;
   let bonesProgress = null; // [done, total] while the season loads
   let bonesFailed = 0;
@@ -853,7 +879,9 @@
       while (queue.length) {
         const ev = queue.shift();
         try {
-          const inj = SB.bones.injuries(await SB.api.summary(ev.id, ev._league));
+          const sum = await SB.api.summary(ev.id, ev._league);
+          if (ev._league === 'nba') noteFavorite(ev.id, sum);
+          const inj = SB.bones.injuries(sum);
           pregame.get(ev.id).inj = inj;
           changed = true;
         } catch (e) {
@@ -888,6 +916,7 @@
               t: g.start,
               home: g.home.abbr,
               away: g.away.abbr,
+              fav: favoriteOf(ev) || undefined,
             });
           info.bones = {
             pHome: pr.pHome,
@@ -909,7 +938,7 @@
     // Replay: the lineup edge works, but nothing is locked or settled.
     if (!replay && evState === 'in' && bonesModel && !picks.get(ev.id) && pregame.get(ev.id)?.inj) {
       const pr = SB.bones.predict(bonesModel, g.home.id, g.away.id, pregame.get(ev.id).inj.out);
-      if (pr) picks.lock(ev.id, { side: pr.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(pr.pHome, 1 - pr.pHome), t: g.start, home: g.home.abbr, away: g.away.abbr, late: true });
+      if (pr) picks.lock(ev.id, { side: pr.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(pr.pHome, 1 - pr.pHome), t: g.start, home: g.home.abbr, away: g.away.abbr, late: true, fav: favoriteOf(ev) || undefined });
     }
     if (!replay && evState === 'post' && ev.status.type.completed) {
       // From the real final (not the delayed view): nothing here is shown until the board gets there.
@@ -930,7 +959,7 @@
   function forgetOldGames() {
     const keep = new Set(events.map((ev) => ev.id));
     if (pinnedId) keep.add(pinnedId);
-    for (const map of [tapes, fetchMeta, sbHistory, colorCache, pregame, preMemo]) for (const id of map.keys()) if (!keep.has(id)) map.delete(id);
+    for (const map of [tapes, fetchMeta, sbHistory, colorCache, pregame, preMemo, favorites]) for (const id of map.keys()) if (!keep.has(id)) map.delete(id);
     SB.ui.forget(keep);
   }
 
@@ -964,6 +993,7 @@
         try {
           const summary = await SB.api.summary(ev.id, ev._league);
           // Opened mid-game: the injury report from the game file, for a late BONES pick.
+          if (ev._league === 'nba') noteFavorite(ev.id, summary);
           if (ev._league === 'nba' && !pregame.get(ev.id)?.inj) pregame.set(ev.id, { at: Date.now(), inj: SB.bones.injuries(summary) });
           const tape = SPORTS[ev._league].engine.buildTape(summary);
           // ESPN's CDN sometimes answers with an older copy; never step a game backwards.

@@ -3,6 +3,7 @@
 // city or abbreviation: "Spurs", "San Antonio", "SA") or by player (anyone on
 // either roster: "Wembanyama", "Victor Wembanyama", "Wemb"). Commas separate
 // terms, and a game shows if it matches any of them: "Duke, Kansas".
+// "upset" keeps the NBA games BONES calls an upset.
 (function () {
   const SB = (window.SB = window.SB || {});
 
@@ -60,7 +61,12 @@
     return null;
   }
 
+  // "upset": NBA games where BONES picks against the favorite (the Bone Zone's
+  // upset picks), before, during and after the game.
+  const UPSET_WORDS = new Set(['upset', 'upsets', 'upset pick', 'upset picks', 'bones upset', 'bones upsets']);
+
   function termMatches(term, ev, g) {
+    if (UPSET_WORDS.has(term)) return !!g?.bonesUpset;
     const leagues = sportOf.get(term);
     if (leagues) return leagues.includes(ev._league);
     if (term === norm(SB.league.name(ev._league))) return true;
