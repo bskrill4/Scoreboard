@@ -178,6 +178,12 @@ Grid-tested Nov 20 (148 games): every sharing setting made the game backtest's l
 within its noise (±.012). Not adopted. Note the game backtest can barely see credit moved between teammates on the
 floor (team totals hardly change), so it can't settle within-team allocation either way; the shared setting would have
 reordered the names (Sabonis #21 → #64, Brunson #41 → #8, Gilgeous-Alexander #23 → #5) without the data to back it.
+Then an on/off test that can see the split (Nov 20, 226 games, out of sample: each game's lineup stints predicted
+from ratings built on earlier games only, then each regular's predicted on-court minus off-court margin per 48 against
+the actual, 215 players): the default scores r .352 (v1 .356); sharing improves it, best at offensive rebounds 40% and
+misses 50% (r .443, gain +.09, 90% range +.02 to +.16), mostly from the misses. The game backtest says the opposite
+just as clearly (log-loss −0.567 → −0.586, 90% range of the change −.036 to −.002). The two tests disagree, so the
+defaults stay until we know why.
 
 **Game floor** (on everywhere by default; settings › **Game floor** off = swing only): Impact pays for swings, so a
 game that stayed one-sided hands out little credit and the winner's dominance never shows (GSW–SA, Nov 13: 37 in total
