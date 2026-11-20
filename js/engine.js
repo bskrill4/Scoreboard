@@ -41,7 +41,8 @@
   // so viewAt can binary-search. A row stamped later than the next stamped row
   // is an outlier (ESPN sometimes logs a timeout minutes late) and takes the
   // previous time, instead of dragging every later play forward to it.
-  function wallTimes(walls) {
+  // elapsed (optional): each row's game seconds, to repair bulk-stamped runs (below).
+  function wallTimes(walls, elapsed) {
     const next = new Array(walls.length);
     let n = Infinity;
     for (let i = walls.length - 1; i >= 0; i--) {
@@ -58,7 +59,30 @@
       out.push(t);
       prev = t;
     }
+    if (elapsed) repairBatches(out, elapsed);
     return out;
+  }
+
+  // ESPN sometimes stamps a long run of plays with one time, a bulk backfill
+  // (Nov 19: HOU-KU, every play from 5:04 left in the 1st half on stamped
+  // 12:16:54 AM, 86 minutes after the one before). With a stream delay or in
+  // replay the game froze, then jumped. A run of BATCH.rows+ rows sharing a
+  // time while the game clock moves BATCH.gameSec+ is spread out instead,
+  // between the time before it and its own, in proportion to game time.
+  const BATCH = { rows: 8, gameSec: 120 };
+  function repairBatches(out, elapsed) {
+    for (let i = 1; i < out.length; ) {
+      let j = i;
+      while (j + 1 < out.length && out[j + 1] === out[i]) j++;
+      const t0 = out[i - 1];
+      const t1 = out[i];
+      const e0 = elapsed[i - 1];
+      const span = elapsed[j] - e0;
+      if (j - i + 1 >= BATCH.rows && elapsed[j] - elapsed[i] >= BATCH.gameSec && t1 > t0 && span > 0) {
+        for (let k = i; k <= j; k++) out[k] = Math.max(out[k - 1], t0 + ((t1 - t0) * Math.max(0, elapsed[k] - e0)) / span);
+      }
+      i = j + 1;
+    }
   }
   const wallOf = (p) => (p.wallclock ? Date.parse(p.wallclock) : NaN);
   SB.tape = { parseClock, lastName, upperBound, wallTimes, wallOf };
@@ -431,7 +455,10 @@
 
       const plays = [];
       const ts = [];
-      const times = wallTimes(rows.map(wallOf));
+      const times = wallTimes(
+        rows.map(wallOf),
+        rows.map((p) => elapsedAt(p.period?.number || 1, parseClock(p.clock?.displayValue)))
+      );
       let prevWP = null;
       let curPeriod = 0;
       let periodStartTotal = 0; // combined score when the period began

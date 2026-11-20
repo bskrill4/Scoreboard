@@ -1230,18 +1230,62 @@
       const median = inv[Math.floor(inv.length / 2)] || 0;
       vals[k] = rs.filter((r) => involvement(r.p) >= median).map((r) => v(r.p));
     }
-    const pooled = moments(Object.values(vals).flat()).sd || 1;
+    const pooledVals = Object.values(vals).flat().sort((a, b) => a - b);
+    const pooled = moments(pooledVals).sd || 1;
+    // By rarity per game (since Nov 20): how many players a game of that sport
+    // would be expected to have doing better, from the player's place among his
+    // sport's regulars today ((1 − percentile) × regulars per game). Lower is
+    // rarer; it's read back onto the BONES scale of everyone's regulars
+    // together. So each sport gets top spots in proportion to its games, and
+    // the best night of a 12-game sport is rarer than the best of a 4-game one.
+    // Spread-scaling (until Nov 19) and plain percentiles both gave sports top
+    // spots by how many players they had: hockey dresses ~19 regulars a game
+    // to basketball's ~11, so on a night of 12 NHL and 4 NBA games 33 (then,
+    // by percentile, 35) of the top 50 were hockey. A sport with fewer than
+    // ADJ_MIN regulars uses its own average and the all-sports spread instead.
+    const below = (xs, x) => {
+      let lo = 0;
+      let hi = xs.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (xs[mid] < x) lo = mid + 1;
+        else hi = mid;
+      }
+      return lo;
+    };
+    const quantile = (q) => {
+      const pos = Math.max(0, Math.min(1, q)) * (pooledVals.length - 1);
+      const i = Math.floor(pos);
+      return pooledVals[i] + (pooledVals[Math.min(i + 1, pooledVals.length - 1)] - pooledVals[i]) * (pos - i);
+    };
+    const sorted = {};
     const mean = {};
+    const perGame = {}; // regulars per game, by sport
+    const gamesOf = {};
+    for (const r of all) (gamesOf[r.g.league] ??= new Set()).add(r.g.id);
     for (const k in vals) {
-      const m = moments(vals[k]);
-      // Halfway (geometric mean) between the sport's own spread and everyone's.
-      // With the sport's spread alone, hockey's narrow one (5.0 against the
-      // NBA's 13.8, Nov 17) made a one-goal night outrank 30- and 40-point
-      // games: the top 30 was NHL 19, NCAAM 8, NBA 3 on a night of 11, 11 and
-      // 5 games. Halfway: 12, 9, 9, and the two 46/47-point games rank 1 and 3.
-      mean[k] = { mean: m.mean, sd: m.n >= ADJ_MIN && m.sd > 0 ? Math.sqrt(m.sd * pooled) : pooled };
+      sorted[k] = vals[k].slice().sort((a, b) => a - b);
+      mean[k] = moments(vals[k]).mean;
+      perGame[k] = vals[k].length / (gamesOf[k]?.size || 1);
     }
-    const rel = (r) => ((v(r.p) - mean[r.g.league].mean) / mean[r.g.league].sd) * pooled;
+    const nGames = Object.values(gamesOf).reduce((n, g) => n + g.size, 0) || 1;
+    const perGameAll = pooledVals.length / nGames;
+    const rel = (r) => {
+      const xs = sorted[r.g.league];
+      const x = v(r.p);
+      if (!xs || xs.length < ADJ_MIN || !pooledVals.length) return x - (mean[r.g.league] || 0);
+      // Mid-rank among the sport's regulars, as a share (ties split evenly).
+      const lo = below(xs, x);
+      const hi = below(xs, x + 1e-9);
+      const q = (lo + hi) / 2 / xs.length;
+      const n = xs.length;
+      // Past the sport's best (or below its worst): extend by the raw gap.
+      if (x > xs[n - 1]) return quantile(1) + (x - xs[n - 1]);
+      if (x < xs[0]) return quantile(0) - (xs[0] - x);
+      // Expected better players per game, as a place among everyone's regulars.
+      const better = (1 - q) * perGame[r.g.league];
+      return quantile(1 - better / perGameAll) + x * 1e-6; // a sliver of the raw number breaks ties
+    };
     return { all, rel, sports: Object.keys(mean) };
   }
 
@@ -1290,14 +1334,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="How far above today's average player in that sport, scaled by a spread halfway between that sport's and all players': BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
     return `${filters}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="How far above today's average player in that sport, scaled by a spread halfway between that sport's and all players': BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'

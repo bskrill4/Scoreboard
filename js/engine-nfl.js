@@ -289,7 +289,10 @@
         const isEnd = (p) => (/^End (Period|of)/i.test(p.type?.text || '') ? 1 : 0);
         rows.sort((a, b) => (a.p.period?.number || 1) - (b.p.period?.number || 1) || isEnd(a.p) - isEnd(b.p));
       }
-      const times = wallTimes(rows.map((r) => wallOf(r.p)));
+      const times = wallTimes(
+        rows.map((r) => wallOf(r.p)),
+        rows.map((r) => elapsedAt(r.p.period?.number || 1, parseClock(r.p.clock?.displayValue)))
+      );
       // A one-row phantom score: the feed's score jumps on one row and the next
       // row puts it back (IND-TEN, Nov 2: 6-13, then 20-13 on a 5-yard catch, then
       // 6-13 on Jeffery Simmons's sack). ESPN prices that row's win probability on

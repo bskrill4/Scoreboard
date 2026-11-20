@@ -356,7 +356,7 @@
         const [sh, sa] = [strength(home), strength(away)];
         const [ph, pa] = [pd.get(home), pd.get(away)];
         if (sh != null && sa != null && ph && pa)
-          rows.push({ hl: homeEdge(homeRec.w, homeRec.n), b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0, margin: g.score[home] - g.score[away], outH: missing(home), outA: missing(away), t: g.t });
+          rows.push({ id: g.id, hl: homeEdge(homeRec.w, homeRec.n), b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0, margin: g.score[home] - g.score[away], outH: missing(home), outA: missing(away), t: g.t });
       }
       const L = g.rows._lineups;
       if (L && leagueMin) {

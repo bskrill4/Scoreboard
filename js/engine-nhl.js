@@ -177,7 +177,14 @@
 
       const plays = [];
       const ts = [];
-      const times = wallTimes((summary.plays || []).map(wallOf));
+      // Game seconds per row, for repairing bulk-stamped runs (the clock counts up).
+      const rowElapsed = (summary.plays || []).map((p) => {
+        const period = p.period?.number || 1;
+        let e = 0;
+        for (let k = 1; k < period; k++) e += periodLen(k);
+        return e + Math.min(parseClock(p.clock?.displayValue), periodLen(period));
+      });
+      const times = wallTimes((summary.plays || []).map(wallOf), rowElapsed);
       let prevWP = null;
       let pp = null; // { team: teamId, until, two, since }
       const goalieIn = { [homeId]: startGoalie[homeId] || null, [awayId]: startGoalie[awayId] || null };
