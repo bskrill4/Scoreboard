@@ -172,10 +172,48 @@
       localStorage.setItem('sb.floor', floorOn ? 'on' : 'off');
     } catch (e) {}
   }
-  // A saved game's row [imp, wpa, line, box, floor] -> Impact under the current setting.
-  const rowImpact = (row) => row[0] + (floorOn ? row[4] || 0 : 0);
+  // ---- BONES v2 (beta, basketball) ----
+  // v1 credits each play's swing in ESPN's win probability, which opens every
+  // game with team strength priced in: San Antonio opened at 80% on average
+  // (Nov 20), so a +11.3-a-game team earned BONES only for beating that
+  // expectation (+8 a game, against Memphis's +20 opening at 52%), and the
+  // BONES picks were far too timid in mismatches (67% where the line said 87%
+  // and favorites won 94%). v2 credits the same plays on a score-only win
+  // probability (the engine's model: score margin and time left, 50% at tip
+  // for everyone), so a team's lead counts the same whoever was expected to
+  // win. No game floor: a blowout's early lead is already credited in full.
+  // Switch in settings (sb.bonesV); everything that reads BONES follows it.
+  let bonesV = 1;
+  try {
+    bonesV = localStorage.getItem('sb.bonesV') === '2' ? 2 : 1;
+  } catch (e) {}
+  function setVersion(v) {
+    bonesV = v === 2 ? 2 : 1;
+    try {
+      localStorage.setItem('sb.bonesV', String(bonesV));
+    } catch (e) {}
+  }
+  // A view's players under the current version: v2 swaps in the score-only
+  // numbers where the engine has them (basketball); v1 values stay on the
+  // player as impV1 / defBones for saving.
+  function applyVersion(view) {
+    if (bonesV !== 2) return;
+    for (const p of view.players) {
+      if (p.impN == null) continue;
+      p.imp = p.impN;
+      for (const m of p.moments || []) if (m.impN != null) m.imp = m.impN;
+    }
+  }
+  // A saved game's row [imp, wpa, line, box, floor, def, impV2, defV2] -> BONES
+  // under the current settings (v2 rows carry no floor; v1 adds it if it's on).
+  const rowImpact = (row) => (bonesV === 2 && row[6] != null ? row[6] : row[0] + (floorOn ? row[4] || 0 : 0));
+  const rowDefense = (row) => (bonesV === 2 && row[7] != null ? row[7] : row[5] || 0);
 
-  SB.impact = { weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact };
+  // BONES v2 test settings (see viewAt): the share of an offensive rebound's and
+  // of a missed shot's credit the player keeps (the rest to his teammates on the floor).
+  const tune = { orebShare: 1, missShare: 1 };
+
+  SB.impact = { tune, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, version: () => bonesV };
 
   // On-court defense (basketball, beta): on every field-goal attempt, the five
   // defenders on the floor share ON_COURT_D of what the shot was worth against
@@ -201,6 +239,9 @@
   // average defense nets to about zero. Free throws are left out (the fouler
   // is already charged).
   const ON_COURT_D = 0.5;
+  // BONES v2: the spread of one possession's points (0, 1, 2 or 3; about 1.3 in
+  // the NBA), added to the score-only model's spread (see buildTape).
+  const POSS_SD = 1.3;
   // A defensive rebound ends the stop, but the miss was mostly forced by the
   // defense as a whole: the rebounder keeps REB_SHARE of the row's credit and the
   // other defenders on the floor split the rest (before, the rebounder took it
@@ -265,10 +306,14 @@
 
   // possPts: what an average possession is worth (the fouler's baseline, below).
   function impactAdjust(plays, ftPct, possPts) {
-    for (const p of plays) p.impDelta = p.delta;
+    for (const p of plays) {
+      p.impDelta = p.delta;
+      p.impDeltaN = p.deltaN || 0; // BONES v2: the score-only swing
+    }
 
     // 1. One-row spikes, first and row by row, so a spike that is undone at the
     //    next trip's whistle nets out (netting inside a trip leaves its total alone).
+    //    (The score-only swing can't spike on a non-scoring row, so v1 only.)
     for (let i = 0; i < plays.length; i++) {
       const p = plays[i];
       if (!p.impDelta || !p.credits.length) continue;
@@ -306,16 +351,21 @@
       const expected = ftPct * fts.length;
       let net = 0;
       let raw = 0;
+      let netN = 0;
       for (let k = start; k <= end; k++) {
         net += plays[k].impDelta;
         raw += plays[k].delta;
+        netN += plays[k].impDeltaN;
         plays[k].impDelta = 0;
+        plays[k].impDeltaN = 0;
         plays[k].credits = [];
       }
       const last = plays[end];
       last.impDelta = net;
+      last.impDeltaN = netN;
       last.rawDelta = raw; // the trip's classic WPA swing, for Rankings › Plays
       last.weight = plays[start].weight; // leverage as the trip began
+      last.weightN = plays[start].weightN;
       // value_i = (their side) × net × share × weight. The fouler is charged
       // only for what the trip is worth above the possession the offense had
       // anyway (FOUL_BASELINE): a two-shot foul is ~1.56 points against ~1.14
@@ -353,7 +403,8 @@
 
   // One engine per basketball league. The NBA plays four 12-minute quarters;
   // college plays two 20-minute halves. Overtime is 5 minutes in both.
-  function create({ league, periods, periodSec, otSec, label, ftPct, possPts }) {
+  function create({ league, periods, periodSec, otSec, label, ftPct, possPts, oreb }) {
+    const OREB = oreb; // share of misses the shooting team gets back (BONES v2's loose ball)
     const REG_PERIOD = periodSec;
     const OT_PERIOD = otSec;
     const REG_GAME = REG_PERIOD * periods;
@@ -375,7 +426,9 @@
 
     // Fallback when the feed has no win probability: final margin from any point
     // is roughly normal with sd ≈ 13.5 * sqrt(fraction of game remaining).
-    function modelWP(homeMargin, elapsed, reg = REG_GAME, ot = OT_PERIOD) {
+    // extraSd: more spread in points on top of the time left's (BONES v2 adds a
+    // possession's own: see POSS_SD).
+    function modelWP(homeMargin, elapsed, reg = REG_GAME, ot = OT_PERIOD, extraSd = 0) {
       // In overtime only the current OT period is left (a lead at its horn is final).
       let remaining = reg - elapsed;
       if (elapsed >= reg) {
@@ -383,7 +436,8 @@
         remaining = into === 0 && homeMargin !== 0 ? 0 : ot - into;
       }
       remaining = Math.max(remaining, 0.5);
-      const sd = 13.5 * Math.sqrt(remaining / reg) + 0.01;
+      const sdTime = 13.5 * Math.sqrt(remaining / reg) + 0.01;
+      const sd = extraSd ? Math.sqrt(sdTime * sdTime + extraSd * extraSd) : sdTime;
       return 1 / (1 + Math.exp((-1.702 * homeMargin) / sd));
     }
 
@@ -449,6 +503,7 @@
       const offA = bh != null && ba != null ? ba : Number(awayC.score);
       // The box score can trail the play-by-play by a play or two, so match it
       // at whichever row the scoring plays reach its totals.
+      const sumsOk = sums.length > 0 && sums[sums.length - 1][0] === offH && sums[sums.length - 1][1] === offA;
       const useSums = rows.some(
         (p, i) => sums[i][0] === offH && sums[i][1] === offA && (p.homeScore !== offH || p.awayScore !== offA)
       );
@@ -460,6 +515,9 @@
         rows.map((p) => elapsedAt(p.period?.number || 1, parseClock(p.clock?.displayValue)))
       );
       let prevWP = null;
+      let prevWPN = null; // BONES v2: score-only win probability
+      let ball = null; // who has the ball after each row (team id), for v2; null: loose or unknown
+      let loose = null; // while the ball is loose after a miss: the team that missed
       let curPeriod = 0;
       let periodStartTotal = 0; // combined score when the period began
       let ftPending = false; // a foul's free throws still to come
@@ -470,6 +528,15 @@
         const p = rows[i];
         const homeScore = useSums ? sums[i][0] : p.homeScore;
         const awayScore = useSums ? sums[i][1] : p.awayScore;
+        // BONES v2 keeps its own running score from the scoring plays, so a
+        // basket's points land on its own row: the feed's running score can lag
+        // a row (Nov 19 check: Trae Young's three moved it 41 -> 42 and the next
+        // row, Ronald Holland II's miss, carried it to 44, so v2 charged the miss
+        // with the rest of the basket). ESPN's win probability hides the lag;
+        // a score-only model can't. If the scoring plays don't add up to the
+        // final (sumsOk), the feed's score is used.
+        const hN = sumsOk ? sums[i][0] : homeScore;
+        const aN = sumsOk ? sums[i][1] : awayScore;
         const period = p.period?.number || 1;
         const clockSec = parseClock(p.clock?.displayValue);
         const elapsed = elapsedAt(period, clockSec);
@@ -510,6 +577,53 @@
         const delta = prevWP == null ? 0 : wp - prevWP;
         const weight = impactWeight(prevWP, elapsed, REG_GAME, OT_PERIOD);
         prevWP = wp;
+        // Score-only (v2): the model from this row's real score, time and who has
+        // the ball, 50% at tip for everyone. Having the ball rather than the
+        // other team is worth one average possession (possPts), so each side is
+        // half of it on the margin: a make of 2 nets +0.86 in the NBA, a miss
+        // and the other team's rebound −1.14, and an average possession nets 0.
+        // (A full possession each way drifted every possession against the
+        // offense: both teams came out near −50 a game.) Without the ball a miss,
+        // a stop or a turnover never moved the line, so v2 credited scoring and
+        // nothing else (Nov 20 backtest: 60.1% of winners against v1's 67.6%).
+        {
+          const rowType = p.type?.text || '';
+          const rowText = p.text || '';
+          const what = `${rowType} ${rowText}`;
+          const team = p.team?.id != null ? String(p.team.id) : null;
+          const other = team === homeId ? awayId : team === awayId ? homeId : null;
+          const ft = /free throw/i.test(what);
+          const lastFt = ft && /(\d+) of \1\b/.test(rowText);
+          const was = ball;
+          if (/end (period|game)|jump ?ball/i.test(rowType)) ball = null;
+          else if (/rebound/i.test(what)) ball = team;
+          else if (rowType === 'Steal') ball = team; // college logs the steal as the stealer's own row
+          else if (/turnover|traveling|offensive foul|bad pass|lost ball|out of bounds|shot clock|3.second|kicked ball/i.test(what) && !/kicked ball/i.test(rowType)) ball = other;
+          else if (ft) ball = lastFt ? (p.scoringPlay ? other : null) : team;
+          else if (p.shootingPlay) ball = p.scoringPlay ? other : null;
+          // A miss (a shot, or a last free throw) leaves the ball loose for the shooting team's side.
+          if (ball === null && was !== null && (p.shootingPlay || ft) && !p.scoringPlay) loose = team;
+          else if (ball !== null || /end (period|game)|jump ?ball/i.test(rowType)) loose = null;
+        }
+        // The possession's own spread (POSS_SD) too: what it scores is 0, 2 or 3,
+        // not its average. Without it the model got certain as the clock ran
+        // out (time's spread goes to zero, the ball's +0.57 doesn't): Clippers
+        // 99.4% up 2 with Miami's ball and a second left, so Klay
+        // Thompson's game-winner (Nov 4) was a 94-point swing and +163 BONES;
+        // a tie with 1.8s left was 87% for the team with the ball, so Aaron
+        // Wiggins's turnover (Nov 13) cost −38.
+        // A loose ball after a miss isn't worth nothing: the shooting team gets
+        // about OREB of its misses back, so to it the loose ball is worth
+        // half a possession × (2·OREB − 1), about −0.31 in the NBA. Counted as
+        // 0, a miss cost only −0.57 (really about −0.88), a defensive rebound was
+        // worth 0.57 (about 0.26) and an offensive rebound 0.57 (about 0.88).
+        const half = possPts / 2;
+        const looseV = loose ? (loose === homeId ? 1 : -1) * half * (2 * OREB - 1) : 0;
+        const possAdj = ball === homeId ? half : ball === awayId ? -half : looseV;
+        const wpN = modelWP(hN - aN + possAdj, elapsed, REG_GAME, OT_PERIOD, POSS_SD);
+        const deltaN = prevWPN == null ? 0 : wpN - prevWPN;
+        const weightN = impactWeight(prevWPN, elapsed, REG_GAME, OT_PERIOD);
+        prevWPN = wpN;
 
         const type = p.type?.text || '';
         const text = (p.text || '').replace(/\s+/g, ' ');
@@ -549,6 +663,9 @@
           wp,
           delta,
           weight,
+          wpN,
+          deltaN,
+          weightN,
         };
         play.credits = basketballCredits(play);
         plays.push(play);
@@ -604,7 +721,7 @@
       const { homeId, awayId, roster } = tape;
       const players = new Map();
       for (const r of roster.values()) {
-        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, imp: 0, impDef: 0, defBones: 0, on: false, played: false, stints: [], moments: [] });
+        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, imp: 0, impDef: 0, defBones: 0, impN: 0, defBonesN: 0, on: false, played: false, stints: [], moments: [] });
       }
       const lineup = { [homeId]: new Set(), [awayId]: new Set() };
       // Stints: the stretches of game time each player was on the floor, with the
@@ -620,6 +737,7 @@
       }
 
       const series = [];
+      const seriesN = []; // the score-only win probability (BONES v2), for the chart's second line
       const threes = { [homeId]: 0, [awayId]: 0 }; // made 3-pointers by team (record watch)
       const swings = [];
       // Credited plays: { play, v: Impact (home side, leverage-adjusted, what player totals add up),
@@ -650,29 +768,66 @@
         }
         // Impact: only the players responsible for the play, leverage-adjusted,
         // on the corrected swing (free-throw trips as one unit, spikes netted).
-        if (p.impDelta) {
+        if (p.impDelta || p.impDeltaN) {
           const credited = [];
           const defReb = p.isRebound && /defensive/i.test(`${p.type} ${p.text}`);
+          const rebShare = defReb ? REB_SHARE : 1;
           for (const c of p.credits) {
             const pl = players.get(c.id);
             if (!pl) continue;
-            const v = (pl.teamId === homeId ? 1 : -1) * p.impDelta * c.share * p.weight * (defReb ? REB_SHARE : 1);
+            const side = pl.teamId === homeId ? 1 : -1;
+            const v = side * p.impDelta * c.share * p.weight * rebShare;
+            const vN = side * (p.impDeltaN || 0) * c.share * (p.weightN || 1) * rebShare; // BONES v2
             pl.imp += v;
-            if (defensiveCredit(p, c.id)) pl.defBones += v;
-            pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p });
+            pl.impN += vN;
+            if (defensiveCredit(p, c.id)) {
+              pl.defBones += v;
+              pl.defBonesN += vN;
+            }
+            pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p });
             credited.push({ id: c.id, v });
           }
           // A defensive rebound's other share: the rest of the defenders on the floor.
-          const rebTeam = defReb && credited.length && players.get(credited[0].id)?.teamId;
+          const rebTeam = defReb && p.credits.length && players.get(p.credits[0].id)?.teamId;
           const others = rebTeam && lineup[rebTeam] ? [...lineup[rebTeam]].filter((id) => !credited.some((c) => c.id === id)) : [];
           for (const id of others) {
             const pl = players.get(id);
-            const v = ((rebTeam === homeId ? 1 : -1) * p.impDelta * (1 - REB_SHARE) * p.weight) / others.length;
+            const side = rebTeam === homeId ? 1 : -1;
+            const v = (side * p.impDelta * (1 - REB_SHARE) * p.weight) / others.length;
+            const vN = (side * (p.impDeltaN || 0) * (1 - REB_SHARE) * (p.weightN || 1)) / others.length;
             pl.imp += v;
             pl.defBones += v;
-            pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p, def: true });
+            pl.impN += vN;
+            pl.defBonesN += vN;
+            pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p, def: true });
           }
-          if (credited.length)
+          // BONES v2 settings (SB.impact.tune, for testing in the backtest): an
+          // offensive rebound's or a missed shot's v2 credit can be shared with
+          // the rest of the rebounder's / shooter's team on the floor. 1 = all
+          // the rebounder's / shooter's (the default).
+          const tune = SB.impact.tune;
+          const offReb = p.isRebound && !defReb && /offensive/i.test(`${p.type} ${p.text}`);
+          const miss = p.fga && !p.scoring && p.p0;
+          const keep = offReb ? tune.orebShare : miss ? tune.missShare : 1;
+          if (keep < 1 && p.impDeltaN) {
+            const who = offReb ? p.credits[0]?.id : p.p0;
+            const owner = who && players.get(who);
+            const mates = owner && lineup[owner.teamId] ? [...lineup[owner.teamId]].filter((id) => id !== who) : [];
+            const c = p.credits.find((x) => x.id === who);
+            if (owner && c && mates.length) {
+              const side = owner.teamId === homeId ? 1 : -1;
+              const moved = side * p.impDeltaN * c.share * (p.weightN || 1) * (1 - keep);
+              owner.impN -= moved;
+              const last = owner.moments[owner.moments.length - 1];
+              if (last && last.play === p) last.impN -= moved;
+              for (const id of mates) {
+                const pl = players.get(id);
+                pl.impN += moved / mates.length;
+                pl.moments.push({ t: p.elapsed, wp: p.wp, imp: 0, impN: moved / mates.length, play: p, team: true });
+              }
+            }
+          }
+          if (credited.length && p.impDelta)
             impPlays.push({ play: p, v: p.impDelta * p.weight, swing: p.impDelta, credits: credited.map((c) => ({ ...c, s: c.v / p.weight })) });
         }
         // On-court defense (ON_COURT_D): the five on the other side of a shot.
@@ -684,13 +839,16 @@
           const pointValue = (modelWP(m0 + 1, p.elapsed) - modelWP(m0 - 1, p.elapsed)) / 2;
           const above = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) - SB.xpts.avg(league) : (p.scoring ? p.pts : 0) - (SB.xpts ? SB.xpts.avg(league) : SHOT_PTS);
           const v = (-above * pointValue * ON_COURT_D * p.weight) / 5;
+          const vN = (-above * pointValue * ON_COURT_D * (p.weightN || 1)) / 5; // BONES v2: score-only leverage
           if (v && lineup[defTeam]) {
             for (const id of lineup[defTeam]) {
               const pl = players.get(id);
               pl.imp += v;
               pl.impDef += v;
               pl.defBones += v;
-              pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, play: p, def: true });
+              pl.impN += vN;
+              pl.defBonesN += vN;
+              pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p, def: true });
             }
           }
         }
@@ -736,6 +894,8 @@
         if (p.wp > maxWP) maxWP = p.wp;
         const tail = series[series.length - 1];
         if (!tail || tail[1] !== p.wp) series.push([p.elapsed, p.wp]);
+        const tailN = seriesN[seriesN.length - 1];
+        if (p.wpN != null && (!tailN || tailN[1] !== p.wpN)) seriesN.push([p.elapsed, p.wpN]);
       }
 
       for (const tid of [homeId, awayId]) for (const id of lineup[tid]) players.get(id).on = true;
@@ -784,6 +944,7 @@
         awayScore: last ? last.away : 0,
         wp: last ? (state === 'final' ? (last.home > last.away ? 1 : 0) : last.wp) : null,
         series,
+        seriesN,
         swings: swings.slice(0, 3),
         lastPlay: last && !last.isSub ? last.text : '',
         leadChanges,
@@ -794,6 +955,7 @@
         playCount: n,
       };
       SB.impact.applyFloor(view, tape, league);
+      SB.impact.applyVersion(view); // BONES v2 swaps in the score-only numbers
       tape._n = n;
       tape._final = !!forceFinal;
       tape._view = view;
@@ -805,6 +967,7 @@
 
   // ftPct: a typical free-throw percentage, the baseline for a trip's expected value.
   // possPts: points per possession, league average (NBA ~114 offensive rating; college ~102).
-  SB.engine = create({ league: 'nba', periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78, possPts: 1.14 });
-  SB.ncaam = create({ league: 'ncaam', periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72, possPts: 1.02 });
+  // oreb: offensive rebound rate (NBA ~27%, college ~30%).
+  SB.engine = create({ league: 'nba', periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78, possPts: 1.14, oreb: 0.27 });
+  SB.ncaam = create({ league: 'ncaam', periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72, possPts: 1.02, oreb: 0.3 });
 })();

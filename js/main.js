@@ -377,6 +377,7 @@
           statusText: v.statusText,
           players: v.players,
           series: v.series,
+          seriesN: v.seriesN || [], // score-only win probability (BONES v2), basketball
           swings: v.swings,
           impSwings: v.impSwings || [],
           impPlays: v.impPlays || [],
@@ -1239,6 +1240,30 @@
       pinnedId = id;
       tick(true);
     };
+    // A switch that changes how BONES is counted: views cache it, so rebuild
+    // them, the season pages, the Bone Zone and the BONES model.
+    const recountBones = () => {
+      for (const t of tapes.values()) t._n = -1;
+      SB.bones.reset();
+      SB.season.refresh();
+      SB.nflSeason.refresh();
+      SB.boneZone.refresh();
+      tick();
+    };
+    const v2Btn = $('bonesV2Switch');
+    const showV2 = () => {
+      const on = SB.impact.version() === 2;
+      v2Btn.classList.toggle('on', on);
+      v2Btn.setAttribute('aria-checked', String(on));
+      $('bonesV2Badge').hidden = !on;
+      document.body.classList.toggle('bones-v2', on);
+    };
+    showV2();
+    v2Btn.addEventListener('click', () => {
+      SB.impact.setVersion(SB.impact.version() === 2 ? 1 : 2);
+      showV2();
+      recountBones();
+    });
     const floorBtn = $('floorSwitch');
     const showFloor = () => {
       floorBtn.classList.toggle('on', SB.impact.floorOn());
@@ -1248,11 +1273,7 @@
     floorBtn.addEventListener('click', () => {
       SB.impact.setFloor(!SB.impact.floorOn());
       showFloor();
-      for (const t of tapes.values()) t._n = -1; // views cache Impact: rebuild them
-      SB.season.refresh();
-      SB.nflSeason.refresh();
-      SB.boneZone.refresh();
-      tick();
+      recountBones();
     });
     const alertBtn = $('alertSwitch');
     const showAlerts = () => {

@@ -19,6 +19,7 @@
 <body>
   <header class="bar">
     <a class="brand" href="./" aria-label="Scoreboard home">SCORE<span>BOARD</span></a>
+    <span class="bones-v2-badge" id="bonesV2Badge" hidden title="BONES v2 is on: plays are credited on a score-only win probability (settings)">BONES v2</span>
 
     <nav class="views" id="views" aria-label="Views">
       <a href="#" data-view="board">Scores</a>
@@ -91,6 +92,9 @@
             <button type="button" class="blur-switch" id="floorSwitch" role="switch" aria-checked="true"
               title="A one-sided game still credits the winner"><i></i>Game floor</button>
             <p class="set-note">On: a finished game that stayed one-sided still credits the winning team, up to 75% of a typical game, by their share of its swings. Off: swing only.</p>
+            <button type="button" class="blur-switch" id="bonesV2Switch" role="switch" aria-checked="false"
+              title="Credit plays on a score-only win probability instead of ESPN's"><i></i>BONES v2 <small>beta</small></button>
+            <p class="set-note">Off: BONES on ESPN's win probability, which opens each game with team strength priced in, so a favorite earns credit only for beating that. On: on a score-only win probability that starts every game at 50%, so a lead counts the same whoever was expected to win (basketball; football and hockey unchanged; no game floor). Labeled "BONES v2" wherever it shows.</p>
           </section>
 
           <section class="set">

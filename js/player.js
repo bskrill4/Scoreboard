@@ -20,7 +20,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the Impact or WPA math changes.
-  const CACHE_VERSION = 23; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table; 23: frozen expected-points baseline, fouls without free throws not charged
+  const CACHE_VERSION = 29; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table; 23: frozen expected-points baseline, fouls without free throws not charged; 24: BONES v2 (score-only) saved as [6] [7]; 25: v2 knows who has the ball; 26: the ball worth half a possession each way; 27: v2 model with a possession's spread; 28: v2 on its own running score; 29: v2 values a loose ball after a miss
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -134,9 +134,11 @@
                     : league === 'nfl'
                     ? [pl.teamId, pl.name, ...NFL_BOX.map((k) => pl[k] || 0)]
                     : null;
-                  // NBA adds [5]: defensive BONES (see defensiveCredit in js/engine.js).
+                  // Basketball adds [5]: defensive BONES (see defensiveCredit in js/engine.js),
+                  // and [6] [7]: BONES v2 and its defensive part (score-only, js/engine.js).
+                  // impRaw / defBones are always v1, whichever version is showing.
                   out[pl.id] = [+(pl.impRaw ?? pl.imp ?? 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl), box, +(pl.impFloor || 0).toFixed(5)];
-                  if (mins) out[pl.id].push(+(pl.defBones || 0).toFixed(5));
+                  if (pl.impN != null) out[pl.id].push(+(pl.defBones || 0).toFixed(5), +pl.impN.toFixed(5), +(pl.defBonesN || 0).toFixed(5));
                 }
                 if (league === 'nfl') {
                   for (const [id, a] of boxAthletes(s)) if (!out[id]) out[id] = [0, 0, 'No credited plays', [a.teamId, a.name]];
@@ -478,7 +480,7 @@
       body = `${(range === 'week' ? chartWeek : chartSeason)(data, metric)}
         ${
           data.games.length
-            ? `<table class="pl-games"><thead><tr><th>Day</th><th>Opp</th><th>Result</th><th>Line</th><th class="${metric === 'imp' ? 'sorted' : ''}">BONES</th><th class="${metric === 'wpa' ? 'sorted' : ''}">WPA</th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table class="pl-games"><thead><tr><th>Day</th><th>Opp</th><th>Result</th><th>Line</th><th class="${metric === 'imp' ? 'sorted' : ''}">${SB.impact.version() === 2 ? 'BONES v2' : 'BONES'}</th><th class="${metric === 'wpa' ? 'sorted' : ''}">WPA</th></tr></thead><tbody>${rows}</tbody></table>`
             : ''
         }`;
     }

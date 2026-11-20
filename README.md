@@ -136,6 +136,49 @@ position over the last **3 weeks** (2+ games in the window, 2+ before it), rated
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
 every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
 
+**BONES v2** (beta, basketball; settings › **BONES v2**, off by default, `sb.bonesV`): the same play credits, but on a
+**score-only win probability** instead of ESPN's. ESPN's opens every game with team strength priced in (San Antonio
+opened at 80% on average, Nov 20), so v1 measures wins over that expectation: the Spurs, +11.3 a game, earned +8 BONES a
+game against Memphis's +20 (opening at 52%); team BONES tracked point differential at r .76; and the BONES picks were timid
+in mismatches (67% where the line said 87% and favorites won 94%). v2 uses the engine's model from the score, the clock and
+**who has the ball** (worth half an average possession each way, `possPts` / 2: a 2-point make nets +0.86 in the NBA, a
+miss and the other team's rebound −1.14), 50% at tip for everyone; no game floor. Without the ball the line never moved on
+a miss, a stop or a turnover (60.1% of winners), and a full possession each way drifted every possession against the
+offense (both teams near −50 a game). The view keeps both: `impRaw`/`defBones` (v1) and `impN`/`defBonesN` (v2); saved
+rows add `[6]` v2 and `[7]` its defensive part (`CACHE_VERSION` 26), and `SB.impact.rowImpact`/`rowDefense` read whichever
+is on, so the board, Rankings, the season pages, the drawer, the model and the Bone Zone all follow the switch. The chart
+draws the score-only line dashed under ESPN's (blue while v2 is on, with an ESPN / Score only key); the header shows a
+**BONES v2** badge and every BONES label reads "BONES v2" (single-play swings stay v1's and say "BONES v1"). Football and
+hockey are unchanged for now. Backtest, Nov 20 (148 games): v2 74.3% of winners, log-loss −0.581 (second half 74.3%,
+−0.539); v1 67.6%, −0.640; point differential 65.8%, −0.620; against the closing line, overall −0.581 vs the line's −0.571,
+close games (under 4.5) −0.620 vs −0.659, expected blowouts (10+) 78% confidence vs 87% (v1 67%); team v2 vs point
+differential r .92 (San Antonio 6th → 1st). LAC at SA, Nov 19: v1 SA 53%, v2 SA 72% (line SA −15.5).
+Two v2 fixes after the first edge cases (Nov 20, `CACHE_VERSION` 28): (1) the model also carries **a possession's own
+spread** (`POSS_SD` 1.3 points: it scores 0, 2 or 3, not its average). Without it the model turned certain as the clock ran
+out, since time's spread goes to zero while the ball's +0.57 doesn't: the Clippers were 99.4% up 2 with Miami's ball and a
+second left, so Klay Thompson's game-winner (Nov 4) was a 94-point swing and +163 BONES (now 85% → 37%, +17.6; his game
++189 → +43), and a tie with 1.8 seconds left was 87% for the team with the ball, so Aaron Wiggins's turnover (Nov 13) cost
+−38 (now −12; his game −28.5 → −2.2). (2) v2 keeps **its own running score** from the scoring plays (when they add up to the
+final), since the feed's running score can lag a row: Trae Young's three moved it 41 → 42 and Ronald Holland II's miss on
+the next row carried it to 44, so v2 charged the miss with the rest of the basket (Holland −25.2 on 2 points). After both:
+backtest 77.0% of winners (log-loss −0.588; second half 77.0%, −0.558); the season's best v2 nights are the 50-point games
+(Cunningham 52 +92, Wembanyama 52/24 +86, Doncic 52 +82) and the worst about −14.
+(3) A **loose ball after a miss** is worth half a possession × (2·OREB − 1) to the shooting team (`oreb`: NBA 0.27,
+college 0.30; about −0.31 in the NBA), not nothing: counted as 0, a miss cost only −0.57 (really about −0.88), a
+defensive rebound earned 0.57 (about 0.26) and an offensive rebound 0.57 (about 0.88) (`CACHE_VERSION` 29). NY at TOR,
+Nov 17: v1 had Brunson first (46.4) and Towns at 28.6, because ESPN's probability hardly moves on a miss (Brunson's 12
+misses cost him +0.4 in v1; the value lands on the defensive rebound) or an offensive rebound (Towns's 6 were worth 0.6).
+v2: Towns 51.0 (7 of 9, offensive rebounds +18.3, assists +9.1) and Brunson 27.7 (makes +42.4, misses −32.4). Backtest after:
+74.3% of winners, log-loss −0.567 (best yet; second half 73.0%, −0.555).
+**Test settings** (`SB.impact.tune`, defaults 1 = unchanged): `orebShare` and `missShare`, the share of an offensive
+rebound's and of a missed shot's v2 credit the player keeps, the rest going to his teammates on the floor (the theory:
+v2 over-credits efficient rebounding bigs and over-charges creators whose misses are the cost of running an offense).
+Grid-tested Nov 20 (148 games): every sharing setting made the game backtest's log-loss worse (misses at 75% −0.574, 50%
+−0.582; offensive rebounds at 60% −0.568, 40% −0.569; default −0.567) and moved the lineup test (r .068 → at most .072)
+within its noise (±.012). Not adopted. Note the game backtest can barely see credit moved between teammates on the
+floor (team totals hardly change), so it can't settle within-team allocation either way; the shared setting would have
+reordered the names (Sabonis #21 → #64, Brunson #41 → #8, Gilgeous-Alexander #23 → #5) without the data to back it.
+
 **Game floor** (on everywhere by default; settings › **Game floor** off = swing only): Impact pays for swings, so a
 game that stayed one-sided hands out little credit and the winner's dominance never shows (GSW–SA, Nov 13: 37 in total
 against a median NBA game of 165; Wembanyama's 12-12-6 with 2 blocks was +4.8). When a finished game's pool (the

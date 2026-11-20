@@ -651,7 +651,7 @@
       const b = row[3];
       if (!b) return null;
       const [teamId, min, pts, reb, ast, stl, blk, name] = b;
-      return { teamId, name, m: min, stats: { min, pts, reb, ast, stl, blk, dbones: (row[5] || 0) * 100 } };
+      return { teamId, name, m: min, stats: { min, pts, reb, ast, stl, blk, dbones: SB.impact.rowDefense(row) * 100 } };
     },
     cols: (group, count) => [
       { k: 'gp', label: 'GP', v: (p) => p.gp, f: 0 },
@@ -661,9 +661,9 @@
       { k: 'ast', label: 'AST', v: count('ast'), f: 1 },
       { k: 'stl', label: 'STL', v: count('stl'), f: 1 },
       { k: 'blk', label: 'BLK', v: count('blk'), f: 1 },
-      { k: 'imp', label: 'BONES', v: (p) => p.imp * 100, signed: true },
-      { k: 'imp36', label: 'BONES/36', v: (p) => per36(p.imp, p), signed: true },
-      { k: 'dbones', label: 'Defensive BONES', v: (p) => p.s.dbones || 0, signed: true },
+      { k: 'imp', label: SB.impact.version() === 2 ? 'BONES v2' : 'BONES', v: (p) => p.imp * 100, signed: true },
+      { k: 'imp36', label: SB.impact.version() === 2 ? 'BONES v2/36' : 'BONES/36', v: (p) => per36(p.imp, p), signed: true },
+      { k: 'dbones', label: SB.impact.version() === 2 ? 'Defensive BONES v2' : 'Defensive BONES', v: (p) => p.s.dbones || 0, signed: true },
       { k: 'wpa', label: 'WPA', v: (p) => p.wpa * 100, signed: true },
       { k: 'wpa36', label: 'WPA/36', v: (p) => per36(p.wpa, p), signed: true },
     ],

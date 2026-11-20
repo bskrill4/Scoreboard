@@ -58,7 +58,11 @@
   let metric = 'imp';
   const val = (p) => (metric === 'imp' ? p.imp || 0 : p.wpa || 0);
   const momentVal = (m) => (metric === 'imp' ? m.imp ?? 0 : m.wpa ?? 0);
-  const metricShort = () => (metric === 'imp' ? 'BONES' : 'WPA');
+  // "BONES v2" while the score-only version is on (settings), so it's never mistaken for v1.
+  const bonesLabel = () => (SB.impact.version() === 2 ? 'BONES v2' : 'BONES');
+  const metricShort = () => (metric === 'imp' ? bonesLabel() : 'WPA');
+  // Single-play swings are still v1's (ESPN's win probability), so under v2 they say so.
+  const swingLabel = () => (SB.impact.version() === 2 ? 'BONES v1' : 'BONES');
   const setMetric = (m) => (metric = m === 'imp' ? 'imp' : 'wpa');
 
   // ---------- formatting ----------
@@ -249,6 +253,13 @@
     const cur = g.series[g.series.length - 1][1];
     d += ` L${lastX} ${y(cur)}`;
     const area = `${d} L${lastX} ${H / 2} L0 ${H / 2} Z`;
+    // The score-only win probability (what BONES v2 credits), dashed under ESPN's line.
+    let dN = '';
+    if (g.seriesN?.length) {
+      dN = `M0 ${y(g.seriesN[0][1])}`;
+      for (const [e, wp] of g.seriesN) dN += ` L${x(e)} ${y(wp)}`;
+      dN += ` L${lastX} ${y(g.seriesN[g.seriesN.length - 1][1])}`;
+    }
     let grid = '';
     for (let q = g.quarter; q < total; q += q < reg ? g.quarter : g.ot) grid += `<line x1="${x(q)}" x2="${x(q)}" y1="0" y2="${H}" class="q"/>`;
     const id = `c${g.id}`;
@@ -266,6 +277,7 @@
         <path d="${area}" fill="${g.away.css}" opacity=".28" clip-path="url(#${id}t)"/>
         <path d="${area}" fill="${g.home.css}" opacity=".28" clip-path="url(#${id}b)"/>
         <line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" class="mid"/>
+        ${dN ? `<path d="${dN}" class="wpline-n"><title>Score only (BONES v2): the score and the clock, 50% at tip for everyone</title></path>` : ''}
         <path d="${d}" class="wpline"/>
         ${hl ? hl.over : ''}
       </svg>
@@ -623,7 +635,7 @@
         .map((s) => {
           const t = s.swing > 0 ? g.home : g.away;
           return `<div class="swing" style="--tc:${t.css}">
-            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} BONES</b>
+            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} ${swingLabel()}</b>
             <span>${esc(playWhen(g, s.play))} · <em class="sc">${esc(scoreAt(g, s.play))}</em> · ${esc(s.play.text)}</span>
           </div>`;
         })
@@ -669,7 +681,7 @@
             ? ' sr'
             : ' sl';
         return `<i class="bub" tabindex="0" style="left:${left.toFixed(2)}%;top:${top}%;--s:${size}px;--tc:${t.css}">
-          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} BONES</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
+          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} ${swingLabel()}</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
           <span class="tip-t">${esc(s.play.text)}</span>${who ? `<small>${who}</small>` : ''}</span>
         </i>`;
       })
@@ -848,7 +860,7 @@
       : !g.players.length
       ? 'Players to watch'
       : metric === 'imp'
-      ? 'BONES leaders <small>credit for their own plays, leverage-adjusted · beta</small>'
+      ? `${bonesLabel()} leaders <small>${SB.impact.version() === 2 ? 'on a score-only win probability, 50% at tip · beta' : 'credit for their own plays, leverage-adjusted · beta'}</small>`
       : SB.league.football(g.league) || g.league === 'nhl'
       ? 'Top performers <small>WPA on plays they were part of</small>'
       : 'WPA leaders <small>win probability added while on court</small>';
@@ -881,7 +893,7 @@
       <div class="g-wp">${bonesP(g) == null ? wpBar(g) : bonesBar(g)}</div>
       <div class="h-body">
         <section class="h-col">
-          <h3 class="wp-h">${preBones ? 'BONES prediction' : 'Win probability'}${chart && g._cap ? g._cap : ''}${heroPickTag(g)}</h3>
+          <h3 class="wp-h">${preBones ? 'BONES prediction' : 'Win probability'}${chart && g.seriesN?.length && !g._cap ? '<small class="wp-key"><i class="k-espn"></i>ESPN <i class="k-score"></i>Score only</small>' : ''}${chart && g._cap ? g._cap : ''}${heroPickTag(g)}</h3>
           ${chart}
           ${hide ? '' : swingsHTML(g)}
           ${partsHTML(g)}
@@ -1300,7 +1312,7 @@
       sports.length > 1 || playersRank === 'rel'
         ? `<div class="ss-controls"><div class="seg" role="group" aria-label="Sport">${chip('data-psport', 'all', 'All', playersSport === 'all')}${sports
             .map((l) => chip('data-psport', l, SB.league.name(l), playersSport === l))
-            .join('')}</div><div class="seg" role="group" aria-label="Rank by">${chip('data-prank', 'raw', metric === 'imp' ? 'BONES' : 'WPA', playersRank === 'raw')}${chip(
+            .join('')}</div><div class="seg" role="group" aria-label="Rank by">${chip('data-prank', 'raw', metricShort(), playersRank === 'raw')}${chip(
             'data-prank',
             'rel',
             'Sport-adjusted',
@@ -1315,7 +1327,7 @@
           <span class="potd-k">Player of the Day${soFar}</span>
           ${headshot(crown.p)}
           <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${SB.league.name(crown.g.league)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
-          <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metric === 'imp' ? 'BONES' : 'WPA'}${playersRank === 'rel' ? ' · sport-adjusted' : ''}</small></div>
+          <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metricShort()}${playersRank === 'rel' ? ' · sport-adjusted' : ''}</small></div>
         </div>`
       : '';
     const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
@@ -1334,14 +1346,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
     return `${filters}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'
@@ -1394,7 +1406,7 @@
           <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
             <small>${SB.league.name(crown.g.league)} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
             <div class="by-list">${by(crown.g, crown.s)}</div></div>
-          <div class="potd-v"><b>${fmtWPA(metric === 'imp' ? crown.imp : crown.wpa)}</b><small>${metric === 'imp' ? 'BONES' : 'WPA'} · ${esc(crown.team.abbr)}</small></div>
+          <div class="potd-v"><b>${fmtWPA(metric === 'imp' ? crown.imp : crown.wpa)}</b><small>${metricShort()} · ${esc(crown.team.abbr)}</small></div>
         </div>`
       : '';
     const body = top
@@ -1415,7 +1427,7 @@
     return `${whenSeg}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable plays">
-            <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>BONES</th><th${col('wpa')}>WPA</th></tr></thead>
+            <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>${bonesLabel()}</th><th${col('wpa')}>WPA</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>`
         : '<div class="empty-note">No plays with play-by-play yet today.</div>'

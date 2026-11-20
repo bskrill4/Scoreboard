@@ -669,6 +669,7 @@
         downText,
       };
       SB.impact.applyFloor(view, tape, college ? 'ncaaf' : 'nfl');
+      SB.impact.applyVersion(view); // no v2 numbers in football yet: unchanged
       tape._n = n;
       tape._final = !!forceFinal;
       tape._view = view;

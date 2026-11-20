@@ -473,6 +473,14 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .chart .edge.bot { bottom: 6px; }
 /* Hovering a player: their minutes (NBA) or plays (NFL) light up on the chart. */
 .chart .wpline { transition: opacity .2s; }
+/* The score-only win probability (BONES v2): dashed, under ESPN's line; solid-ish when v2 is on. */
+.chart .wpline-n { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-dasharray: 5 4; opacity: .45; vector-effect: non-scaling-stroke; }
+body.bones-v2 .chart .wpline-n { stroke: #7fd4ff; opacity: .9; }
+.chart.focus .wpline-n { opacity: .15; }
+.wp-key { margin-left: 8px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--dim); font-size: 11px; }
+.wp-key i { display: inline-block; width: 14px; height: 0; margin: 0 4px 3px 6px; border-top: 2.5px solid var(--yellow); vertical-align: middle; }
+.wp-key i.k-score { border-top: 2px dashed var(--text); opacity: .7; }
+body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .chart.focus .wpline { opacity: .3; }
 .chart.focus .wpline.lit { opacity: 1; stroke-width: 3; }
 .chart .stint rect { fill: rgba(255, 214, 10, .1); }
@@ -1440,6 +1448,9 @@ body.view-players .filter, body.view-bonezone .filter { display: none; }
   .clutch-stack { left: 12px; right: 12px; bottom: 12px; width: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .clutch-toast { animation: none; } }
+
+/* BONES v2 signifier (settings › BONES v2) */
+.bones-v2-badge { align-self: center; padding: 2px 8px; border: 1px solid var(--yellow); border-radius: 999px; color: var(--yellow); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
 
 /* ---------------- My teams (js/myteams.js) ---------------- */
 .mt-summary { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }

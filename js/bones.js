@@ -93,6 +93,12 @@
   // ---------- the model ----------
   let modelP = null;
   let modelFrom = null;
+  // Forget the built model (a BONES setting changed): the next ask rebuilds it
+  // from the same season rows, which are read under the current settings.
+  function reset() {
+    modelFrom = null;
+  }
+
   function model(onProgress) {
     const p = seasonGames(onProgress);
     if (p !== modelFrom) {
@@ -640,5 +646,5 @@
     },
   };
 
-  SB.bones = { HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
+  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
 })();
