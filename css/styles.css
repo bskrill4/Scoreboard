@@ -1398,56 +1398,73 @@ body.view-players .filter, body.view-bonezone .filter { display: none; }
   .filter { order: 20; width: 100%; }
 }
 
-/* ---------------- clutch time banners ---------------- */
-.clutch-stack {
-  position: fixed;
-  right: 20px;
-  bottom: 20px;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 300px;
-  pointer-events: none;
+/* ---------------- banners (js/banners.js) ----------------
+   Between the menu and the top game: clutch time, overtime, big nights.
+   Up to three side by side (newest first); one at a time on phones. The bar along
+   the bottom drains while the banner is on screen; at empty it's gone. */
+.banners {
+  max-width: 1680px;
+  margin: 22px auto 0;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 14px;
 }
-.clutch-toast {
+.bn {
+  --accent: var(--yellow);
   position: relative;
-  display: block;
-  width: 100%;
-  padding: 11px 14px 12px;
-  border: 2px solid var(--yellow);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  padding: 14px 16px 17px;
+  border: 2px solid var(--accent);
   border-radius: 12px;
-  background: linear-gradient(90deg, color-mix(in srgb, var(--away) 22%, transparent), transparent 45%, transparent 55%, color-mix(in srgb, var(--home) 22%, transparent)), var(--panel);
-  box-shadow: 4px 4px 0 var(--yellow-ink), 0 10px 30px rgba(0, 0, 0, .5);
-  color: var(--text);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  pointer-events: auto;
-  animation: clutch-in .35s cubic-bezier(.2, .9, .3, 1.2);
-  transition: opacity .25s, transform .25s;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--away) 20%, transparent), transparent 40%, transparent 60%, color-mix(in srgb, var(--home) 20%, transparent)), var(--panel);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--accent) 35%, var(--bg));
+  overflow: hidden;
+  animation: bn-in .45s cubic-bezier(.2, .9, .3, 1.2);
+  transition: opacity .3s, transform .3s;
 }
-.clutch-toast:hover { border-color: #fff; }
-.ct-main { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.ct-main:focus-visible, .ct-close:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
-.clutch-toast.out { opacity: 0; transform: translateX(30px); }
-@keyframes clutch-in { from { opacity: 0; transform: translateY(16px) scale(.96); } }
-.ct-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding-right: 18px; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
-.ct-tag { padding: 2px 8px; border-radius: 999px; background: var(--yellow); color: var(--yellow-ink); }
-.ct-mine { padding: 1px 7px; border: 1px solid var(--yellow); border-radius: 999px; color: var(--yellow); }
-.ct-clock { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
-.ct-score { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; letter-spacing: .02em; }
-.ct-team { display: inline-flex; align-items: center; gap: 6px; }
-.ct-team img { width: 20px; height: 20px; object-fit: contain; }
-.ct-team b { font-size: 18px; font-weight: 900; font-variant-numeric: tabular-nums; }
-.ct-dash { color: var(--dim); }
-.ct-go { align-self: center; font-size: 11px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; color: var(--yellow); }
-.ct-close { position: absolute; top: 6px; right: 8px; width: 20px; height: 20px; padding: 0; border: 0; background: none; border-radius: 50%; display: grid; place-items: center; font: inherit; font-size: 16px; line-height: 1; color: var(--dim); cursor: pointer; }
-.ct-close:hover { background: var(--panel-2); color: var(--text); }
+.bn-player { --accent: var(--text); }
+.bn.out { opacity: 0; transform: translateY(-8px) scale(.98); }
+@keyframes bn-in { from { opacity: 0; transform: translateY(-14px) scale(.97); } }
+.bn-photo { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; object-position: 50% 0; background: var(--panel-2); border: 2px solid var(--line); }
+.bn-logos { position: relative; width: 64px; height: 64px; }
+.bn-logos img { position: absolute; width: 40px; height: 40px; object-fit: contain; }
+.bn-logos img:first-child { left: 0; top: 0; }
+.bn-logos img:last-child { right: 0; bottom: 0; }
+.bn-body { min-width: 0; }
+.bn-head { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.bn-tag { padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--yellow-ink); }
+.bn-mine { padding: 1px 7px; border: 1px solid var(--yellow); border-radius: 999px; color: var(--yellow); }
+.bn-headline { margin: 6px 0 0; padding-right: 16px; font-size: 19px; font-weight: 900; line-height: 1.2; letter-spacing: -.005em; text-wrap: balance; }
+.bn-detail { margin: 4px 0 0; color: var(--dim); font-weight: 600; line-height: 1.35; }
+.bn-foot { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.bn-score { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 13px; white-space: nowrap; }
+.bn-team { display: inline-flex; align-items: center; gap: 5px; }
+.bn-team img { width: 18px; height: 18px; object-fit: contain; }
+.bn-team b { font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.bn-dash { color: var(--dim); }
+.bn-clock { font-size: 12px; font-weight: 800; color: var(--dim); font-variant-numeric: tabular-nums; }
+.bn-go { margin-left: auto; padding: 6px 12px; border: 0; border-radius: 999px; background: var(--accent); color: var(--yellow-ink); font: inherit; font-size: 12px; font-weight: 900; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; cursor: pointer; }
+.bn-go:hover { filter: brightness(1.1); }
+.bn-go:focus-visible, .bn-x:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+.bn-x { position: absolute; top: 6px; right: 8px; width: 22px; height: 22px; padding: 0; border: 0; background: none; border-radius: 50%; display: grid; place-items: center; font: inherit; font-size: 17px; line-height: 1; color: var(--dim); cursor: pointer; }
+.bn-x:hover { background: var(--panel-2); color: var(--text); }
+.bn-timer { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--accent); transform-origin: left; transform: scaleX(var(--left, 1)); transition: transform .25s linear; opacity: .8; }
+body.view-players .banners { display: none; }
 @media (max-width: 680px) {
-  .clutch-stack { left: 12px; right: 12px; bottom: 12px; width: auto; }
+  .banners { margin-top: 14px; padding: 0 12px; gap: 10px; }
+  /* One at a time on phones, so the top game stays near the top; the rest
+     wait (their clock doesn't run while hidden). */
+  .bn:nth-child(n+2) { display: none; }
+  .bn { gap: 12px; padding: 12px 12px 15px; }
+  .bn-photo, .bn-logos { width: 44px; height: 44px; }
+  .bn-logos img { width: 28px; height: 28px; }
+  .bn-headline { font-size: 17px; }
 }
-@media (prefers-reduced-motion: reduce) { .clutch-toast { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .bn { animation: none; } .bn-timer { transition: none; } }
 
 /* BONES v2 signifier (settings › BONES v2) */
 .bones-v2-badge { align-self: center; padding: 2px 8px; border: 1px solid var(--yellow); border-radius: 999px; color: var(--yellow); font-size: 10px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
@@ -1629,7 +1646,7 @@ html.duo body:not(.view-players) {
   overflow: hidden;
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: var(--duo-top) var(--duo-fold) minmax(0, 1fr) auto auto;
+  grid-template-rows: var(--duo-top) var(--duo-fold) minmax(0, 1fr) auto auto auto;
   column-gap: 10px;
   padding: 0 10px;
 }
@@ -1656,10 +1673,15 @@ html.duo body:not(.view-players) .game:nth-child(2) { grid-column: 1; }
 html.duo body:not(.view-players) .game:nth-child(3) { grid-column: 2; }
 html.duo body:not(.view-players) .game:nth-child(n+4),
 html.duo body:not(.view-players) .foot { display: none; }
-html.duo body:not(.view-players) .notice { grid-column: 1 / -1; grid-row: 4; margin: 8px 0 0; }
+/* Banners: one at a time, between the two small games and the menu (the menu
+   is at the bottom here, so this is still between the menu and the games). */
+html.duo body:not(.view-players) .banners { grid-column: 1 / -1; grid-row: 4; margin: 8px 0 0; padding: 0; grid-template-columns: minmax(0, 1fr); }
+html.duo body:not(.view-players) .bn:nth-child(n+2) { display: none; }
+html.duo body:not(.view-players) .bn-detail { display: none; }
+html.duo body:not(.view-players) .notice { grid-column: 1 / -1; grid-row: 5; margin: 8px 0 0; }
 html.duo body:not(.view-players) .bar {
   grid-column: 1 / -1;
-  grid-row: 5;
+  grid-row: 6;
   position: static;
   margin: 8px -10px 0;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px));
@@ -1695,4 +1717,228 @@ html.duo body:not(.view-players) .settings-panel {
   font: 700 15px/1.4 ui-monospace, Menlo, monospace;
   white-space: pre-wrap;
   pointer-events: none;
+}
+
+/* ---------------- focus mode (js/focus.js) ----------------
+   The top game alone in the middle of a dark screen, panels around it: three
+   on each side on wide screens, below it (two columns, then one) on smaller
+   ones. Going in: the menu and the other games fade away (body.focus-out),
+   the card glides to the middle (view transition), the panels slide in one by
+   one. Going out runs it backwards (body.focus-back brings the board in). */
+.focus-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color .15s, color .15s, background .15s;
+}
+.focus-btn svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.focus-btn:hover { border-color: var(--yellow); color: var(--yellow); }
+.focus-btn.on { background: var(--yellow); border-color: var(--yellow); color: var(--yellow-ink); }
+.focus-btn:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
+html.duo .focus-btn { display: none; }
+
+/* Going in: everything but the top game fades away. */
+body.focus-out .bar, body.focus-out .banners, body.focus-out .recap, body.focus-out .notice, body.focus-out .foot {
+  opacity: 0; transform: translateY(-14px); transition: opacity .35s ease, transform .35s ease;
+}
+body.focus-out .game:not(.is-hero) { opacity: 0; transform: translateY(28px) scale(.97); transition: opacity .35s ease, transform .35s ease; }
+body.focus-out { background: #000; transition: background .35s; }
+
+body.focus-mode {
+  background: #000;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 2.5fr) minmax(280px, 1fr);
+  column-gap: 20px;
+  align-items: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+body.focus-mode > :not(#board):not(.focus-side) { display: none !important; }
+body.focus-mode #board { grid-column: 2; grid-row: 1; display: block; padding: 0; margin: 0; max-width: none; min-width: 0; }
+body.focus-mode #board .game:not(.is-hero) { display: none; }
+body.focus-mode .game.is-hero { container: hero / inline-size; }
+body.focus-mode .is-hero .pin { display: none; }
+/* Sized to the card, not the window (the card is narrower here). */
+body.focus-mode .is-hero .h-team .logo { width: clamp(44px, 9cqi, 88px); height: clamp(44px, 9cqi, 88px); }
+body.focus-mode .is-hero .h-team .score { font-size: clamp(54px, 11cqi, 116px); }
+body.focus-mode .is-hero .h-name b { font-size: clamp(16px, 2.8cqi, 28px); }
+body.focus-mode .is-hero .h-mid b { font-size: clamp(18px, 2.6cqi, 28px); }
+@container hero (max-width: 1000px) {
+  .h-body { grid-template-columns: 1fr 1fr; }
+  .h-body .h-col:first-child { grid-column: 1 / -1; }
+}
+@container hero (max-width: 900px) {
+  .h-name .full { display: none; }
+  .h-name .short { display: inline; }
+}
+@container hero (max-width: 620px) {
+  /* The phone header: clock on top, each team stacked over its score. */
+  .h-score { grid-template-columns: 1fr 1fr; row-gap: 6px; }
+  .h-mid { grid-column: 1 / -1; grid-row: 1; max-width: none; justify-self: center; }
+  .h-team, .h-team.home { flex-direction: column; text-align: center; gap: 4px; }
+  .h-team .score, .h-team.home .score { margin: 0; }
+  .h-mid small { min-height: 0; }
+}
+.focus-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.focus-side.l { grid-column: 1; grid-row: 1; --from: -40px; }
+.focus-side.r { grid-column: 3; grid-row: 1; --from: 40px; }
+
+/* Coming back: the menu and the other games return. */
+body.focus-back .bar, body.focus-back .banners, body.focus-back .recap { animation: fb-down .45s ease both; }
+body.focus-back .game:not(.is-hero) { animation: rise .55s cubic-bezier(.2, .9, .25, 1) .08s both; }
+@keyframes fb-down { from { opacity: 0; transform: translateY(-14px); } }
+
+/* The panels */
+.fw {
+  min-width: 0;
+  padding: 14px 16px 16px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--panel-2) 60%, transparent), transparent 60%), var(--panel);
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  opacity: 0;
+}
+.focus-side.in .fw { animation: fw-in .6s cubic-bezier(.2, .9, .3, 1.08) both; animation-delay: calc(120ms + var(--i) * 120ms); }
+.focus-side.out .fw { animation: fw-out .3s ease both; animation-delay: calc((2 - var(--i)) * 45ms); }
+@keyframes fw-in { from { opacity: 0; transform: translateX(var(--from)) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes fw-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateX(var(--from)) scale(.96); } }
+.fw h3 { margin: 0 0 10px; font-size: 11px; font-weight: 900; letter-spacing: .12em; text-transform: uppercase; color: var(--yellow); }
+.fw h3 small { margin-left: 6px; font-weight: 500; letter-spacing: .02em; text-transform: none; color: var(--dim); }
+.fw h4 { margin: 12px 0 2px; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.fw h4:first-child { margin-top: 0; }
+.fw-empty { margin: 4px 0; color: var(--dim); font-weight: 600; }
+.fw .pos { color: var(--yellow); }
+.fw .neg { color: var(--dim); }
+
+/* Shot chart */
+.fw-court { display: block; width: 100%; max-height: 260px; }
+.ct-floor { fill: var(--panel-2); }
+.ct-line { fill: none; stroke: var(--line); stroke-width: .3; }
+.ct-rim { fill: none; stroke: var(--dim); stroke-width: .35; }
+.fw-shotrow { display: grid; grid-template-columns: 8px 40px auto 1fr auto; align-items: baseline; gap: 8px; margin-top: 8px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fw-shotrow > span:nth-child(4) { justify-self: end; }
+.fw-shotrow i { width: 8px; height: 8px; border-radius: 50%; align-self: center; }
+.fw-shotrow small { color: var(--dim); font-weight: 600; }
+
+/* Game flow */
+.fl-chart { display: block; width: 100%; height: 90px; }
+.fl-zero, .fl-q { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fl-q { stroke-dasharray: 3 3; }
+.fl-line { fill: none; stroke: var(--text); stroke-width: 1.4; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.fl-keys { display: flex; justify-content: space-between; margin-top: 4px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.fl-stats { display: grid; grid-template-columns: auto 1fr 1fr; align-items: baseline; gap: 5px 10px; margin-top: 10px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fl-stats > small, .fl-stats small.in { font-size: 10px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); }
+.fl-stats > span { white-space: nowrap; }
+.fl-stats b { font-size: 14px; font-weight: 900; }
+.fl-stats em { font-style: normal; font-size: 11px; font-weight: 600; color: var(--dim); }
+.fl-stats .dim { color: var(--dim); }
+
+/* By quarter */
+.fw-line { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.fw-line th { padding: 0 0 6px; font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); text-align: center; }
+.fw-line td { padding: 4px 0; text-align: center; font-weight: 700; color: var(--dim); border-top: 1px solid var(--line); }
+.fw-line td:first-child { text-align: left; color: var(--text); font-weight: 900; white-space: nowrap; }
+.fw-line td:first-child i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
+.fw-line td.won { color: var(--text); }
+.fw-line td.tot { color: var(--yellow); font-weight: 900; font-size: 15px; }
+.fw-stats { margin-top: 10px; }
+.fw-vs { display: grid; grid-template-columns: 1fr auto 1fr; align-items: baseline; gap: 3px 8px; margin-top: 8px; font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--dim); }
+.fw-vs > span:first-child { text-align: left; }
+.fw-vs > span:nth-child(3) { text-align: right; }
+.fw-vs > span.up { color: var(--text); }
+.fw-vs small { font-weight: 600; color: var(--dim); }
+.fw-vs em { font-style: normal; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.fw-split { grid-column: 1 / -1; display: flex; gap: 2px; height: 4px; }
+.fw-split b { height: 100%; border-radius: 2px; opacity: .85; }
+
+/* Play by play */
+.pb-list { margin: 0; padding: 0; list-style: none; }
+.pb-list li { display: grid; grid-template-columns: 54px 1fr auto; gap: 8px; align-items: baseline; padding: 6px 0 6px 9px; border-left: 3px solid var(--tc); font-size: 12px; color: var(--dim); }
+.pb-list li + li { margin-top: 4px; }
+.pb-list li.sc { color: var(--text); font-weight: 700; }
+.pb-when { font-size: 11px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--dim); }
+.pb-text { min-width: 0; line-height: 1.35; }
+.pb-score { font-weight: 900; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pb-sw { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--tc); color: var(--tc); font-size: 10px; font-weight: 900; white-space: nowrap; }
+
+/* Player rows (defense, rotation) */
+.fw-prow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 3px 10px; margin-top: 8px; }
+.fw-prow .who { min-width: 0; }
+.fw-prow .who b { display: block; font-size: 13px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fw-prow .who small { display: block; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fw-prow .val { font-size: 14px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.fw-prow .tag { font-size: 11px; font-weight: 800; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fw-meter { grid-column: 2 / -1; height: 3px; background: var(--panel-2); border-radius: 2px; }
+.fw-meter b { display: block; height: 100%; background: var(--yellow); border-radius: 2px; }
+.fw-defense .fw-vs { margin-top: 14px; }
+.rot-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 14px; }
+.fw-prow.rot { grid-template-columns: auto minmax(0, 1fr); margin-top: 7px; }
+
+/* Wide screens: focus mode is exactly one window tall, nothing to scroll (a
+   second screen to glance at). The card's chart, the shot chart and the play
+   by play take whatever height is left; everything else keeps its size. */
+@media (min-width: 1181px) {
+  body.focus-mode { height: 100vh; overflow: hidden; padding: 14px 18px; align-items: stretch; column-gap: 16px; grid-template-columns: minmax(300px, 1fr) minmax(0, 2.3fr) minmax(300px, 1fr); }
+  body.focus-mode #board { height: calc(100% - 6px); min-height: 0; }
+  body.focus-mode .game.is-hero { height: 100%; min-height: 0; overflow: hidden; padding: 14px 18px 14px; gap: 10px; box-shadow: 5px 5px 0 var(--yellow); }
+  body.focus-mode .is-hero > .g-top, body.focus-mode .is-hero > .h-score, body.focus-mode .is-hero > .g-wp { flex: none; }
+  body.focus-mode .is-hero .h-mid small.lastplay { display: none; } /* the Play by play panel has it */
+  body.focus-mode .is-hero .h-team .logo { width: clamp(40px, 6.5cqi, 60px); height: clamp(40px, 6.5cqi, 60px); }
+  body.focus-mode .is-hero .h-team .score { font-size: clamp(48px, 9cqi, 76px); }
+  body.focus-mode .is-hero .h-name b { font-size: clamp(15px, 2.4cqi, 22px); }
+  body.focus-mode .is-hero .h-body { flex: 1 1 0; min-height: 0; grid-template-rows: minmax(0, 1fr) auto; gap: 12px 20px; margin-top: 0; }
+  body.focus-mode .is-hero .h-body > .h-col { min-height: 0; overflow: hidden; }
+  body.focus-mode .is-hero .h-body > .h-col:first-child { display: flex; flex-direction: column; }
+  body.focus-mode .is-hero .h-body > .h-col:first-child > * { flex: none; }
+  body.focus-mode .is-hero .h-body > .h-col:first-child > .chart { flex: 1 1 0; min-height: 90px; height: auto; }
+  body.focus-mode .is-hero .swings { margin-top: 8px; }
+  body.focus-mode .is-hero .parts { margin-top: 8px; }
+
+  .focus-side { height: 100%; min-height: 0; gap: 12px; }
+  .fw { display: flex; flex-direction: column; flex: none; min-height: 0; overflow: hidden; padding: 12px 14px 13px; }
+  .fw > h3 { flex: none; margin-bottom: 8px; }
+  .fw-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+  .fw-body > * { flex: none; }
+  .fw-shots, .fw-pbp { flex: 1 1 0; }
+  .fw-shots .fw-court { flex: 1 1 0; min-height: 0; height: 100%; max-height: none; }
+  .fw-pbp .pb-list { flex: 1 1 0; overflow: hidden; -webkit-mask-image: linear-gradient(#000 82%, transparent); mask-image: linear-gradient(#000 82%, transparent); }
+  .fw-vs { margin-top: 5px; font-size: 11.5px; }
+  /* Team stats two to a row; the bar shows the split, so FG% steps aside. */
+  .fw-stats { display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px; }
+  .fw-stats small { display: none; }
+  .fl-chart { height: 64px; }
+  .fl-stats { margin-top: 8px; gap: 4px 10px; }
+  .fl-stats > small { white-space: nowrap; }
+  .fw-defense .fw-prow { margin-top: 4px; row-gap: 2px; }
+  .fw-defense .fw-vs { margin-top: 8px; }
+  .fw-line td { padding: 3px 0; }
+  .fw-stats { margin-top: 6px; }
+  .fw-prow { margin-top: 6px; }
+}
+
+@media (max-width: 1180px) {
+  body.focus-mode { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; row-gap: 16px; }
+  body.focus-mode #board { grid-column: 1 / -1; grid-row: 1; }
+  .focus-side.l { grid-column: 1; grid-row: 2; --from: 0px; }
+  .focus-side.r { grid-column: 2; grid-row: 2; --from: 0px; }
+}
+@media (max-width: 680px) {
+  body.focus-mode { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .focus-side.l, .focus-side.r { grid-column: 1; }
+  .focus-side.r { grid-row: 3; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .focus-side .fw { animation: none !important; opacity: 1; }
+  .focus-side.out .fw { opacity: 0; }
 }

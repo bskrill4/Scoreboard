@@ -132,7 +132,7 @@
       : 'jumper';
     const [a, b, c2] = cfg.clock;
     const clk = intoPoss < a ? 'transition' : intoPoss < b ? 'early' : intoPoss < c2 ? 'mid' : 'late';
-    return { zone, fam, clk, pts };
+    return { zone, fam, clk, pts, x: c.x, y: c.y }; // x, y: the focus-mode shot chart (js/focus.js)
   }
 
   // ---------- the tables: baseline plus finals seen since ----------

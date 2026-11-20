@@ -77,8 +77,11 @@
               title="Play a soft chime when a new game takes the top spot"><i></i>Top game chime</button>
             <p class="set-note">A soft chime when a different game takes the top spot. Turning it on plays a preview.</p>
             <button type="button" class="blur-switch" id="clutchSwitch" role="switch" aria-checked="true"
-              title="A small banner and two soft taps when a game further down the board gets close late"><i></i>Clutch time alerts</button>
-            <p class="set-note">A small banner and two soft taps when another game gets close late (last 5 minutes within one score, the NHL's last 10 within a goal) or goes to overtime. Click it to move that game to the top.</p>
+              title="A banner and two soft taps when a game further down the board gets close late"><i></i>Clutch time alerts</button>
+            <p class="set-note">A banner above the top game and two soft taps when another game gets close late (last 5 minutes within one score, the NHL's last 10 within a goal) or goes to overtime.</p>
+            <button type="button" class="blur-switch" id="bigNightSwitch" role="switch" aria-checked="true"
+              title="A banner and a short chime when a player in another game has a big night"><i></i>Big-night alerts</button>
+            <p class="set-note">A banner and a short rising chime when a player in another game does something rare: a 40-point night (30 in college), a triple-double or one within reach, a hat trick, a shutout late, 400 passing or 150 rushing yards. Each banner goes once it's been on screen for 15 seconds, or tap "Go to game" to move that game to the top.</p>
             <button type="button" class="blur-switch" id="alertSwitch" role="switch" aria-checked="false"
               title="Show a browser notification when a new game takes the top spot"><i></i>Top game alerts</button>
             <p class="set-note" id="alertNote">A notification with the new top game, its score and watch index, while you're in another tab or app.</p>
@@ -129,6 +132,7 @@
     </div>
   </header>
 
+  <section id="banners" class="banners" hidden role="status" aria-live="polite" aria-label="Alerts"></section>
   <div class="notice" id="notice" hidden></div>
   <section id="recap" class="recap" hidden aria-label="Last night's recap"></section>
   <main id="board" class="board" aria-live="off"></main>
@@ -153,8 +157,11 @@
   <script src="js/notes.js"></script>
   <script src="js/chime.js"></script>
   <script src="js/alerts.js"></script>
+  <script src="js/banners.js"></script>
   <script src="js/clutch.js"></script>
+  <script src="js/bignight.js"></script>
   <script src="js/ui.js"></script>
+  <script src="js/focus.js"></script>
   <script src="js/player.js"></script>
   <script src="js/plan.js"></script>
   <script src="js/season.js"></script>

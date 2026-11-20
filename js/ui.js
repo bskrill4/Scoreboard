@@ -840,6 +840,18 @@
     </div>`;
   }
 
+  // Focus mode (js/focus.js): the top game alone in the middle, panels around
+  // it. NBA, once the game has started. The same button leaves it.
+  function focusBtn(g) {
+    if (g.league !== 'nba' || g.state === 'pre' || !SB.focus) return '';
+    const on = SB.focus.id() === g.id;
+    return `<button type="button" class="focus-btn${on ? ' on' : ''}" data-action="focus" aria-pressed="${on}" title="${
+      on ? 'Back to the full board' : 'This game alone, with more on it around it'
+    }"><svg viewBox="0 0 24 24" aria-hidden="true">${
+      on ? '<path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/>' : '<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>'
+    }</svg>${on ? 'Exit focus' : 'Focus mode'}</button>`;
+  }
+
   function heroHTML(g, opts) {
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
@@ -882,6 +894,7 @@
         ${hide ? statusPill({ ...g, statusText: g.state === 'final' ? 'Final' : 'Live' }) : statusPill(g)}
         ${pin}
         ${g.state === 'pre' ? '' : blurSwitch(g)}
+        ${focusBtn(g)}
         <span class="chips">${chips(g.reasons)}</span>
         <span class="widx" title="Watchability index"><small>Watch index</small>${g.index}</span>
       </div>

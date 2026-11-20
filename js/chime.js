@@ -65,9 +65,24 @@
     note(523.25, t + 0.14, 0.5, 0.06);
   }
 
+  // A player's big night (js/bignight.js): three quick rising notes, brighter
+  // than the clutch taps. Its own switch (Big-night alerts) decides.
+  let lastBig = 0;
+  function big(preview) {
+    if (preview) unlock();
+    if (!ctx || ctx.state !== 'running') return;
+    if (!preview && Date.now() - lastBig < 5000) return;
+    lastBig = Date.now();
+    const t = ctx.currentTime + 0.02;
+    note(587.33, t, 0.3, 0.06); // D5
+    note(739.99, t + 0.1, 0.3, 0.06); // F#5
+    note(880.0, t + 0.2, 0.8, 0.07); // A5
+  }
+
   SB.chime = {
     play,
     tap,
+    big,
     isOn: () => on,
     set(v) {
       on = !!v;

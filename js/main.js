@@ -401,6 +401,9 @@
         g.story = SB.runs.story(tape, v.playCount, g.league, v.players);
         g.run = g.story && g.story.run;
         g.leadChanges = v.leadChanges || 0;
+        // Focus mode's panels (js/focus.js) read the plays up to this moment.
+        g.plays = tape.plays;
+        g.playN = v.playCount;
         if (evState === 'in' && T === Infinity) scoreboardFallback(g, ev, ac, hc, sport);
       }
     } else if (evState !== 'pre') {
@@ -604,14 +607,21 @@
     // first paint, a day change, a pin, a filter change, or the old top game leaving the board.
     const filterSame = filterText === chimeFilter;
     chimeFilter = filterText;
-    if (prevHero && shownTop && shownTop !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && filterSame && models.some((m) => m.id === prevHero)) {
+    if (prevHero && shownTop && shownTop !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && filterSame && models.some((m) => m.id === prevHero) && !SB.focus.isOn()) {
       SB.chime.play();
       SB.alerts.newTop(models[0]);
     }
     chimeDay = loadedDay;
-    // Clutch alerts also watch starred teams' games the filter is hiding.
+    // Banners (clutch time, big nights) sit between the menu and the top game.
+    // Their alerts also watch starred teams' games the filter is hiding.
+    // In focus mode (js/focus.js) they stay quiet: what happens meanwhile is
+    // noted, not announced, and waiting banners stay hidden until it's left.
+    const focusing = SB.focus.isOn();
+    SB.banners.update({ day: loadedDay, board: view() === 'board' && !focusing, topId: shownTop, games: [...built.values()] });
     const mineHidden = [...built.values()].filter((m) => m.mine?.length && !models.includes(m));
-    SB.clutch.check(mineHidden.length ? [...models, ...mineHidden] : models, { day: loadedDay, topId: shownTop });
+    const watched = mineHidden.length ? [...models, ...mineHidden] : models;
+    SB.clutch.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
+    SB.bigNight.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
     SB.recap.update({ day: loadedDay, board: view() === 'board', replay: !!replay });
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
@@ -619,6 +629,12 @@
     else if (view() === 'nflseason') SB.nflSeason.render();
     else if (view() === 'bonezone') SB.boneZone.render();
     else SB.ui.render(models, { heroId: shownTop, pinnedId, toTop });
+    if (focusing) {
+      // Leave focus if its game is gone (a day change, a filter) or another view opened.
+      const fg = models.find((m) => m.id === SB.focus.id());
+      if (fg && view() === 'board') SB.focus.render(fg);
+      else SB.focus.exit();
+    }
 
     const live = models.filter((m) => m.state === 'live').length;
     const pre = models.filter((m) => m.state === 'pre' || m.state === 'sync').length;
@@ -1233,8 +1249,30 @@
       SB.clutch.set(!SB.clutch.isOn());
       showClutch();
     });
-    // A clutch banner (or its notification) moves that game to the top spot, like clicking its card.
-    SB.clutch.onPick = (id) => {
+    const bigBtn = $('bigNightSwitch');
+    const showBig = () => {
+      bigBtn.classList.toggle('on', SB.bigNight.isOn());
+      bigBtn.setAttribute('aria-checked', String(SB.bigNight.isOn()));
+    };
+    showBig();
+    bigBtn.addEventListener('click', () => {
+      SB.bigNight.set(!SB.bigNight.isOn());
+      showBig();
+    });
+    // Focus mode pins its game while it's on, then puts back whatever was pinned before.
+    let pinBeforeFocus;
+    SB.focus.onChange((id) => {
+      if (id) {
+        if (pinBeforeFocus === undefined) pinBeforeFocus = pinnedId;
+        pinnedId = id;
+      } else {
+        pinnedId = pinBeforeFocus ?? null;
+        pinBeforeFocus = undefined;
+      }
+      tick();
+    });
+    // A banner's "Go to game" (or its notification) moves that game to the top spot, like clicking its card.
+    SB.banners.onPick = (id) => {
       if (!events.some((ev) => ev.id === id)) return;
       if (location.hash && view() !== 'board') location.hash = '';
       pinnedId = id;
@@ -1346,6 +1384,10 @@
     $('board').addEventListener('click', (e) => {
       if (openPlayerFrom(e)) return;
       let toTop = false;
+      if (e.target.closest('[data-action="focus"]')) {
+        SB.focus.toggle(e.target.closest('.game').dataset.id);
+        return;
+      }
       if (e.target.closest('[data-action="blur"]')) {
         SB.ui.toggleBlur(e.target.closest('.game').dataset.id);
       } else if (e.target.closest('[data-action="unpin"]')) {
