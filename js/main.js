@@ -447,6 +447,7 @@
       const played = teamsPlayedBefore(loadedDay);
       if (played) g.b2b = { away: played.has(g.away.id), home: played.has(g.home.id) };
     }
+    g.mine = SB.myTeams.inGame(g.league, g.home, g.away); // starred teams' abbreviations (js/myteams.js)
     const rated = SB.watch.rate(g, gameStars);
     g.index = rated.index;
     g.reasons = rated.reasons;
@@ -579,7 +580,9 @@
     let keep = false;
     if (switchMode !== 'best' && hero && hero.state === 'live' && top && top !== hero) {
       const bigGap = switchMode === 'breaks10' && top.index >= hero.index + BIG_LEAD;
-      keep = !atStoppage(hero) && !bigGap;
+      // A starred team's live game doesn't wait for a break (js/myteams.js).
+      const mineJump = top.state === 'live' && top.mine?.length > 0 && !hero.mine?.length;
+      keep = !atStoppage(hero) && !bigGap && !mineJump;
     }
     return keep ? hero.id : top ? top.id : null;
   }
@@ -605,7 +608,9 @@
       SB.alerts.newTop(models[0]);
     }
     chimeDay = loadedDay;
-    SB.clutch.check(models, { day: loadedDay, topId: shownTop });
+    // Clutch alerts also watch starred teams' games the filter is hiding.
+    const mineHidden = [...built.values()].filter((m) => m.mine?.length && !models.includes(m));
+    SB.clutch.check(mineHidden.length ? [...models, ...mineHidden] : models, { day: loadedDay, topId: shownTop });
     SB.recap.update({ day: loadedDay, board: view() === 'board', replay: !!replay });
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
@@ -749,10 +754,12 @@
   const BOARD_EVERY = { ncaaf: 60000 };
   const boardCache = new Map(); // league -> { day, at, p }
   function boardFor(day, league) {
+    // A starred college basketball team may be unranked: ask for all of Division I.
+    const all = league === 'ncaam' && SB.myTeams.count('ncaam') > 0;
     const hit = boardCache.get(league);
-    if (BOARD_EVERY[league] && hit && hit.day === day && Date.now() - hit.at < BOARD_EVERY[league]) return hit.p;
-    const p = SB.api.scoreboard(day, league);
-    boardCache.set(league, { day, at: Date.now(), p });
+    if (BOARD_EVERY[league] && hit && hit.day === day && hit.all === all && Date.now() - hit.at < BOARD_EVERY[league]) return hit.p;
+    const p = SB.api.scoreboard(day, league, all);
+    boardCache.set(league, { day, all, at: Date.now(), p });
     p.catch(() => boardCache.delete(league));
     return p;
   }
@@ -784,9 +791,11 @@
             }
           }
           // College: only games with a Top 25 team (ESPN's default slate, made explicit).
-          // A pinned game (opened from a player's week) stays even if neither team is ranked.
+          // A pinned game (opened from a player's week) stays even if neither team is ranked,
+          // and so does a starred team's game (js/myteams.js).
           const college = league === 'ncaam' || league === 'ncaaf';
-          if (college && ev.id !== pinnedId && !ev.competitions[0].competitors.some((c) => c.curatedRank?.current <= 25)) continue;
+          const cs = ev.competitions[0].competitors;
+          if (college && ev.id !== pinnedId && !cs.some((c) => c.curatedRank?.current <= 25 || SB.myTeams.has(league, c.team?.id ?? c.id))) continue;
           recordScoreboard(ev);
           next.push(ev);
         }
@@ -1376,6 +1385,13 @@
 
   // ---------- go ----------
   initControls();
+  SB.myTeams.init();
+  // Starring a team: refetch the scoreboards (a starred college team may be
+  // unranked) and redraw with the new boosts and chips.
+  SB.myTeams.onChange(() => {
+    lastBoard = 0;
+    tick();
+  });
   for (const league of SB.api.leagues) {
     SB.api
       .stars(league)

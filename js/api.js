@@ -125,6 +125,7 @@
 
   const gamelogs = new Map(); // "league:id" -> Promise of { games, experience }
   const rosterLists = new Map(); // "league:teamId" -> Promise of athletes
+  const teamLists = new Map(); // league -> Promise of every team in it
   // One athlete: name, position, jersey, current team, headshot. Cached per page
   // load (the drawer and the game log both ask for it).
   const athletes = new Map();
@@ -195,6 +196,47 @@
         if (!r) entry.ttl = 60000;
       });
       return p;
+    },
+
+    // Every team in a league (college: all of Division I basketball, FBS
+    // football), for picking favorite teams (js/myteams.js). Read from the
+    // standings: ESPN's /teams list doesn't allow cross-origin requests. The
+    // slimmed list is kept in localStorage for a week.
+    teams(league = 'nba') {
+      if (!teamLists.has(league)) {
+        const KEY = `sb.teams.${league}`;
+        try {
+          const c = JSON.parse(localStorage.getItem(KEY) || 'null');
+          if (c && Date.now() - c.at < 7 * 864e5 && c.list?.length) teamLists.set(league, Promise.resolve(c.list));
+        } catch (e) {}
+      }
+      if (!teamLists.has(league)) {
+        const url = `${LEAGUES[league].stats.replace('/apis/common/v3/', '/apis/v2/')}/standings`;
+        const p = getJSON(url).then((d) => {
+          const seen = new Map();
+          const walk = (o) => {
+            if (Array.isArray(o)) return o.forEach(walk);
+            if (!o || typeof o !== 'object') return;
+            const t = o.team;
+            if (t && t.id != null && t.abbreviation && !seen.has(String(t.id))) {
+              const logos = t.logos || [];
+              const logo = (logos.find((l) => l.rel?.includes('dark')) || logos[0])?.href || '';
+              seen.set(String(t.id), { id: String(t.id), abbr: t.abbreviation, name: t.displayName || t.name || '', short: t.shortDisplayName || '', location: t.location || '', nickname: t.name || '', logo });
+            }
+            for (const v of Object.values(o)) if (v && typeof v === 'object') walk(v);
+          };
+          walk(d);
+          const list = [...seen.values()];
+          if (!list.length) throw new Error(`No teams in the ${league} standings`);
+          try {
+            localStorage.setItem(`sb.teams.${league}`, JSON.stringify({ at: Date.now(), list }));
+          } catch (e) {}
+          return list;
+        });
+        teamLists.set(league, p);
+        p.catch(() => teamLists.delete(league));
+      }
+      return teamLists.get(league);
     },
 
     // A team's roster as one flat list (NFL rosters come grouped by unit),

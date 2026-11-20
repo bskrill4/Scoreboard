@@ -20,6 +20,13 @@ No Ruby (e.g. on Windows)? `python server.py` does the same thing. Then visit ht
 
 ## How it works
 
+**My teams.** Settings › My teams › Set preferences opens a picker: a tab per sport, a search box and every team in it (all 365 Division I men's basketball teams, the 138 FBS football teams, every NBA, NFL and NHL team; read from ESPN's standings, since its team list blocks browser requests, and kept for a week). Starred teams, saved only in this browser:
+- **Boost:** up to +8 on the watch index while their game is live, scaled by how much doubt is left (`MY_TEAM` in `js/watch.js`), so it decides a close call but a blowout gets none of it.
+- **Marker:** a ♥ chip with the team, always first on the card.
+- **Top spot:** in "Only at a break" (and the 10-point variant), a starred team's live game that outranks the top game takes the spot right away instead of waiting for a break.
+- **Clutch alerts:** their games still get clutch and overtime banners when the board filter hides them, with a ♥ on the banner.
+- **College:** their games show even when neither team is in the Top 25 (a starred basketball team makes the board ask for all of Division I).
+
 **Last night (morning recap).** A card above the Scores board that sums up last night in three columns:
 - **BONES picks:** the record, then at most four picks. The two best calls are upsets that hit first, then the surest picks that came in. The two worst beats are the surest picks that missed.
 - **Top players:** the night's top five by sport-adjusted BONES, the same ranking as Rankings › Players for that day.
@@ -36,6 +43,7 @@ It builds itself from last night's scoreboards and play-by-play the first time i
 | `js/prospects.js` | NCAAM: the 2027 NBA draft big board (hand-kept top 60). Board players count as stars, weighted by rank, and get a "#N prospect" tag; in an NCAAM game the prospect chip takes the place of the ★ chip. Refresh it every few weeks. |
 | `js/clutch.js` | Clutch-time banners: when a game that isn't in the top spot reaches the last 5 minutes within one score (NHL: last 10 within a goal) or overtime, a small banner with the score and two soft taps (Settings › Sound › Clutch time alerts). Once per game for clutch time and once for overtime, never on first load or a day change, never for a game whose score is hidden; it follows the stream delay and the board filter. Clicking the banner pins that game. In the background, with Top game alerts on, it's a browser notification. |
 | `js/recap.js` | The morning recap card on Scores (see Last night above): last night's best and worst BONES picks, top five players and best game, closed until the next morning by its ×. |
+| `js/myteams.js` | My teams: the starred teams (localStorage `sb.myTeams`), the Settings summary and the Set preferences picker. The boost is in `js/watch.js`, the break-mode jump and college slate in `js/main.js`. |
 | `js/filter.js` | The filter box on Scores (`/` to focus, Esc to clear). A term keeps games by sport ("NBA", "hockey", "college basketball"), team (name, city or abbreviation) or player (anyone on either roster; word starts work: "wemb"). Commas mean or: "Duke, Kansas". "upset" keeps the NBA games where BONES picks against the favorite (the Bone Zone's upset picks), before, during and after the game; the favorite is saved with each pick at tip-off because ESPN drops the line at the final, and it's never shown. The top spot goes to the best game the filter keeps, and clearing it brings back the full board's top game; changing the filter never chimes. |
 | `js/watch.js` | The watchability index (0–99) and its reasons. Weights live at the top of the file. |
 | `js/ui.js` | Cards, hero layout, win-probability chart, in-place patching and slide animations. |

@@ -73,7 +73,7 @@
     el.style.setProperty('--home', g.home.css);
     el.innerHTML = `
       <button type="button" class="ct-main" title="Move this game to the top spot">
-        <span class="ct-head"><span class="ct-tag">${label}</span><span class="ct-lg">${esc(SB.league.name(g.league))}</span><span class="ct-clock">${esc(g.statusText)}</span></span>
+        <span class="ct-head"><span class="ct-tag">${label}</span>${g.mine?.length ? `<span class="ct-mine" title="Your team">♥ ${esc(g.mine.join(' + '))}</span>` : ''}<span class="ct-lg">${esc(SB.league.name(g.league))}</span><span class="ct-clock">${esc(g.statusText)}</span></span>
         <span class="ct-score">${side(g.away)}<span class="ct-dash">–</span>${side(g.home)}</span>
         <span class="ct-go">Watch ›</span>
       </button>

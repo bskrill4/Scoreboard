@@ -282,6 +282,7 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .chip.red { background: var(--red); color: #fff; }
 .pros { display: inline-block; margin-left: 4px; padding: 0 5px; border: 1px solid currentColor; border-radius: 4px; font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--yellow); vertical-align: 1px; white-space: nowrap; }
 .chip.cold { background: var(--panel-2); color: var(--dim); }
+.chip.mine { flex-shrink: 0; border: 1px solid var(--yellow); color: var(--yellow); }
 .chip b { font: inherit; }
 .chip .cs, .chip.sm .cf { display: none; }
 .chip.sm .cs { display: inline; }
@@ -1425,6 +1426,7 @@ body.view-players .filter, body.view-bonezone .filter { display: none; }
 @keyframes clutch-in { from { opacity: 0; transform: translateY(16px) scale(.96); } }
 .ct-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding-right: 18px; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
 .ct-tag { padding: 2px 8px; border-radius: 999px; background: var(--yellow); color: var(--yellow-ink); }
+.ct-mine { padding: 1px 7px; border: 1px solid var(--yellow); border-radius: 999px; color: var(--yellow); }
 .ct-clock { margin-left: auto; color: var(--text); font-variant-numeric: tabular-nums; }
 .ct-score { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; letter-spacing: .02em; }
 .ct-team { display: inline-flex; align-items: center; gap: 6px; }
@@ -1438,6 +1440,83 @@ body.view-players .filter, body.view-bonezone .filter { display: none; }
   .clutch-stack { left: 12px; right: 12px; bottom: 12px; width: auto; }
 }
 @media (prefers-reduced-motion: reduce) { .clutch-toast { animation: none; } }
+
+/* ---------------- My teams (js/myteams.js) ---------------- */
+.mt-summary { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.mt-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); font-size: 12px; font-weight: 800; }
+.mt-chip img { width: 18px; height: 18px; object-fit: contain; }
+.mt-none { font-size: 12px; color: var(--dim); }
+.mt-open, .mt-done {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--yellow);
+  color: var(--yellow-ink);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.mt-open:hover, .mt-done:hover { filter: brightness(1.08); }
+.mt-dialog {
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(720px, calc(100dvh - 24px));
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .7);
+}
+.mt-dialog::backdrop { background: rgba(0, 0, 0, .6); backdrop-filter: blur(3px); }
+.mt-box { display: flex; flex-direction: column; max-height: min(716px, calc(100dvh - 28px)); }
+.mt-head, .mt-tabs, .mt-search, .mt-foot { flex-shrink: 0; } /* only the list gives up height */
+.mt-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 6px 18px; }
+.mt-head h2 { margin: 0; font-size: 18px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; color: var(--yellow); }
+.mt-x { width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-2); font-size: 18px; line-height: 1; color: var(--dim); }
+.mt-x:hover { background: var(--yellow); color: var(--yellow-ink); border-color: var(--yellow); }
+.mt-tabs { display: flex; gap: 4px; padding: 6px 14px 10px; overflow-x: auto; }
+.mt-tabs button {
+  flex: none;
+  padding: 5px 12px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  color: var(--dim);
+}
+.mt-tabs button:hover { border-color: var(--yellow); color: var(--text); }
+.mt-tabs button.on { background: var(--text); border-color: var(--text); color: var(--bg); }
+.mt-tabs small { margin-left: 6px; padding: 0 6px; border-radius: 999px; background: var(--yellow); color: var(--yellow-ink); font-size: 10px; }
+.mt-search { display: flex; align-items: center; gap: 8px; margin: 0 14px 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-2); }
+.mt-search:focus-within { border-color: var(--yellow); }
+.mt-search svg { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--dim); stroke-width: 2; stroke-linecap: round; }
+.mt-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; color: var(--text); font: inherit; font-size: 16px; }
+.mt-list { flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; padding: 0 8px 8px; }
+.mt-list h3 { margin: 10px 8px 4px; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); }
+.mt-team {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  text-align: left;
+}
+.mt-team:hover { background: var(--panel-2); }
+.mt-team img { width: 30px; height: 30px; flex: none; object-fit: contain; }
+.mt-team span { display: flex; flex-direction: column; min-width: 0; }
+.mt-team b { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-team small { font-size: 11px; font-weight: 700; color: var(--dim); }
+.mt-team i { margin-left: auto; font-style: normal; font-size: 20px; color: var(--dim); }
+.mt-team.on i { color: var(--yellow); }
+.mt-msg { margin: 16px 10px; color: var(--dim); }
+.mt-retry { background: none; border: 0; color: var(--yellow); text-decoration: underline; padding: 0; }
+.mt-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px 14px 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--dim); }
 
 /* ---------------- morning recap (js/recap.js) ---------------- */
 .recap {

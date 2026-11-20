@@ -103,6 +103,11 @@
   // 4th at 99.9%, held the top for 40 minutes at 46 over a one-goal 3rd period;
   // decided NFL games averaged 36, more than the average live NBA game).
   const DEAD = { keep: 0.4 };
+  // A starred team's live game (js/myteams.js): up to this many index points,
+  // times doubtOf (full while the game is in doubt, none once it's decided),
+  // so a team you follow edges out a close call but a blowout never takes the
+  // top spot because of it.
+  const MY_TEAM = { bonus: 8 };
   function aliveFactor(g) {
     if (g.state !== 'live' || g.wp == null) return 1;
     return DEAD.keep + (1 - DEAD.keep) * doubtOf(g);
@@ -448,8 +453,12 @@
     const cup = cupBonus(g);
 
     const alive = aliveFactor(g);
+    // My teams (js/myteams.js): a small boost while a starred team's game is
+    // live and still in doubt. It fades with the doubt, so a blowout gets none.
+    const mine = g.mine?.length && g.state === 'live' ? Math.round(MY_TEAM.bonus * doubtOf(g)) : 0;
     const index = Math.round(
       goldBonus +
+      mine +
       run +
       redZone +
       ranked.bonus +
@@ -497,6 +506,8 @@
       reasons.push({ text: perf.label, tone: 'hot' });
     // Gold (milestones, records) always lead, so a tile's one chip is the gold one.
     reasons.unshift(...gold.map((c) => ({ text: c.text, tone: 'gold' })));
+    // A starred team leads the chips, so even a tile's one chip shows it.
+    if (g.mine?.length) reasons.unshift({ text: `♥ ${g.mine.join(' + ')}`, tone: 'mine' });
     // Draft prospects. College stars come only from the big board, so in a
     // college game this one chip replaces the ★ chip: the top two lottery
     // picks (top 14), or failing that the best prospect when star power is up.
@@ -519,9 +530,9 @@
     return {
       index: Math.max(0, Math.min(99, index)),
       reasons,
-      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run, redZone, ranked: ranked.bonus, cup: cup.bonus, alive },
+      parts: { tension: t, volatility: vol, quality: q, stars: s.score, performance: perf.score, upset: up.score, run, redZone, ranked: ranked.bonus, cup: cup.bonus, alive, mine },
     };
   }
 
-  SB.watch = { aliveFactor, DEAD, redZoneBump, RED_ZONE, cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
+  SB.watch = { MY_TEAM, aliveFactor, DEAD, redZoneBump, RED_ZONE, cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();
