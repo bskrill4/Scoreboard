@@ -1942,3 +1942,42 @@ body.focus-back .game:not(.is-hero) { animation: rise .55s cubic-bezier(.2, .9, 
   .focus-side .fw { animation: none !important; opacity: 1; }
   .focus-side.out .fw { opacity: 0; }
 }
+
+/* ---------------- BONES & MOUSSA FAQ (#faq, js/faq.js) ---------------- */
+body.view-faq .days, body.view-faq .today-btn, body.view-faq .slate, body.view-faq .foot, body.view-faq .notice, body.view-faq .filter { display: none; }
+.faq { max-width: 760px; margin: 0 auto; padding: 8px 16px 48px; }
+.faq-head h2 { margin: 8px 0 4px; font-size: 28px; font-weight: 900; letter-spacing: .02em; }
+.faq-head p { margin: 0 0 18px; color: var(--dim); }
+.faq-item { border-top: 1px solid var(--line); }
+.faq-item:last-of-type { border-bottom: 1px solid var(--line); }
+.faq-item summary { cursor: pointer; padding: 14px 4px; font-weight: 800; font-size: 16px; list-style: none; display: flex; justify-content: space-between; gap: 12px; }
+.faq-item summary::-webkit-details-marker { display: none; }
+.faq-item summary::after { content: '+'; color: var(--yellow); font-weight: 900; }
+.faq-item[open] summary::after { content: '–'; }
+.faq-a { padding: 0 4px 16px; line-height: 1.6; color: var(--text); }
+.faq-a p { margin: 0 0 10px; }
+.faq-a ul { margin: 0 0 10px; padding-left: 20px; }
+.faq-a li { margin-bottom: 6px; }
+.faq-a a, .faq-foot a { color: var(--yellow); }
+.faq-foot { margin-top: 18px; color: var(--dim); font-size: 13px; }
+.value-toggle { margin: 4px 0 2px; }
+.set-note a { color: var(--yellow); }
+a.bones-v2-badge { text-decoration: none; }
+/* Recap: BONES vs MOUSSA */
+.rc-vs { margin: 0 0 6px; font-size: 14px; }
+.rc-vs small { color: var(--dim); }
+.rc-splits li span { color: var(--dim); font-size: 12px; margin-left: auto; }
+
+/* Bone Zone: BONES check / MOUSSA check, and both metrics' picks with splits */
+.bz-which { margin: 4px auto 6px; }
+.bz-two { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.bz-two > span { color: var(--dim); font-weight: 600; }
+.bz-two > span.on { color: var(--text); font-weight: 800; }
+.bz-two em { font-style: normal; font-size: 10px; letter-spacing: .06em; margin-right: 4px; opacity: .8; }
+.bz-picks li.split { background: rgba(127, 212, 255, .08); border-left: 3px solid #7fd4ff; border-radius: 8px; }
+.bz-call b.bz-split { background: #7fd4ff; }
+.bz-future h3 small { color: var(--dim); font-weight: 600; margin-left: 6px; }
+/* Bone Zone: the bubble's × (closed until reload) */
+.bz-close { position: absolute; top: 6px; right: 10px; border: 0; background: none; color: #141418; opacity: .45; font-size: 22px; line-height: 1; cursor: pointer; padding: 4px; }
+.bz-close:hover { opacity: .9; }
+.bz-quiet .bz-bubble, .bz-quiet .bz-controls { display: none; }

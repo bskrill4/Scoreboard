@@ -1,8 +1,10 @@
 // Morning recap: a card above the Scores board that sums up last night, in
 // three parts:
-//  - BONES picks: the record, then at most four picks, the two best calls and
-//    the two worst beats.
-//  - Top players: the top five by sport-adjusted BONES, as in Rankings.
+//  - Picks: BONES's and MOUSSA's records side by side (each locks its own pick
+//    at tip-off), the games where they split and who was right, then at most
+//    four of the toggle's picks, the two best calls and the two worst beats.
+//  - Top players: the top five by sport-adjusted BONES or MOUSSA (whichever was
+//    on when the recap was built; the heading says which), as in Rankings.
 //  - Best game: the game with the highest watch index at its final (the number
 //    its card shows at the end of the night), with its win probability chart.
 // It shows from 6am to noon, local time (WINDOW): it appears on the first
@@ -19,7 +21,7 @@
   const WINDOW = { from: 6, to: 12 }; // local hours, [from, to)
   const CLOSED_KEY = 'sb.recapClosed'; // the day whose recap was closed
   const CACHE_KEY = 'sb.recap'; // { day, v, players, favs, best, games }
-  const VERSION = 4;
+  const VERSION = 5; // 5: players carry the metric they were ranked by (BONES or MOUSSA)
   const TOP_N = 5;
   const PICKS_EACH = 2; // best calls, and worst beats
   const POOL = 4; // summaries fetched at once
@@ -216,7 +218,7 @@
       ? { id: bestG.id, league: bestG.league, status: bestG.statusText, away: side(bestG.away), home: side(bestG.home), index: bestG.index }
       : null;
 
-    return { players, favs: Object.fromEntries(favs), best, games: played.length, missed };
+    return { players, metric: SB.impact.name(), favs: Object.fromEntries(favs), best, games: played.length, missed };
   }
 
   function ensureBuilt(day) {
@@ -281,7 +283,24 @@
 
   function picksHTML(day) {
     const night = SB.bones.picks.all().filter((p) => SB.days.dayOf(p.t) === day);
-    if (!night.length) return `<p class="rc-empty">No picks were tracked on this device last night. BONES locks a pick at tip-off while the board is open.</p>`;
+    if (!night.length) return `<p class="rc-empty">No picks were tracked on this device last night. BONES and MOUSSA lock their picks at tip-off while the board is open.</p>`;
+    // BONES against MOUSSA: each one's record, and the games they called differently.
+    const of = (v) => new Map(SB.bones.picksOf(v).all().filter((p) => SB.days.dayOf(p.t) === day).map((p) => [p.id, p]));
+    const [pb, pm] = [of(1), of(2)];
+    const rec = (m) => {
+      const d = [...m.values()].filter((p) => p.won != null);
+      return d.length ? `${d.filter((p) => p.won).length}–${d.filter((p) => !p.won).length}` : '–';
+    };
+    const splits = [...pb.values()].filter((b) => pm.has(b.id) && pm.get(b.id).side !== b.side);
+    const splitRow = (b) => {
+      const m = pm.get(b.id);
+      const done = b.won != null && m.won != null;
+      const who = !done ? 'not graded yet' : m.won ? `MOUSSA ✓ (BONES had ${esc(b[b.side])})` : `BONES ✓ (MOUSSA had ${esc(m[m.side])})`;
+      return `<li class="${!done ? '' : 'hit'}"><b>${esc(b.away)} @ ${esc(b.home)}</b> <span>${who}</span></li>`;
+    };
+    const vs = `<p class="rc-vs"><b>BONES ${rec(pb)}</b> · <b>MOUSSA ${rec(pm)}</b>${splits.length ? `` : ' <small>· same picks all night</small>'}</p>${
+      splits.length ? `<h4>Where they split</h4><ul class="rc-picks rc-splits">${splits.map(splitRow).join('')}</ul>` : ''
+    }`;
     const done = night.filter((p) => p.won != null);
     const right = done.filter((p) => p.won).length;
     const favs = built?.favs || {};
@@ -302,7 +321,7 @@
     const row = (p) =>
       `<li class="${p.won ? 'hit' : 'miss'}"><i aria-hidden="true">${p.won ? '✓' : '✗'}</i><b>${esc(p[p.side])}</b> over ${esc(p[p.side === 'home' ? 'away' : 'home'])}${upset(p) ? '<em>Upset</em>' : ''}<span>${pct(p.conf)}</span></li>`;
     const group = (title, ps) => (ps.length ? `<h4>${title}</h4><ul class="rc-picks">${ps.map(row).join('')}</ul>` : '');
-    return `${head}${group('Best calls', best)}${group('Worst beats', worst)}`;
+    return `${vs}${head}${group(`${SB.impact.name()}'s best calls`, best)}${group(`${SB.impact.name()}'s worst beats`, worst)}`;
   }
 
   function playersHTML() {
@@ -340,8 +359,8 @@
         <button type="button" class="rc-close" aria-label="Close last night's recap" title="Close until tomorrow's recap">×</button>
       </div>
       <div class="rc-cols">
-        <section class="rc-col"><h3>BONES picks</h3>${picksHTML(day)}</section>
-        <section class="rc-col"><h3>Top players <small>BONES, sport-adjusted</small></h3>${playersHTML()}</section>
+        <section class="rc-col"><h3>Picks <small>BONES vs MOUSSA</small></h3>${picksHTML(day)}</section>
+        <section class="rc-col"><h3>Top players <small>${built?.metric || SB.impact.name()}, sport-adjusted</small></h3>${playersHTML()}</section>
         <section class="rc-col rc-best"><h3>Best game</h3>${bestHTML()}</section>
       </div>`;
     if (html !== el._html) {

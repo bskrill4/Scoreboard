@@ -183,6 +183,8 @@
   // for everyone), so a team's lead counts the same whoever was expected to
   // win. No game floor: a blowout's early lead is already credited in full.
   // Switch in settings (sb.bonesV); everything that reads BONES follows it.
+  // Since Nov 21 the score-only version has its own name, MOUSSA (Margin-Only
+  // Uncertainty Swings, Split by Action), and the switch is a BONES | MOUSSA toggle.
   let bonesV = 1;
   try {
     bonesV = localStorage.getItem('sb.bonesV') === '2' ? 2 : 1;
@@ -193,6 +195,18 @@
       localStorage.setItem('sb.bonesV', String(bonesV));
     } catch (e) {}
   }
+  // Read saved rows as the other metric for a moment (the pick tracker builds
+  // both models), without touching the setting. fn must be synchronous.
+  function withVersion(v, fn) {
+    const was = bonesV;
+    bonesV = v === 2 ? 2 : 1;
+    try {
+      return fn();
+    } finally {
+      bonesV = was;
+    }
+  }
+  const NAMES = { 1: 'BONES', 2: 'MOUSSA' };
   // A view's players under the current version: v2 swaps in the score-only
   // numbers where the engine has them (basketball); v1 values stay on the
   // player as impV1 / defBones for saving.
@@ -209,11 +223,13 @@
   const rowImpact = (row) => (bonesV === 2 && row[6] != null ? row[6] : row[0] + (floorOn ? row[4] || 0 : 0));
   const rowDefense = (row) => (bonesV === 2 && row[7] != null ? row[7] : row[5] || 0);
 
-  // BONES v2 test settings (see viewAt): the share of an offensive rebound's and
-  // of a missed shot's credit the player keeps (the rest to his teammates on the floor).
-  const tune = { orebShare: 1, missShare: 1 };
+  // Test settings, for the backtest. BONES v2 (see viewAt): the share of an
+  // offensive rebound's and of a missed shot's credit the player keeps (the rest
+  // to his teammates on the floor). spikeSec: overrides each league's spike
+  // window (impactAdjust) when set; null = the league's own.
+  const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9 };
 
-  SB.impact = { tune, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, version: () => bonesV };
+  SB.impact = { tune, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, withVersion, version: () => bonesV, name: (v = bonesV) => NAMES[v === 2 ? 2 : 1], NAMES };
 
   // On-court defense (basketball, beta): on every field-goal attempt, the five
   // defenders on the floor share ON_COURT_D of what the shot was worth against
@@ -290,9 +306,16 @@
   //    half each of what a typical trip yields (ftPct of the attempts); the
   //    shooter also gets what they made above or below that.
   // 2. One-row spikes. When a swing is undone by the very next non-scoring row
-  //    within SPIKE_SEC of game time, cancel the part that was undone. (Run
+  //    within the league's spike window of game time, cancel the part that was
+  //    undone. NBA: the same clock only (since Nov 21). At 20 seconds it also
+  //    cancelled real events of the next possession against each other (a
+  //    turnover, then the other team's miss 19s later; a basket, then the
+  //    opponent drawing a foul): 16% of all swing was netted on Nov 20, about
+  //    half of it across possessions. Backtest (235 games): log-loss −0.637 →
+  //    −0.624 (90% range of the change +.003 to +.023), on/off r .348 → .357.
+  //    College keeps 20 seconds until it has a test of its own. (Run
   //    first, so a spike undone at the next trip's whistle still nets out.)
-  const SPIKE_SEC = 20;
+  const SPIKE_SEC = 20; // college (the NBA passes 0: the same clock)
   const TIE_OFF = 0.3; // see buildTape: a tie going to overtime
   const TIE_LATE = 5; // seconds left in the 4th or an OT that count as "going to overtime"
   // Log-odds, clamped so a 0% or 100% stays finite.
@@ -305,7 +328,7 @@
   const isTripFoul = (p) => /foul/i.test(p.type) && !/offensive/i.test(`${p.type} ${p.text}`);
 
   // possPts: what an average possession is worth (the fouler's baseline, below).
-  function impactAdjust(plays, ftPct, possPts) {
+  function impactAdjust(plays, ftPct, possPts, spikeSec = SPIKE_SEC) {
     for (const p of plays) {
       p.impDelta = p.delta;
       p.impDeltaN = p.deltaN || 0; // BONES v2: the score-only swing
@@ -320,7 +343,7 @@
       let j = i + 1;
       while (j < plays.length && !plays[j].impDelta) j++;
       const n = plays[j];
-      if (!n || n.scoring || n.elapsed - p.elapsed > SPIKE_SEC) continue;
+      if (!n || n.scoring || n.elapsed - p.elapsed > (SB.impact?.tune?.spikeSec ?? spikeSec)) continue;
       if (Math.sign(n.impDelta) !== -Math.sign(p.impDelta)) continue;
       const undone = Math.min(Math.abs(p.impDelta), Math.abs(n.impDelta)) * Math.sign(p.impDelta);
       p.impDelta -= undone;
@@ -403,7 +426,7 @@
 
   // One engine per basketball league. The NBA plays four 12-minute quarters;
   // college plays two 20-minute halves. Overtime is 5 minutes in both.
-  function create({ league, periods, periodSec, otSec, label, ftPct, possPts, oreb }) {
+  function create({ league, periods, periodSec, otSec, label, ftPct, possPts, oreb, spikeSec }) {
     const OREB = oreb; // share of misses the shooting team gets back (BONES v2's loose ball)
     const REG_PERIOD = periodSec;
     const OT_PERIOD = otSec;
@@ -708,7 +731,7 @@
         else if (r.p0 !== blocker && roster.get(r.p0)?.teamId === blockTeam)
           r.credits = [{ id: r.p0, share: 0.5 }, { id: blocker, share: 0.5 }];
       }
-      impactAdjust(plays, ftPct, possPts);
+      impactAdjust(plays, ftPct, possPts, spikeSec);
       const complete = plays.length > 0 && plays[plays.length - 1].type === 'End Game';
       return { homeId, awayId, roster, plays, ts, hasFeedWP, complete, _n: -1, _view: null, _final: null };
     }
@@ -753,6 +776,12 @@
       for (let i = 0; i < n; i++) {
         const p = tape.plays[i];
         last = p;
+        // v2 leverage weight, times the decided-game test factor (SB.impact.tune;
+        // 1 = off): plays that start with the score-only win probability past
+        // decidedAt either way count decidedW as much.
+        const tuneD = SB.impact.tune;
+        const preN = i > 0 ? tape.plays[i - 1].wpN : null;
+        const wN = (p.weightN || 1) * (tuneD.decidedW !== 1 && preN != null && (preN > tuneD.decidedAt || preN < 1 - tuneD.decidedAt) ? tuneD.decidedW : 1);
 
         // Credit the swing to everyone on the floor when it happened.
         if (p.delta) {
@@ -777,7 +806,7 @@
             if (!pl) continue;
             const side = pl.teamId === homeId ? 1 : -1;
             const v = side * p.impDelta * c.share * p.weight * rebShare;
-            const vN = side * (p.impDeltaN || 0) * c.share * (p.weightN || 1) * rebShare; // BONES v2
+            const vN = side * (p.impDeltaN || 0) * c.share * wN * rebShare; // BONES v2
             pl.imp += v;
             pl.impN += vN;
             if (defensiveCredit(p, c.id)) {
@@ -794,7 +823,7 @@
             const pl = players.get(id);
             const side = rebTeam === homeId ? 1 : -1;
             const v = (side * p.impDelta * (1 - REB_SHARE) * p.weight) / others.length;
-            const vN = (side * (p.impDeltaN || 0) * (1 - REB_SHARE) * (p.weightN || 1)) / others.length;
+            const vN = (side * (p.impDeltaN || 0) * (1 - REB_SHARE) * wN) / others.length;
             pl.imp += v;
             pl.defBones += v;
             pl.impN += vN;
@@ -804,19 +833,21 @@
           // BONES v2 settings (SB.impact.tune, for testing in the backtest): an
           // offensive rebound's or a missed shot's v2 credit can be shared with
           // the rest of the rebounder's / shooter's team on the floor. 1 = all
-          // the rebounder's / shooter's (the default).
+          // the rebounder's / shooter's (the default). keepFn (tests only, e.g. a
+          // placebo that shares random plays): the share kept on any play, from
+          // its first credited player; overrides the two above when set.
           const tune = SB.impact.tune;
           const offReb = p.isRebound && !defReb && /offensive/i.test(`${p.type} ${p.text}`);
           const miss = p.fga && !p.scoring && p.p0;
-          const keep = offReb ? tune.orebShare : miss ? tune.missShare : 1;
+          const keep = tune.keepFn ? tune.keepFn(p) : offReb ? tune.orebShare : miss ? tune.missShare : 1;
           if (keep < 1 && p.impDeltaN) {
-            const who = offReb ? p.credits[0]?.id : p.p0;
+            const who = offReb ? p.credits[0]?.id : miss ? p.p0 : p.credits[0]?.id;
             const owner = who && players.get(who);
             const mates = owner && lineup[owner.teamId] ? [...lineup[owner.teamId]].filter((id) => id !== who) : [];
             const c = p.credits.find((x) => x.id === who);
             if (owner && c && mates.length) {
               const side = owner.teamId === homeId ? 1 : -1;
-              const moved = side * p.impDeltaN * c.share * (p.weightN || 1) * (1 - keep);
+              const moved = side * p.impDeltaN * c.share * wN * (1 - keep);
               owner.impN -= moved;
               const last = owner.moments[owner.moments.length - 1];
               if (last && last.play === p) last.impN -= moved;
@@ -839,7 +870,7 @@
           const pointValue = (modelWP(m0 + 1, p.elapsed) - modelWP(m0 - 1, p.elapsed)) / 2;
           const above = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) - SB.xpts.avg(league) : (p.scoring ? p.pts : 0) - (SB.xpts ? SB.xpts.avg(league) : SHOT_PTS);
           const v = (-above * pointValue * ON_COURT_D * p.weight) / 5;
-          const vN = (-above * pointValue * ON_COURT_D * (p.weightN || 1)) / 5; // BONES v2: score-only leverage
+          const vN = (-above * pointValue * ON_COURT_D * wN) / 5; // BONES v2: score-only leverage
           if (v && lineup[defTeam]) {
             for (const id of lineup[defTeam]) {
               const pl = players.get(id);
@@ -968,6 +999,6 @@
   // ftPct: a typical free-throw percentage, the baseline for a trip's expected value.
   // possPts: points per possession, league average (NBA ~114 offensive rating; college ~102).
   // oreb: offensive rebound rate (NBA ~27%, college ~30%).
-  SB.engine = create({ league: 'nba', periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78, possPts: 1.14, oreb: 0.27 });
+  SB.engine = create({ league: 'nba', periods: 4, periodSec: 720, otSec: 300, label: (p) => `Q${p}`, ftPct: 0.78, possPts: 1.14, oreb: 0.27, spikeSec: 0 });
   SB.ncaam = create({ league: 'ncaam', periods: 2, periodSec: 1200, otSec: 300, label: (p) => `${p}H`, ftPct: 0.72, possPts: 1.02, oreb: 0.3 });
 })();

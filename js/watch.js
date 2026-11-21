@@ -297,6 +297,11 @@
     { mark: 100, name: "Wilt's 100" },
     { mark: 83, name: "Adebayo's 83" },
   ];
+  // Chasing 50: a player with FIFTY.from+ points in the fourth quarter (or
+  // overtime) of a live game, before he gets there. A gold chip, so a blowout
+  // doesn't shrink it (Nov 20: Harden had 45 with 1:25 left, Cleveland up 9,
+  // and the game sat at index 13 to 22; he finished with 51).
+  const FIFTY = { from: 44, bonus: 15 };
   // Quadruple-double: 10+ in four of PTS/REB/AST/STL/BLK. Watch once three are
   // in and the fourth is at QUAD_NEAR.
   const QUAD_NEAR = 7;
@@ -338,6 +343,7 @@
       else if (p.pts >= bam.mark) pc = { text: `${p.last} ${p.pts === bam.mark ? 'ties' : 'passes'} ${bam.name} · ${p.pts}`, bonus: 40 };
       else if (onPace(p.pts, bam.mark)) pc = { text: `${p.last} chasing ${bam.name} · ${p.pts}`, bonus: p.pts >= bam.mark - 10 ? 35 : 30 };
       else if (p.pts >= 50) pc = { text: `${p.last} ${p.pts} PTS`, bonus: 20 };
+      else if (g.state === 'live' && played >= 0.75 && p.pts >= FIFTY.from) pc = { text: `${p.last} chasing 50 · ${p.pts}`, bonus: FIFTY.bonus };
       if (pc) chips.push({ ...pc, last: p.last });
 
       // Quadruple-double.
@@ -534,5 +540,5 @@
     };
   }
 
-  SB.watch = { MY_TEAM, aliveFactor, DEAD, redZoneBump, RED_ZONE, cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
+  SB.watch = { FIFTY, MY_TEAM, aliveFactor, DEAD, redZoneBump, RED_ZONE, cupBonus, CUP, rankedBonus, RANKED, runBump, RUN_BONUS, RUN_CONTEXT, goldChips, THREES, POINTS, COMBINED, QUAD_NEAR, GOLD_CAP, rate, tripleDoubleWatch, upset, WEIGHTS, SPORT, UPSET };
 })();

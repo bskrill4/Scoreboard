@@ -25,6 +25,19 @@
   let lines = []; // what the skull says, in order
   let at = 0; // which line is showing
   let typing = null;
+  // Which metric the check grades: BONES (1) or MOUSSA (2). Its own buttons at
+  // the top of the page, starting from the settings toggle; each check is
+  // counted once and kept (statsBy) until the numbers change underneath.
+  let checkV = SB.impact.version();
+  // The × on the skull's bubble hides it (and its Back / Next) until the page
+  // reloads, so the forecast list isn't pushed down by it.
+  let quiet = false;
+  const statsBy = {};
+  const statsAtBy = {};
+  // Names that must stay as written whichever check is showing (the forecast
+  // compares the two): written as these tokens, swapped in last by named().
+  const KB = '{{B1}}';
+  const KM = '{{M2}}';
 
   // ---------- the numbers ----------
   function corr(xs, ys) {
@@ -47,8 +60,14 @@
     return m ? (gs.reduce((s, x) => s + x[k], 0) / m) * 36 : 0;
   };
 
-  async function compute(onProgress) {
+  // The season under one metric: saved rows are read as BONES or MOUSSA for
+  // the duration (SB.impact.withVersion), whatever the settings toggle says.
+  async function compute(onProgress, v) {
     const games = await SB.bones.seasonGames(onProgress);
+    const models = await SB.bones.models();
+    return SB.impact.withVersion(v, () => tally(games, models[v], v));
+  }
+  function tally(games, model, v) {
     const players = new Map();
     const teamGames = [];
     for (const g of games) {
@@ -59,7 +78,7 @@
         if (!r[3]) continue;
         const row = { imp: SB.impact.rowImpact(r) * 100, wpa: r[1] * 100, team: String(r[3][0]), min: r[3][1], pts: r[3][2] };
         team[row.team] = (team[row.team] || 0) + row.imp;
-        swing[row.team] = (swing[row.team] || 0) + r[0] * 100;
+        swing[row.team] = (swing[row.team] || 0) + (v === 2 && r[6] != null ? r[6] : r[0]) * 100; // MOUSSA has no floor
         const p = players.get(id) || { name: r[3][7], g: [] };
         p.g.push(row);
         players.set(id, p);
@@ -72,7 +91,6 @@
       }
       g.team = team;
     }
-    const model = await SB.bones.model();
 
     const qual = [...players.values()].filter((p) => p.g.length >= MIN_GAMES && p.g.reduce((s, x) => s + x.min, 0) / p.g.length >= MIN_MPG);
     const half = (p) => Math.ceil(p.g.length / 2);
@@ -149,7 +167,9 @@
   // Upcoming NBA games, each with BONES's pick and the favorite (from the
   // betting line once it's posted, else ESPN's matchup predictor). The line
   // itself is only used to know who's favored: nothing about it is shown.
-  async function predict(model) {
+  // Both metrics' calls for each game (calls[1] BONES, calls[2] MOUSSA); asOf()
+  // reads one of them as the game's pick.
+  async function predict(models) {
     const now = Date.now();
     const days = [0, 1, 2].map((d) => ymd(new Date(now + d * 864e5)));
     const boards = await Promise.all(days.map((d) => SB.api.scoreboard(d, 'nba').catch(() => null)));
@@ -174,19 +194,20 @@
         try {
           sum = await SB.api.summary(e.id, 'nba');
         } catch (err) {}
-        const pr = SB.bones.predict(model, String(home.team.id), String(away.team.id), SB.bones.injuries(sum).out);
+        const out = SB.bones.injuries(sum).out;
+        const prs = { 1: SB.bones.predict(models[1], String(home.team.id), String(away.team.id), out), 2: SB.bones.predict(models[2], String(home.team.id), String(away.team.id), out) };
+        const pr = prs[1] || prs[2];
         if (!pr) return null;
-        const [h, a, pHome] = [pr.home, pr.away, pr.pHome];
+        const call = (x) => (x ? { pick: x.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(x.pHome, 1 - x.pHome) } : null);
+        const [h, a] = [pr.home, pr.away];
         const favHome = favoredHome(sum);
         const team = (c, s) => ({ id: String(c.team.id), abbr: c.team.abbreviation, name: c.team.shortDisplayName || c.team.displayName, logo: c.team.logo, missing: s.missing });
-        const pick = pHome >= 0.5 ? 'home' : 'away';
         return {
           id: e.id,
           t: Date.parse(e.date),
           home: team(home, h),
           away: team(away, a),
-          pick,
-          conf: Math.max(pHome, 1 - pHome),
+          calls: { 1: call(prs[1]), 2: call(prs[2]) },
           fav: favHome == null ? null : favHome ? 'home' : 'away',
         };
       }
@@ -268,7 +289,7 @@
 
   // The record of the picks BONES locked at tip-off in this browser.
   function trackRecord() {
-    const done = SB.bones.picks.all().filter((p) => p.won != null);
+    const done = SB.bones.picksOf(checkV).all().filter((p) => p.won != null);
     if (!done.length) return '';
     const wl = (xs) => `${xs.filter((p) => p.won).length}–${xs.filter((p) => !p.won).length}`;
     const last = done.map((p) => SB.days.dayOf(p.t)).sort().at(-1);
@@ -279,6 +300,10 @@
       ? ` My picks locked at tip-off went ${wl(night)} ${when}.`
       : ` My picks locked at tip-off went ${wl(night)} ${when}, and ${wl(done)} since you started tracking.`;
   }
+
+  const asOf = (games, v) => games.filter((g) => g.calls[v]).map((g) => ({ ...g, ...g.calls[v] }));
+  // A split: BONES and MOUSSA pick different winners.
+  const isSplit = (g) => !!(g.calls[1] && g.calls[2] && g.calls[1].pick !== g.calls[2].pick);
 
   function predictScript(model, games) {
     const { right, n } = model.record;
@@ -308,24 +333,35 @@
         lines.push(`${whenText(g.t)}: the ${fav.name} are favored against the ${dog.name}. The bones say the ${dog.name} win, ${pct(g.conf)}. ${strength}${hurt}`);
       }
     }
+    const splits = games.filter(isSplit);
+    lines.push(
+      splits.length
+        ? `${KB} and ${KM} don't agree on ${splits.length === 1 ? 'one game' : `${splits.length} games`}: ${list(
+            splits.map((g) => `${g.away.name} at ${g.home.name} (${KB} ${g[g.calls[1].pick].abbr}, ${KM} ${g[g.calls[2].pick].abbr})`)
+          )}. Those are the ones to watch: whichever is right there is the one that's learning something.`
+        : `${KB} and ${KM} agree on every game this time.`
+    );
     lines.push(`That's the reading. The bones never lie, but basketball does. Check back after tip-off.`);
     return lines;
   }
 
   function picksHTML(games) {
     if (!games.length) return '';
+    const callText = (g, c) => (!c ? '—' : c.conf < UPSET_MIN ? 'Toss-up' : `${esc(g[c.pick].abbr)} ${pct(c.conf)}`);
     const row = (g) => {
       const upset = isUpset(g);
-      const toss = g.conf < UPSET_MIN;
+      const split = isSplit(g);
       const side = (k) => `<span class="bz-team${g.pick === k ? ' pick' : ''}"><img src="${esc(g[k].logo || '')}" alt="">${esc(g[k].abbr)}</span>`;
-      return `<li class="${upset ? 'upset' : ''}">
+      const mine = (v) => (v === checkV ? ' class="on"' : '');
+      return `<li class="${upset ? 'upset' : ''}${split ? ' split' : ''}">
           <span class="bz-when">${esc(whenText(g.t))}</span>
           <span class="bz-match">${side('away')}<i>@</i>${side('home')}</span>
-          <span class="bz-call">${toss ? 'Toss-up' : `${esc(g[g.pick].abbr)} ${pct(g.conf)}`}${upset ? '<b>Upset pick</b>' : g.fav || toss ? '' : '<small>no favorite yet</small>'}</span>
+          <span class="bz-call"><span class="bz-two"><span${mine(1)}><em>${KB}</em> ${callText(g, g.calls[1])}</span><span${mine(2)}><em>${KM}</em> ${callText(g, g.calls[2])}</span></span>${split ? '<b class="bz-split">Split</b>' : ''}${upset ? '<b>Upset pick</b>' : g.fav || g.conf < UPSET_MIN ? '' : '<small>no favorite yet</small>'}</span>
         </li>`;
     };
-    return `<h3>The skull's picks</h3><ul class="bz-picks">${games.map(row).join('')}</ul>
-      <p class="bz-fine">BONES only: each player's BONES a minute × his minutes over his team's last ${RECENT} games, players listed out (or doubtful) removed, questionable at half. No home court. Win chances are fit to this season's results. An upset pick is a game where BONES takes the team that isn't favored, by at least ${pct(UPSET_MIN)}; closer than that is a toss-up.</p>`;
+    const nSplit = games.filter(isSplit).length;
+    return `<h3>The skull's picks <small>${KB} and ${KM}${nSplit ? ` · ${nSplit} split${nSplit === 1 ? '' : 's'}` : ' · no splits'}</small></h3><ul class="bz-picks">${games.map(row).join('')}</ul>
+      <p class="bz-fine">Each metric on its own: each player's rating a minute × his minutes over his team's last ${RECENT} games, players listed out (or doubtful) removed, questionable at half. No home court. Win chances are fit to this season's results. <b>Split</b>: ${KB} and ${KM} pick different winners. Upset pick (for the check that's showing): it takes the team that isn't favored, by at least ${pct(UPSET_MIN)}; closer than that is a toss-up.</p>`;
   }
 
   // ---------- the skull ----------
@@ -453,12 +489,16 @@
   }
 
   // ---------- the page ----------
+  // The skull grades whichever metric the toggle shows (the numbers are read
+  // under it), so its words name that one: BONES, or MOUSSA.
+  const named = (t) =>
+    (checkV === 2 ? String(t).replace(/\bBONES\b/g, 'MOUSSA') : String(t)).split(KB).join('BONES').split(KM).join('MOUSSA');
   function say(i) {
     at = Math.max(0, Math.min(lines.length - 1, i));
     const bubble = root.querySelector('.bz-bubble p');
     const dots = root.querySelector('.bz-dots');
     clearInterval(typing);
-    const text = lines[at];
+    const text = named(lines[at]);
     let n = 0;
     talking = 1;
     bubble.textContent = '';
@@ -512,9 +552,12 @@
 
   function start() {
     started = true;
-    root.innerHTML = `<div class="bz">
+    root.innerHTML = `<div class="bz${quiet ? ' bz-quiet' : ''}">
+        <div class="seg bz-which" role="radiogroup" aria-label="Which check">${[1, 2]
+          .map((v) => `<button type="button" data-bzv="${v}" role="radio" class="${v === checkV ? 'on' : ''}" aria-checked="${v === checkV}">${SB.impact.name(v)} check</button>`)
+          .join('')}</div>
         <div class="bz-stage"><canvas class="bz-skull" aria-label="A floating skull"></canvas></div>
-        <div class="bz-bubble" role="status" aria-live="polite"><p>Rattling the bones… loading the season.</p></div>
+        <div class="bz-bubble" role="status" aria-live="polite"><button type="button" class="bz-close" data-bz="close" aria-label="Close the skull's words until the page reloads" title="Close until the page reloads">×</button><p>Rattling the bones… loading the season.</p></div>
         <div class="bz-controls">
           <button type="button" data-bz="prev" disabled>‹ Back</button>
           <span class="bz-dots"></span>
@@ -525,6 +568,13 @@
         <details class="bz-numbers"><summary>The numbers</summary><div class="bz-num-body">Still counting…</div></details>
       </div>`;
     root.addEventListener('click', (e) => {
+      const w = e.target.closest('[data-bzv]');
+      if (w) return setCheck(Number(w.dataset.bzv));
+      if (e.target.closest('[data-bz="close"]')) {
+        quiet = true;
+        root.querySelector('.bz').classList.add('bz-quiet');
+        return;
+      }
       const b = e.target.closest('[data-bz]');
       if (!b || !lines.length || b.disabled) return;
       if (b.dataset.bz === 'ask') ask(b);
@@ -537,13 +587,28 @@
     loadStats();
   }
 
+  // The BONES check / MOUSSA check buttons: back to the check, for that metric.
+  function setCheck(v) {
+    v = v === 2 ? 2 : 1;
+    for (const b of root.querySelectorAll('[data-bzv]')) {
+      const on = Number(b.dataset.bzv) === v;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    }
+    if (v === checkV) return;
+    checkV = v;
+    // In the forecast: stay there, and read it again for this metric (the list
+    // and the skull's words together). Otherwise back to this metric's check.
+    if (mode === 'future' && future) return showFuture();
+    loadStats();
+  }
+
   async function loadStats() {
     if (loading) return void (needsLoad = true); // a refresh mid-count: count again after
     loading = true;
     needsLoad = false;
     clearInterval(typing);
     lines = [];
-    future = null;
     mode = 'check';
     const askBtn = root.querySelector('[data-bz="ask"]');
     askBtn.textContent = '🔮 Ask the skull about upcoming games';
@@ -554,12 +619,17 @@
     root.querySelector('.bz-num-body').textContent = 'Still counting…';
     root.querySelector('.bz-bubble p').textContent = 'Rattling the bones… loading the season.';
     try {
-      stats = await compute((n, total) => {
-        if (!lines.length) root.querySelector('.bz-bubble p').textContent = `Rattling the bones… ${n} of ${total} games.`;
-      });
-      statsAt = Date.now();
+      const v = checkV;
+      if (statsBy[v] && Date.now() - statsAtBy[v] < STALE_MS) stats = statsBy[v];
+      else {
+        stats = statsBy[v] = await compute((n, total) => {
+          if (!lines.length) root.querySelector('.bz-bubble p').textContent = `Rattling the bones… ${n} of ${total} games.`;
+        }, v);
+        statsAtBy[v] = Date.now();
+      }
+      statsAt = statsAtBy[v];
       checkLines = lines = script(stats);
-      root.querySelector('.bz-num-body').innerHTML = numbersHTML(stats);
+      root.querySelector('.bz-num-body').innerHTML = named(numbersHTML(stats));
       root.querySelector('[data-bz="next"]').disabled = false;
       askBtn.disabled = false;
       say(0);
@@ -571,11 +641,12 @@
   }
 
   let checkLines = [];
-  let future = null; // { lines, html } once asked
+  let future = null; // { games (both metrics' calls), models } once asked
   let mode = 'check';
   async function ask(btn) {
     const box = root.querySelector('.bz-future');
     if (mode === 'future') {
+      if (stats !== statsBy[checkV]) return loadStats(); // switched metric in the forecast: count that one's check
       mode = 'check';
       lines = checkLines;
       box.hidden = true;
@@ -583,7 +654,7 @@
       return say(0);
     }
     mode = 'future';
-    btn.textContent = '‹ Back to the BONES check';
+    btn.textContent = `‹ Back to the ${SB.impact.name(checkV)} check`;
     if (!future) {
       btn.disabled = true;
       clearInterval(typing);
@@ -591,17 +662,27 @@
       root.querySelector('.bz-bubble p').textContent = 'Peering into the bones… reading the next day or so.';
       try {
         await SB.bones.picks.settleOld().catch(() => {}); // finals the board didn't see
-        const games = await predict(stats.model);
-        future = { lines: predictScript(stats.model, games), html: picksHTML(games) };
+        const models = await SB.bones.models();
+        future = { games: await predict(models), models };
       } catch (e) {
-        future = { lines: ['The bones are cloudy: I couldn’t reach the upcoming schedule. Ask me again in a bit.'], html: '' };
+        future = { failed: true };
       }
       btn.disabled = false;
       if (mode !== 'future') return;
     }
-    lines = future.lines;
-    box.innerHTML = future.html;
-    box.hidden = !future.html;
+    showFuture();
+  }
+
+  // The forecast, read for the check that's showing: its picks lead (and the
+  // skull speaks for it), both metrics' picks are listed.
+  function showFuture() {
+    const box = root.querySelector('.bz-future');
+    root.querySelector('[data-bz="ask"]').textContent = `‹ Back to the ${SB.impact.name(checkV)} check`;
+    const games = future.failed ? [] : asOf(future.games, checkV);
+    lines = future.failed ? ['The bones are cloudy: I couldn’t reach the upcoming schedule. Ask me again in a bit.'] : predictScript(future.models[checkV], games);
+    const html = future.failed ? '' : picksHTML(games);
+    box.innerHTML = named(html);
+    box.hidden = !html;
     say(0);
   }
 
@@ -619,6 +700,10 @@
   // The numbers changed underneath (the game-floor switch): count again, now if
   // the page is showing, else on the next visit.
   function refresh() {
+    checkV = SB.impact.version();
+    for (const v of [1, 2]) delete statsBy[v];
+    future = null;
+    if (root) for (const b of root.querySelectorAll('[data-bzv]')) b.classList.toggle('on', Number(b.dataset.bzv) === checkV);
     if (!started) return;
     if (root && !root.hidden) loadStats();
     else needsLoad = true;

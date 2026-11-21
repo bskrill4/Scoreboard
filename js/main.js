@@ -628,6 +628,7 @@
     else if (view() === 'season') SB.season.render();
     else if (view() === 'nflseason') SB.nflSeason.render();
     else if (view() === 'bonezone') SB.boneZone.render();
+    else if (view() === 'faq') SB.faq.render();
     else SB.ui.render(models, { heroId: shownTop, pinnedId, toTop });
     if (focusing) {
       // Leave focus if its game is gone (a day change, a filter) or another view opened.
@@ -876,7 +877,8 @@
   function bonesUpset(fav, side, conf) {
     return !!fav && !!side && side !== fav && conf >= SB.boneZone.UPSET_MIN;
   }
-  let bonesModel = null;
+  let bonesModel = null; // the toggle's metric (BONES or MOUSSA)
+  let bonesModels = null; // { 1: BONES, 2: MOUSSA }: picks are locked for both
   let bonesProgress = null; // [done, total] while the season loads
   let bonesFailed = 0;
 
@@ -885,11 +887,13 @@
     const nbaOn = events.some((ev) => shown(ev) && ev._league === 'nba' && (replay || ev.status.type.state !== 'post'));
     if (nbaOn && Date.now() - bonesFailed > 60e3) {
       SB.bones
-        .model((done, total) => {
+        .models((done, total) => {
           bonesProgress = [done, total];
         })
-        .then((m) => {
+        .then((ms) => {
+          const m = ms[SB.impact.version()];
           if (m === bonesModel) return;
+          bonesModels = ms;
           bonesModel = m;
           bonesProgress = null;
           tick();
@@ -934,16 +938,21 @@
       if (bonesModel) {
         const out = inj?.out || new Map();
         const pr = SB.bones.predict(bonesModel, g.home.id, g.away.id, out);
+        // Each metric locks its own pick (BONES and MOUSSA are graded side by side).
+        if (!replay && bonesModels)
+          for (const v of [1, 2]) {
+            const pv = SB.bones.predict(bonesModels[v], g.home.id, g.away.id, out);
+            if (pv)
+              SB.bones.picksOf(v).lock(ev.id, {
+                side: pv.pHome >= 0.5 ? 'home' : 'away',
+                conf: Math.max(pv.pHome, 1 - pv.pHome),
+                t: g.start,
+                home: g.home.abbr,
+                away: g.away.abbr,
+                fav: favoriteOf(ev) || undefined,
+              });
+          }
         if (pr) {
-          if (!replay)
-            SB.bones.picks.lock(ev.id, {
-              side: pr.pHome >= 0.5 ? 'home' : 'away',
-              conf: Math.max(pr.pHome, 1 - pr.pHome),
-              t: g.start,
-              home: g.home.abbr,
-              away: g.away.abbr,
-              fav: favoriteOf(ev) || undefined,
-            });
           info.bones = {
             pHome: pr.pHome,
             injKnown: !!inj,
@@ -962,10 +971,13 @@
   function bonesLive(ev, g, evState, ac, hc) {
     const picks = SB.bones.picks;
     // Replay: the lineup edge works, but nothing is locked or settled.
-    if (!replay && evState === 'in' && bonesModel && !picks.get(ev.id) && pregame.get(ev.id)?.inj) {
-      const pr = SB.bones.predict(bonesModel, g.home.id, g.away.id, pregame.get(ev.id).inj.out);
-      if (pr) picks.lock(ev.id, { side: pr.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(pr.pHome, 1 - pr.pHome), t: g.start, home: g.home.abbr, away: g.away.abbr, late: true, fav: favoriteOf(ev) || undefined });
-    }
+    if (!replay && evState === 'in' && bonesModels && pregame.get(ev.id)?.inj)
+      for (const v of [1, 2]) {
+        const store = SB.bones.picksOf(v);
+        if (store.get(ev.id)) continue;
+        const pr = SB.bones.predict(bonesModels[v], g.home.id, g.away.id, pregame.get(ev.id).inj.out);
+        if (pr) store.lock(ev.id, { side: pr.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(pr.pHome, 1 - pr.pHome), t: g.start, home: g.home.abbr, away: g.away.abbr, late: true, fav: favoriteOf(ev) || undefined });
+      }
     if (!replay && evState === 'post' && ev.status.type.completed) {
       // From the real final (not the delayed view): nothing here is shown until the board gets there.
       const w = ac.winner ? 'away' : hc.winner ? 'home' : Number(hc.score) > Number(ac.score) ? 'home' : Number(ac.score) > Number(hc.score) ? 'away' : null;
@@ -1092,7 +1104,7 @@
   // ---------- views & player metric ----------
   // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab), the viewing plan (#plan)
   // and the Bone Zone (#bonezone, a check of how reliable BONES is).
-  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone' };
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq' };
   const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
@@ -1103,22 +1115,18 @@
     $('season').hidden = v !== 'season';
     $('nflseason').hidden = v !== 'nflseason';
     $('bonezone').hidden = v !== 'bonezone';
+    $('faq').hidden = v !== 'faq';
     document.body.classList.toggle('view-bonezone', v === 'bonezone');
+    document.body.classList.toggle('view-faq', v === 'faq');
     const nav = v === 'season' || v === 'nflseason' ? 'players' : v; // both season tabs live under Rankings
     for (const a of document.querySelectorAll('#views a')) a.classList.toggle('on', a.dataset.view === nav);
     document.body.classList.toggle('view-players', v !== 'board');
   }
 
-  // Impact (the default) or classic WPA, remembered per browser. The key is new:
-  // the old one saved 'wpa' on every visit, so it can't tell a choice from the old default.
+  // Rankings and cards rank by BONES or MOUSSA (the toggle below). Classic WPA
+  // is no longer a choice (Nov 21); it stays as a column where it's shown.
   function setMetric(m) {
     SB.ui.setMetric(m);
-    const on = SB.ui.getMetric() === 'imp';
-    $('metricSwitch').classList.toggle('on', on);
-    $('metricSwitch').setAttribute('aria-checked', String(on));
-    try {
-      localStorage.setItem('sb.playerValue', SB.ui.getMetric());
-    } catch (e) {}
   }
 
   // A click on any player row opens their drawer: the 7 days ending on the day being viewed.
@@ -1224,11 +1232,7 @@
     SB.player.onGame = showGame;
     initSettings();
     initFilter();
-    try {
-      setMetric(localStorage.getItem('sb.playerValue') || 'imp');
-    } catch (e) {
-      setMetric('imp');
-    }
+    setMetric('imp');
     const soundBtn = $('soundSwitch');
     const showSound = () => {
       soundBtn.classList.toggle('on', SB.chime.isOn());
@@ -1288,19 +1292,33 @@
       SB.boneZone.refresh();
       tick();
     };
-    const v2Btn = $('bonesV2Switch');
-    const showV2 = () => {
-      const on = SB.impact.version() === 2;
-      v2Btn.classList.toggle('on', on);
-      v2Btn.setAttribute('aria-checked', String(on));
-      $('bonesV2Badge').hidden = !on;
-      document.body.classList.toggle('bones-v2', on);
+    // BONES | MOUSSA: the settings toggle, and the same chips on Rankings.
+    // Both models are already built (the pick tracker needs both), so the
+    // switch only re-reads; the game floor below changes BONES, so it rebuilds.
+    const showValue = () => {
+      const v = SB.impact.version();
+      for (const b of document.querySelectorAll('#valueToggle [data-bver]')) {
+        const on = Number(b.dataset.bver) === v;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', String(on));
+      }
+      $('bonesV2Badge').hidden = v !== 2;
+      document.body.classList.toggle('bones-v2', v === 2);
     };
-    showV2();
-    v2Btn.addEventListener('click', () => {
-      SB.impact.setVersion(SB.impact.version() === 2 ? 1 : 2);
-      showV2();
-      recountBones();
+    showValue();
+    document.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-bver]');
+      if (!b) return;
+      const v = Number(b.dataset.bver) === 2 ? 2 : 1;
+      if (v === SB.impact.version()) return;
+      SB.impact.setVersion(v);
+      showValue();
+      bonesModel = bonesModels ? bonesModels[v] : null;
+      for (const t of tapes.values()) t._n = -1;
+      SB.season.refresh();
+      SB.nflSeason.refresh();
+      SB.boneZone.refresh();
+      tick();
     });
     const floorBtn = $('floorSwitch');
     const showFloor = () => {
@@ -1323,10 +1341,6 @@
     alertBtn.addEventListener('click', async () => {
       await SB.alerts.set(!SB.alerts.isOn());
       showAlerts();
-    });
-    $('metricSwitch').addEventListener('click', () => {
-      setMetric(SB.ui.getMetric() === 'imp' ? 'wpa' : 'imp');
-      tick();
     });
     $('players').addEventListener('click', (e) => {
       if (openPlayerFrom(e)) return; // a player's name, even inside a play row

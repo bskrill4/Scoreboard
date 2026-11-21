@@ -95,7 +95,7 @@
   ];
   const RIGHT = [
     ['pbp', 'Play by play', 'latest first'],
-    ['defense', 'Defense', 'BONES on defense'],
+    ['defense', 'Defense', 'Credit on defense (BONES or MOUSSA)'],
     ['rotation', 'Rotation', 'minutes · current stretch'],
   ];
   function build() {

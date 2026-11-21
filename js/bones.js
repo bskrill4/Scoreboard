@@ -99,27 +99,36 @@
     modelFrom = null;
   }
 
+  // Both metrics' models are built together (BONES, MOUSSA), so the pick
+  // tracker can lock a pick for each and the toggle doesn't rebuild anything.
+  // model(): the one the toggle shows; models(): { 1: BONES, 2: MOUSSA }.
   function model(onProgress) {
+    return models(onProgress).then((ms) => ms[SB.impact.version()]);
+  }
+  function models(onProgress) {
     const p = seasonGames(onProgress);
     if (p !== modelFrom) {
       modelFrom = p;
       modelP = p.then((games) => {
         const done = games.filter((g) => g.rows);
-        const m = buildModel(done);
-        // The slope and the record come from the honest backtest of this very
-        // model (each game predicted from what was known before it), not from
-        // team BONES per game, which is a different, simpler predictor.
-        const bt = backtest(done);
-        m.backtest = bt;
-        m.homeLogit = bt.home.logit; // the season's home record, blended with the long-run prior
-        if (bt.bones.n) {
-          m.k = bt.bones.k;
-          m.record = { right: bt.bones.right, n: bt.bones.n };
-        }
-        return m;
+        return { 1: SB.impact.withVersion(1, () => buildOne(done)), 2: SB.impact.withVersion(2, () => buildOne(done)) };
       });
     }
     return modelP;
+  }
+  function buildOne(done) {
+    const m = buildModel(done);
+    // The slope and the record come from the honest backtest of this very
+    // model (each game predicted from what was known before it), not from
+    // team BONES per game, which is a different, simpler predictor.
+    const bt = backtest(done);
+    m.backtest = bt;
+    m.homeLogit = bt.home.logit; // the season's home record, blended with the long-run prior
+    if (bt.bones.n) {
+      m.k = bt.bones.k;
+      m.record = { right: bt.bones.right, n: bt.bones.n };
+    }
+    return m;
   }
 
   function buildModel(games) {
@@ -592,59 +601,79 @@
   }
 
   // ---------- the pick tracker ----------
-  // Each NBA game's BONES pick, locked at tip-off (the last pick made before
-  // the game started) and settled at the final, kept in this browser.
+  // Each NBA game's pick, locked at tip-off (the last pick made before the
+  // game started) and settled at the final, kept in this browser. One store per
+  // metric since Nov 21, so BONES and MOUSSA can be graded side by side:
+  // sb.bonesPicks (BONES; before Nov 21 it held whichever metric was switched
+  // on) and sb.moussaPicks (MOUSSA).
   // { [eventId]: { side: 'home'|'away', conf, t, home, away (abbrs), late?, fav?, won? } }
   // fav: who was favored, kept only to tell an upset pick apart (never shown).
-  const PICKS_KEY = 'sb.bonesPicks';
+  const PICKS_KEYS = { 1: 'sb.bonesPicks', 2: 'sb.moussaPicks' };
   const KEEP_DAYS = 120;
-  let picks = {};
-  try {
-    picks = JSON.parse(localStorage.getItem(PICKS_KEY) || '{}') || {};
-  } catch (e) {}
-  let saveTimer = null;
-  function savePicks() {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => {
-      const cutoff = Date.now() - KEEP_DAYS * 864e5;
-      for (const [id, p] of Object.entries(picks)) if (p.t < cutoff) delete picks[id];
-      try {
-        localStorage.setItem(PICKS_KEY, JSON.stringify(picks));
-      } catch (e) {}
-    }, 500);
+  function makeStore(key) {
+    let picks = {};
+    try {
+      picks = JSON.parse(localStorage.getItem(key) || '{}') || {};
+    } catch (e) {}
+    let saveTimer = null;
+    function savePicks() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => {
+        const cutoff = Date.now() - KEEP_DAYS * 864e5;
+        for (const [id, p] of Object.entries(picks)) if (p.t < cutoff) delete picks[id];
+        try {
+          localStorage.setItem(key, JSON.stringify(picks));
+        } catch (e) {}
+      }, 500);
+    }
+    const store = {
+      get: (id) => picks[id] || null,
+      // Before tip-off, each new reading replaces the last. late: made after tip-off
+      // (the board opened mid-game), from the model as of before the game.
+      lock(id, p) {
+        const cur = picks[id];
+        if (cur && cur.side === p.side && Math.abs(cur.conf - p.conf) < 0.005 && (cur.fav === p.fav || !p.fav)) return;
+        picks[id] = { ...p, conf: +p.conf.toFixed(3) };
+        savePicks();
+      },
+      settle(id, winner) {
+        const p = picks[id];
+        if (!p || p.won != null || !winner) return;
+        p.won = p.side === winner;
+        savePicks();
+      },
+      all: () => Object.entries(picks).map(([id, p]) => ({ id, ...p })),
+      // Unsettled picks from games that should be over: look the finals up.
+      async settleOld() {
+        const open = Object.entries(picks).filter(([, p]) => p.won == null && p.t < Date.now() - 4 * 36e5);
+        // The feed files a game under its (US) game day: the sports day it tipped on.
+        const days = [...new Set(open.map(([, p]) => SB.days.dayOf(p.t)))];
+        const boards = await Promise.all(days.map((d) => SB.api.scoreboard(d, 'nba').catch(() => null)));
+        for (const b of boards)
+          for (const e of b?.events || []) {
+            if (!picks[e.id] || picks[e.id].won != null || !e.status?.type?.completed) continue;
+            const cs = e.competitions[0].competitors;
+            const w = cs.find((c) => c.winner) || cs.slice().sort((a, b) => Number(b.score) - Number(a.score))[0];
+            store.settle(e.id, w?.homeAway);
+          }
+      },
+    };
+    return store;
   }
+  const stores = { 1: makeStore(PICKS_KEYS[1]), 2: makeStore(PICKS_KEYS[2]) };
+  // picksOf(v): one metric's store. picks: the toggle's metric for reading;
+  // settling goes to both (a final settles every pick on the game).
+  const picksOf = (v) => stores[v === 2 ? 2 : 1];
   const pickStore = {
-    get: (id) => picks[id] || null,
-    // Before tip-off, each new reading replaces the last. late: made after tip-off
-    // (the board opened mid-game), from the model as of before the game.
-    lock(id, p) {
-      const cur = picks[id];
-      if (cur && cur.side === p.side && Math.abs(cur.conf - p.conf) < 0.005 && (cur.fav === p.fav || !p.fav)) return;
-      picks[id] = { ...p, conf: +p.conf.toFixed(3) };
-      savePicks();
-    },
+    get: (id) => picksOf(SB.impact.version()).get(id),
+    lock: (id, p) => picksOf(SB.impact.version()).lock(id, p),
     settle(id, winner) {
-      const p = picks[id];
-      if (!p || p.won != null || !winner) return;
-      p.won = p.side === winner;
-      savePicks();
+      stores[1].settle(id, winner);
+      stores[2].settle(id, winner);
     },
-    all: () => Object.entries(picks).map(([id, p]) => ({ id, ...p })),
-    // Unsettled picks from games that should be over: look the finals up.
-    async settleOld() {
-      const open = Object.entries(picks).filter(([, p]) => p.won == null && p.t < Date.now() - 4 * 36e5);
-      // The feed files a game under its (US) game day: the sports day it tipped on.
-      const days = [...new Set(open.map(([, p]) => SB.days.dayOf(p.t)))];
-      const boards = await Promise.all(days.map((d) => SB.api.scoreboard(d, 'nba').catch(() => null)));
-      for (const b of boards)
-        for (const e of b?.events || []) {
-          if (!picks[e.id] || picks[e.id].won != null || !e.status?.type?.completed) continue;
-          const cs = e.competitions[0].competitors;
-          const w = cs.find((c) => c.winner) || cs.slice().sort((a, b) => Number(b.score) - Number(a.score))[0];
-          pickStore.settle(e.id, w?.homeAway);
-        }
-    },
+    all: () => picksOf(SB.impact.version()).all(),
+    settleOld: () => Promise.all([stores[1].settleOld(), stores[2].settleOld()]),
   };
 
-  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
+  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, models, picksOf, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
 })();

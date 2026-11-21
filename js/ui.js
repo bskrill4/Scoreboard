@@ -58,11 +58,12 @@
   let metric = 'imp';
   const val = (p) => (metric === 'imp' ? p.imp || 0 : p.wpa || 0);
   const momentVal = (m) => (metric === 'imp' ? m.imp ?? 0 : m.wpa ?? 0);
-  // "BONES v2" while the score-only version is on (settings), so it's never mistaken for v1.
-  const bonesLabel = () => (SB.impact.version() === 2 ? 'BONES v2' : 'BONES');
+  // The toggle's metric by name: BONES or MOUSSA (settings › Player value).
+  const bonesLabel = () => SB.impact.name();
+  const N = bonesLabel;
   const metricShort = () => (metric === 'imp' ? bonesLabel() : 'WPA');
-  // Single-play swings are still v1's (ESPN's win probability), so under v2 they say so.
-  const swingLabel = () => (SB.impact.version() === 2 ? 'BONES v1' : 'BONES');
+  // Single-play swings are always BONES's (ESPN's win probability), whichever metric is on.
+  const swingLabel = () => 'BONES';
   const setMetric = (m) => (metric = m === 'imp' ? 'imp' : 'wpa');
 
   // ---------- formatting ----------
@@ -146,7 +147,7 @@
   const bonesP = (g) => (g.state === 'pre' && g.pre?.bones ? g.pre.bones.pHome : null);
   function bonesBar(g) {
     const a = (1 - bonesP(g)) * 100;
-    return `<div class="wpbar bones" title="BONES prediction"><i style="width:${a.toFixed(1)}%;background:${g.away.css}"></i><i style="width:${(100 - a).toFixed(
+    return `<div class="wpbar bones" title="${N()} prediction"><i style="width:${a.toFixed(1)}%;background:${g.away.css}"></i><i style="width:${(100 - a).toFixed(
       1
     )}%;background:${g.home.css}"></i></div>`;
   }
@@ -167,7 +168,7 @@
     const w = p.side === 'home' ? g.wp : 1 - g.wp;
     return w >= 0.6 ? { team, text: 'on track', cls: 'ok' } : w <= 0.4 ? { team, text: 'in trouble', cls: 'bad' } : { team, text: 'neck and neck', cls: 'even' };
   }
-  const pickTitle = (g) => `BONES picked ${g.bonesPick[g.bonesPick.side]} at ${Math.round(g.bonesPick.conf * 100)}%${g.bonesPick.late ? ' (made after tip-off)' : ' before tip-off'}`;
+  const pickTitle = (g) => `${N()} picked ${g.bonesPick[g.bonesPick.side]} at ${Math.round(g.bonesPick.conf * 100)}%${g.bonesPick.late ? ' (made after tip-off)' : ' before tip-off'}`;
 
   // ---------- tile (the rows of four) ----------
   function teamRow(g, side) {
@@ -205,7 +206,7 @@
         : `<div class="wplabels"><span>${pct(1 - g.wp)}</span><span>${esc(g.downText || 'win prob')}</span><span>${pct(g.wp)}</span></div>`;
     const p = bonesP(g);
     const ps = pickStatus(g);
-    const pickLabel = ps ? `<span class="pick-tag ${ps.cls}" title="${esc(pickTitle(g))}">BONES: ${esc(ps.team.abbr)} · ${ps.text}</span>` : '';
+    const pickLabel = ps ? `<span class="pick-tag ${ps.cls}" title="${esc(pickTitle(g))}">${N()}: ${esc(ps.team.abbr)} · ${ps.text}</span>` : '';
     const wp =
       p == null
         ? ps && g.state === 'final'
@@ -213,7 +214,7 @@
           : ps && g.wp != null
           ? `${wpBar(g)}<div class="wplabels"><span>${pct(1 - g.wp)}</span>${pickLabel}<span>${pct(g.wp)}</span></div>`
           : `${wpBar(g)}${wpLabels}`
-        : `${bonesBar(g)}<div class="wplabels"><span>${pct(1 - p)}</span><span>BONES: ${Math.abs(p - 0.5) < 0.03 ? 'toss-up' : esc(bonesPick(g).abbr)}</span><span>${pct(p)}</span></div>`;
+        : `${bonesBar(g)}<div class="wplabels"><span>${pct(1 - p)}</span><span>${N()}: ${Math.abs(p - 0.5) < 0.03 ? 'toss-up' : esc(bonesPick(g).abbr)}</span><span>${pct(p)}</span></div>`;
     return `
       <div class="g-top">
         ${statusPill(g)}
@@ -277,7 +278,7 @@
         <path d="${area}" fill="${g.away.css}" opacity=".28" clip-path="url(#${id}t)"/>
         <path d="${area}" fill="${g.home.css}" opacity=".28" clip-path="url(#${id}b)"/>
         <line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" class="mid"/>
-        ${dN ? `<path d="${dN}" class="wpline-n"><title>Score only (BONES v2): the score and the clock, 50% at tip for everyone</title></path>` : ''}
+        ${dN ? `<path d="${dN}" class="wpline-n"><title>Score only (what MOUSSA credits): the score, the clock and who has the ball, 50% at tip for everyone</title></path>` : ''}
         <path d="${d}" class="wpline"/>
         ${hl ? hl.over : ''}
       </svg>
@@ -618,7 +619,7 @@
         .filter((m) => m.play && m[key])
         .sort((a, b) => Math.abs(b[key]) - Math.abs(a[key]))
         .slice(0, 3);
-      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays${key !== metric ? ' <small>by BONES</small>' : ''}</div>`;
+      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays${key !== metric ? ` <small>by ${N()}</small>` : ''}</div>`;
       if (!top.length) return `<div class="swings">${head}<div class="swing"><span>No credited plays yet</span></div></div>`;
       return `<div class="swings">${head}${top
         .map(
@@ -763,9 +764,9 @@
     const side = (t, p) => `<div class="bp-team${t === pick ? ' pick' : ''}"><img src="${esc(t.logo)}" alt=""><b>${pct(p)}</b><small>${esc(t.abbr)}</small></div>`;
     return `<div class="bones-pred">
       <div class="bp-row">${side(g.away, 1 - b.pHome)}
-        <div class="bp-call"><small>BONES picks</small><b>${conf < 0.53 ? 'Toss-up' : esc(pick.name)}</b><small>${call === 'Toss-up' ? 'too close to call' : `${call.toLowerCase()} · ${pct(conf)}`}</small></div>
+        <div class="bp-call"><small>${N()} picks</small><b>${conf < 0.53 ? 'Toss-up' : esc(pick.name)}</b><small>${call === 'Toss-up' ? 'too close to call' : `${call.toLowerCase()} · ${pct(conf)}`}</small></div>
         ${side(g.home, b.pHome)}</div>
-      <p class="bp-note">BONES only: each player's BONES a minute × his recent minutes${b.injKnown ? ', injured players removed' : ' (injury report still loading)'}. No home court, no records.</p>
+      <p class="bp-note">${N()} only: each player's ${N()} a minute × his recent minutes${b.injKnown ? ', injured players removed' : ' (injury report still loading)'}. No home court, no records.</p>
     </div>`;
   }
 
@@ -812,7 +813,7 @@
 
   function heroPickTag(g) {
     const ps = pickStatus(g);
-    return ps ? ` <small class="pick-tag ${ps.cls}" title="${esc(pickTitle(g))}">BONES picked ${esc(ps.team.abbr)} · ${ps.text}</small>` : '';
+    return ps ? ` <small class="pick-tag ${ps.cls}" title="${esc(pickTitle(g))}">${N()} picked ${esc(ps.team.abbr)} · ${ps.text}</small>` : '';
   }
 
   // In-game NBA: the two fives on the floor, each player's season BONES per 36
@@ -832,11 +833,11 @@
       m.change != null && Math.abs(m.change) >= 0.5
         ? `<small class="lu-change">Last sub: ${esc((m.change > 0 ? g.home : g.away).abbr)} +${Math.abs(m.change).toFixed(1)}</small>`
         : '';
-    const title = `Each five on the floor's season BONES per 36, added up, turned into the points per 48 minutes an edge that size has been worth this season (${L.slope.toFixed(2)} a point of edge). A small, noisy signal: +10 per 48 is about 2 points over 10 minutes.`;
+    const title = `Each five on the floor's season ${N()} per 36, added up, turned into the points per 48 minutes an edge that size has been worth this season (${L.slope.toFixed(2)} a point of edge). A small, noisy signal: +10 per 48 is about 2 points over 10 minutes.`;
     return `<div class="lineup-edge" title="${esc(title)}">
       <div class="lu-head"><span>Lineup edge</span><b>${lead ? `${esc(lead.abbr)} +${Math.abs(L.per48).toFixed(1)}<small> pts/48</small>` : 'Even'}</b>${change}</div>
       <div class="lu-bar"><i style="width:${(100 - pos).toFixed(1)}%;background:${g.away.css}"></i><i style="width:${pos.toFixed(1)}%;background:${g.home.css}"></i></div>
-      <div class="lu-vals"><span>${esc(g.away.abbr)} ${L.away.toFixed(1)}</span><small>BONES per 36, five on court</small><span>${L.home.toFixed(1)} ${esc(g.home.abbr)}</span></div>
+      <div class="lu-vals"><span>${esc(g.away.abbr)} ${L.away.toFixed(1)}</span><small>${N()} per 36, five on court</small><span>${L.home.toFixed(1)} ${esc(g.home.abbr)}</span></div>
     </div>`;
   }
 
@@ -868,7 +869,7 @@
     if (preBones) g._cap = '';
     const topBones = preBones && g.pre.bones && (g.pre.bones.top.away.length || g.pre.bones.top.home.length);
     const leadersTitle = topBones
-      ? 'Top BONES per 36 <small>this season · tonight\'s rotation</small>'
+      ? `Top ${N()} per 36 <small>this season · tonight's rotation</small>`
       : !g.players.length
       ? 'Players to watch'
       : metric === 'imp'
@@ -906,7 +907,7 @@
       <div class="g-wp">${bonesP(g) == null ? wpBar(g) : bonesBar(g)}</div>
       <div class="h-body">
         <section class="h-col">
-          <h3 class="wp-h">${preBones ? 'BONES prediction' : 'Win probability'}${chart && g.seriesN?.length && !g._cap ? '<small class="wp-key"><i class="k-espn"></i>ESPN <i class="k-score"></i>Score only</small>' : ''}${chart && g._cap ? g._cap : ''}${heroPickTag(g)}</h3>
+          <h3 class="wp-h">${preBones ? `${N()} prediction` : 'Win probability'}${chart && g.seriesN?.length && !g._cap ? '<small class="wp-key"><i class="k-espn"></i>ESPN <i class="k-score"></i>Score only</small>' : ''}${chart && g._cap ? g._cap : ''}${heroPickTag(g)}</h3>
           ${chart}
           ${hide ? '' : swingsHTML(g)}
           ${partsHTML(g)}
@@ -1192,7 +1193,7 @@
           <h2>Rankings</h2>
           <p>${opts.dayLabel} · ${played.length} game${played.length === 1 ? '' : 's'} with play-by-play</p>
         </div>
-        <div class="seg" role="group" aria-label="Rank by">${seg('imp', 'BONES <small>beta</small>')}${seg('wpa', 'WPA')}</div>
+        <div class="seg" role="radiogroup" aria-label="Player value">${[1, 2].map((v) => `<button type="button" data-bver="${v}" role="radio" class="${SB.impact.version() === v ? 'on' : ''}" aria-checked="${SB.impact.version() === v}">${SB.impact.name(v)}</button>`).join('')}</div>
       </div>
       ${rankTabs(tab)}`;
 
@@ -1200,6 +1201,7 @@
 
     const html = `${head}${body}
       <p class="players-note"><b>BONES</b> (<b>B</b>ounded <b>O</b>dds <b>N</b>et <b>E</b>ffect <b>S</b>core, beta; named for our patron saint, Bones Hyland) credits each play's win-probability swing only to the players responsible for it (shooter and assister, the player who turned it over or fouled, the rebounder or stopper; a free-throw trip is split between the fouler and the shooter), then divides it by the square root of the play's leverage, so a blowout or a heavy underdog's game still counts and a thriller doesn't count five times over. Because it's all in win probability, it ranks every sport on one list.
+      <b>MOUSSA</b> (<b>M</b>argin-<b>O</b>nly <b>U</b>ncertainty <b>S</b>wings, <b>S</b>plit by <b>A</b>ction; named for our second patron saint, Moussa Diabaté) does the same on our own win probability from the score, the clock and who has the ball, 50% at tip for everyone, so a favorite's lead counts as much as an underdog's (basketball; football and hockey show BONES). Switch between them in settings or with the chips above; <a href="#faq">how they work</a>.
       <b>WPA</b> is the classic number: in basketball every player on the floor shares each swing, in football the players named on the play. Basketball and football WPA aren't on the same scale. A play's WPA is its raw swing for the team it helped. <b>Single plays</b> are ranked by their BONES swing: the free-throw and spike corrections without the leverage divide, which exists to make player totals fair across games and on one play would shrink clutch swings and inflate early ones. Win probability already makes a late play in a close game bigger than an early one, and a play after the game is decided nearly worthless, so there's no extra time factor; use When to compare early plays with each other.</p>`;
     if (html !== playersHTMLCache) {
       playersHTMLCache = html;
@@ -1307,9 +1309,16 @@
       // Past the sport's best (or below its worst): extend by the raw gap.
       if (x > xs[n - 1]) return quantile(1) + (x - xs[n - 1]);
       if (x < xs[0]) return quantile(0) - (xs[0] - x);
-      // Expected better players per game, as a place among everyone's regulars.
-      const better = (1 - q) * perGame[r.g.league];
-      return quantile(1 - better / perGameAll) + x * 1e-6; // a sliver of the raw number breaks ties
+      // Expected better players per game, as a place among everyone's regulars;
+      // the bottom tail mirrors it: expected worse players per game (since Nov 21).
+      // r > 1 (more regulars per game than the pool: football) takes the higher of
+      // the two, r < 1 the lower, so each tail uses its own. With the top rule
+      // alone, a sport with r > 1 ran out of room at the bottom: on Nov 20 five
+      // NCAAF players from −4.7 to −0.4 BONES all showed −8.3.
+      const ratio = perGame[r.g.league] / perGameAll;
+      const top = 1 - (1 - q) * ratio;
+      const bottom = q / ratio;
+      return quantile(ratio > 1 ? Math.max(top, bottom) : Math.min(top, bottom)) + x * 1e-6; // a sliver of the raw number breaks ties
     };
     return { all, rel, sports: Object.keys(mean) };
   }

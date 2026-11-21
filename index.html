@@ -19,7 +19,7 @@
 <body>
   <header class="bar">
     <a class="brand" href="./" aria-label="Scoreboard home">SCORE<span>BOARD</span></a>
-    <span class="bones-v2-badge" id="bonesV2Badge" hidden title="BONES v2 is on: plays are credited on a score-only win probability (settings)">BONES v2</span>
+    <a class="bones-v2-badge" id="bonesV2Badge" href="#faq" hidden title="MOUSSA is on: plays are credited on a score-only win probability (settings). What's MOUSSA?">MOUSSA</a>
 
     <nav class="views" id="views" aria-label="Views">
       <a href="#" data-view="board">Scores</a>
@@ -89,15 +89,14 @@
 
           <section class="set">
             <h4>Player value</h4>
-            <button type="button" class="blur-switch" id="metricSwitch" role="switch" aria-checked="false"
-              title="Experimental: credit each play to the players responsible, leverage-adjusted"><i></i>BONES <small>beta</small></button>
-            <p class="set-note">Off: classic WPA. On: credit for each player's own plays, leverage-adjusted.</p>
+            <div class="seg value-toggle" id="valueToggle" role="radiogroup" aria-label="Player value">
+              <button type="button" data-bver="1" role="radio" aria-checked="true" title="Credit on ESPN's win probability">BONES</button>
+              <button type="button" data-bver="2" role="radio" aria-checked="false" title="Credit on a score-only win probability">MOUSSA</button>
+            </div>
+            <p class="set-note"><b>BONES</b>: each play's swing in ESPN's win probability, credited to the players responsible. ESPN opens every game with team strength priced in, so a favorite earns credit only for beating expectations. <b>MOUSSA</b>: the same idea on our own win probability from the score, the clock and who has the ball, 50% at tip for everyone (basketball; football and hockey use BONES). Pregame picks are locked for both. <a href="#faq">How they work</a></p>
             <button type="button" class="blur-switch" id="floorSwitch" role="switch" aria-checked="true"
-              title="A one-sided game still credits the winner"><i></i>Game floor</button>
-            <p class="set-note">On: a finished game that stayed one-sided still credits the winning team, up to 75% of a typical game, by their share of its swings. Off: swing only.</p>
-            <button type="button" class="blur-switch" id="bonesV2Switch" role="switch" aria-checked="false"
-              title="Credit plays on a score-only win probability instead of ESPN's"><i></i>BONES v2 <small>beta</small></button>
-            <p class="set-note">Off: BONES on ESPN's win probability, which opens each game with team strength priced in, so a favorite earns credit only for beating that. On: on a score-only win probability that starts every game at 50%, so a lead counts the same whoever was expected to win (basketball; football and hockey unchanged; no game floor). Labeled "BONES v2" wherever it shows.</p>
+              title="A one-sided game still credits the winner (BONES only)"><i></i>Game floor <small>BONES</small></button>
+            <p class="set-note">On: a finished game that stayed one-sided still credits the winning team, up to 75% of a typical game, by their share of its swings. Off: swing only. MOUSSA has no floor.</p>
           </section>
 
           <section class="set">
@@ -141,6 +140,7 @@
   <section id="season" class="players season" hidden aria-label="NBA season standings"></section>
   <section id="nflseason" class="players season" hidden aria-label="NFL season standings"></section>
   <section id="bonezone" class="bonezone" hidden aria-label="The Bone Zone: how reliable BONES is"></section>
+  <section id="faq" class="faq" hidden aria-label="How BONES and MOUSSA work"></section>
   <footer class="foot">
     Scores, play-by-play and win probability from ESPN's public feed. WPA = change in a team's win probability credited to a player: while on the court in the NBA, on plays they were part of in the NFL and NHL (NHL win probability is our own model; ESPN doesn't publish one).
     Click any game to pin it to the top.
@@ -170,6 +170,7 @@
   <script src="js/recap.js"></script>
   <script src="js/myteams.js"></script>
   <script src="js/filter.js"></script>
+  <script src="js/faq.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

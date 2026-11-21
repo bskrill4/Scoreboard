@@ -89,7 +89,13 @@ blowout or a heavy underdog's game isn't starved. Two feed corrections (Impact o
 a **free-throw trip** (foul through last free throw) counts as one unit, split between the fouler (charged)
 and the shooter (credited) for its expected value, plus the shooter's makes above or below it, since the
 NBA feed prices FTs in at the foul and college prices them on the make; and a **one-row spike** that the
-next non-scoring row undoes within 20s is netted out. Knobs: `IMPACT`, `SPIKE_SEC`, `ftPct` in `js/engine.js`.
+next non-scoring row undoes is netted out: in the NBA only at the same game clock (a miss and its offensive
+rebound), in college within 20s. Until Nov 21 the NBA used 20s too, which also cancelled real events of the next
+possession against each other (a turnover, then the other team's miss 19s later; a basket, then the opponent
+drawing a foul): 16% of all swing was netted on Nov 20, about half of it across possessions. Same-clock backtest
+(235 games): log-loss −0.637 → −0.624 (90% range of the change +.003 to +.023), on/off r .348 → .357; 2s and 5s
+scored about the same. Knobs: `IMPACT`, `SPIKE_SEC`, each league's `spikeSec`, `ftPct` in `js/engine.js`
+(`SB.impact.tune.spikeSec` overrides it for tests).
 The √leverage divide is for **player totals** only. **Single plays** (Rankings › Plays, the chart bubbles)
 rank by their corrected swing: checked on 37 games (Nov 8–10), early swings in competitive games are honest
 (NBA: no reversal afterwards; neither feed is "lumpy"), the feeds already value an early basket below a late
@@ -121,7 +127,10 @@ among his sport's regulars that day, as how many players a game of that sport wo
 ((1 − percentile) × regulars per game), read back onto the BONES scale of all sports' regulars together. Each sport then
 gets top spots in proportion to its games, not its players: spread scaling and plain percentiles both followed headcount,
 and hockey dresses ~19 regulars a game to basketball's ~11 (Nov 19, 12 NHL / 4 NBA / 5 NCAAM / 1 NFL games: top 50 NHL 33
-by spread, 35 by percentile; by rarity per game NHL 28, NCAAM 11, NBA 9, NFL 2). **Plays** (`#plays`) ranks the day's biggest single plays, with who
+by spread, 35 by percentile; by rarity per game NHL 28, NCAAM 11, NBA 9, NFL 2). The bottom tail mirrors it (since
+Nov 21): how many players a game would be expected to have doing worse. With the top rule alone a sport with more
+regulars per game than the pool ran out of room at the bottom (Nov 20: five NCAAF players from −4.7 to −0.4 BONES all
+showed −8.3); the top of the list is unchanged. **Plays** (`#plays`) ranks the day's biggest single plays, with who
 was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
 
 **NBA season** (Rankings › NBA season, `#season`, `js/season.js`): every finished regular-season game is replayed
@@ -152,6 +161,22 @@ the top 1/5/20/80% of the chosen position; the filter is games played (default 3
 position over the last **3 weeks** (2+ games in the window, 2+ before it), rated by Impact per game. On defense only
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
 every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
+
+**MOUSSA** (since Nov 21; until then "BONES v2"): **M**argin-**O**nly **U**ncertainty **S**wings, **S**plit by **A**ction,
+named for our second patron saint, Moussa Diabaté. It's no longer framed as a version of BONES but as its own metric beside
+it. Settings › Player value is a **BONES | MOUSSA** toggle (BONES by default, `sb.bonesV`, `SB.impact.name()`), with the
+same chips on Rankings; classic WPA is no longer selectable there (it stays as a column). The header badge reads MOUSSA
+and links to the **FAQ** (`#faq`, `js/faq.js`: what each is for, how it's built, the rules they're held to), which settings
+also links. Every label (cards, picks, leaders, Rankings, the drawer, season standings, the Bone Zone's skull) names
+whichever is on; single-play swings always say BONES. **Picks for both**: `SB.bones.models()` builds both models at once
+(`SB.impact.withVersion`), and the pick tracker locks a pick from each before every NBA tip-off into its own store
+(`sb.bonesPicks`, `sb.moussaPicks`; `SB.bones.picksOf(v)`); a final settles both. The morning recap shows both records,
+the games where they split and who was right. **The Bone Zone** has its own **BONES check / MOUSSA check** buttons
+(starting from the toggle; each check is counted once and kept until a setting changes the numbers): the skull grades the
+chosen metric (rows read under it with `SB.impact.withVersion`; its team-vs-margin check uses MOUSSA's own rows, which
+have no floor). Asking about upcoming games lists **both** metrics' calls for every game, the checked one brighter, and
+marks a **Split** (blue) wherever they pick different winners; the skull names the splits ("whichever is right there is
+the one that's learning something"). Below, "v1" is BONES and "v2" is MOUSSA.
 
 **BONES v2** (beta, basketball; settings › **BONES v2**, off by default, `sb.bonesV`): the same play credits, but on a
 **score-only win probability** instead of ESPN's. ESPN's opens every game with team strength priced in (San Antonio
@@ -201,6 +226,38 @@ the actual, 215 players): the default scores r .352 (v1 .356); sharing improves 
 misses 50% (r .443, gain +.09, 90% range +.02 to +.16), mostly from the misses. The game backtest says the opposite
 just as clearly (log-loss −0.567 → −0.586, 90% range of the change −.036 to −.002). The two tests disagree, so the
 defaults stay until we know why.
+Nov 21, why they disagree (235 games). The price isn't it: by miss type an offensive rebound is worth (1 − the
+offense's recovery rate) × the rest of the possession = 0.72 (blocked shots) to 0.91 (above-the-break threes) against
+v2's flat 0.83, and repricing moves rebounders' totals by −4% to +3%. A placebo (`tune.keepFn`: the share kept on any
+play) says the on/off test mostly rewards sharing as such: moving the same amount of credit from every play, flat,
+gains nearly as much (r .354 → .426, against .433 for rebounds and misses) and costs the game backtest nothing
+(−0.5657 → −0.5668), as does moving it from random plays (.417, −0.5665). Offensive rebounds alone (40% kept): on/off
+.382 (+.004 to +.054 over the default), game backtest unchanged, and no better than a placebo of the same size. So
+neither test can tell offensive-rebound credit apart from sharing in general; the backtest's objection is to sharing
+misses. Not adopted.
+A flat team share as a feature (every play but defensive rebounds: 10% to 50% to the other four on the floor) isn't
+backed either. On/off rises steadily with the share (r .354 → .386, .418, .447, .473, .494), which is the test
+rewarding plus-minus as such: it would keep climbing toward pure plus-minus. The neutral tests don't move: lineup r
+.0645 → .066 at every share, game log-loss −0.5657 → −0.5666 at 20% and −0.5706 at 50% (all within noise). Lesson:
+the on/off test can't judge a change that moves credit between teammates on the floor, since any such move makes
+BONES more like plus-minus; use it only for changes that leave that alone.
+Why the game backtest objects (hypothesis 1, confirmed): it's the games with someone missing. Rebounds and misses
+shared (40%/50%), change in log-loss by game: 31 games with no rotation player out +0.008 (noise), 126 games with
+someone out −0.022 (90% range −.042 to −.002). With the absence adjustment switched off (`outWeight: 0`) the gap
+disappears (−0.001), and the adjustment that helps the default (−0.574 → −0.566) hurts the shared version (−0.575 →
+−0.582). Misses alone behave the same way; offensive rebounds alone are noise both ways. A game where a player sits is
+a with/without test of his rating, and the unshared ratings predict those games better, so the evidence there is for
+keeping a missed shot's cost on the shooter.
+Garbage time (hypothesis 3, rejected): 14% of all v2 credit, and 14% of offensive-rebound credit, comes from plays that
+start with the score-only win probability past 90% either way; rebounders aren't above that (Diabaté 6%, Clingan 9%,
+Kessler 23%, Gilgeous-Alexander 18%, Jokić 23%). Counting those plays at half, a quarter or nothing
+(`tune.decidedW`, `tune.decidedAt`) makes the game backtest worse (−0.5657 → −0.571, −0.575, −0.580) and the lineup
+test worse (.0645 → .0632, .0621, .0607); at 95% it's flat.
+Spacing (hypothesis 5, no effect found): spacers = 5.5+ three-point attempts per 36 (the median). Share of misses the
+offense gets back, by spacers on the floor: 1: 31.7%, 2: 32.6%, 3: 32.7%, 4: 33.2%, 5: 33.0%; points after a player's
+offensive rebound 1.24, 1.31, 1.22, 1.20, 1.26. The specialists (Diabaté, Kessler, Sabonis, Clingan) play nearly
+all their minutes with 3-4 spacers, so their own rates can't be split by it. Net of all five hypotheses (Nov 21, 15
+games a team): v2's offensive-rebound credit stands; revisit with a bigger sample.
 
 **Game floor** (on everywhere by default; settings › **Game floor** off = swing only): Impact pays for swings, so a
 game that stayed one-sided hands out little credit and the winner's dominance never shows (GSW–SA, Nov 13: 37 in total
@@ -269,7 +326,7 @@ a finished hat trick .6; a shutout bid only for a goalie whose team leads (at 0-
 **Gold chips** mark milestones and records and jump the index while live (summed, capped at +40;
 `goldChips` in `js/watch.js`): an NBA team chasing the **3PT record (29)** — on pace for 30 (+20), 4 or fewer from
 30 in the fourth (+30), tying (+30) or breaking it (+35) — a
-**50-point game** (+20), a player **near his first career triple-double** (+20), a player **chasing Adebayo's 83**
+**50-point game** (+20), a player **chasing 50** (44+ points in the fourth or overtime, +15, `FIFTY`), a player **near his first career triple-double** (+20), a player **chasing Adebayo's 83**
 or **Wilt's 100** (+30 to +40), a **quadruple-double** (watch +30 once three categories are in and the
 fourth is at 7; done +40) and **300 combined points** (pace +20, reached +30). "On pace", from halftime
 on: count / mark ≥ minutes played / 48, from the game clock, with the bar rounded down (30 threes: 15 at
