@@ -91,6 +91,20 @@ Note for review: the morning recap's "Best game" uses the watch index at the fin
 
 Values shown in these tables (BONES, MOUSSA, sport-adjusted) are untouched; only styling and keyboard access changed.
 
+## 6. Review fixes to Soccer, Watch style and tables
+
+From a second code review (BONES/MOUSSA check: clean).
+
+| Change | Why |
+| --- | --- |
+| `soccer.js`: a load asked for while one is in flight (day or league change during the 30s poll) is queued and runs right after. | It was dropped, leaving "Loading matches…" for up to 30s. |
+| `soccer.js`: a poll that changes nothing leaves the tab alone; when it does rebuild, open "Goals and red cards" lists and the focused control are restored. | Every poll closed open lists and dropped keyboard focus to the page. |
+| `main.js`: a Watch style change re-ranks without the new-top-game chime or notification (`userRerank` one-shot flag next to `filterSame`). | The person caused the change; it isn't news. |
+| `main.js`: `tick()` skips drawing the hidden board while the Soccer tab is open. | Wasted work every tick. |
+| Zebra stripes and hover now include row-header cells (`th`), so the Soccer table's team column stripes too. | The stripe broke on that column. |
+
+Note: the morning recap caches the night's "Best game" under whichever Watch style was active when the recap was first built that morning.
+
 ## How to verify the whole branch
 
 1. `python server.py` (or `ruby server.rb`), open http://localhost:5173.

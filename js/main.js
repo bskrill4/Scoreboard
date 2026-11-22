@@ -49,6 +49,7 @@
   let shownTop = null; // the game in the top spot on the last tick
   let filterText = ''; // the board filter box
   let chimeFilter = '';
+  let userRerank = false; // set by SB.refresh: the next tick's top-game change was the person's doing
 
   // Sports switched off in the top bar (remembered per browser).
   let hiddenLeagues = new Set();
@@ -605,7 +606,8 @@
     shownTop = models[0]?.id || null;
     // Chime when a different game takes the top spot on its own: not on the
     // first paint, a day change, a pin, a filter change, or the old top game leaving the board.
-    const filterSame = filterText === chimeFilter;
+    const filterSame = filterText === chimeFilter && !userRerank; // a Watch style change isn't news either
+    userRerank = false;
     chimeFilter = filterText;
     if (prevHero && shownTop && shownTop !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && filterSame && models.some((m) => m.id === prevHero) && !SB.focus.isOn()) {
       SB.chime.play();
@@ -629,6 +631,7 @@
     else if (view() === 'nflseason') SB.nflSeason.render();
     else if (view() === 'bonezone') SB.boneZone.render();
     else if (view() === 'faq') SB.faq.render();
+    else if (view() === 'soccer') {} // js/soccer.js draws its own tab
     else SB.ui.render(models, { heroId: shownTop, pinnedId, toTop });
     if (focusing) {
       // Leave focus if its game is gone (a day change, a filter) or another view opened.
@@ -1383,7 +1386,10 @@
       showGame(a.dataset.day || loadedDay, a.dataset.game, a.dataset.gleague);
     });
     applyView();
-    SB.refresh = () => tick(); // re-rank now (js/watchstyle.js, after a weights change)
+    SB.refresh = () => {
+      userRerank = true; // re-rank now (js/watchstyle.js, after a weights change), without the new-top chime
+      tick();
+    };
     window.addEventListener('hashchange', () => {
       applyView();
       window.scrollTo(0, 0);

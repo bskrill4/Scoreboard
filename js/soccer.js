@@ -189,8 +189,12 @@
   }
 
   // ---------- fetching ----------
+  let again = false; // a load asked for mid-fetch (day or league change) runs right after
   async function load(force) {
-    if (busy) return;
+    if (busy) {
+      again = true;
+      return;
+    }
     busy = true;
     const d = viewDay();
     const now = Date.now();
@@ -211,6 +215,10 @@
     );
     busy = false;
     if (visible()) render();
+    if (again) {
+      again = false;
+      load();
+    }
   }
 
   // ---------- rendering ----------
@@ -273,7 +281,7 @@
 
   function cardHTML(g) {
     const lg = byId.get(g.league);
-    return `<article class="ms-card${g.state === 'live' ? ' is-live' : ''}" style="--home:${esc(g.home.color)};--away:${esc(g.away.color)}" aria-label="${esc(label(g))}">
+    return `<article data-id="${esc(g.id)}" class="ms-card${g.state === 'live' ? ' is-live' : ''}" style="--home:${esc(g.home.color)};--away:${esc(g.away.color)}" aria-label="${esc(label(g))}">
       <div class="g-top">
         <span class="lg">${esc(lg?.short || '')}</span>
         <span class="status ${g.state}">${g.state === 'live' ? '<i class="dot"></i>' : ''}${esc(statusOf(g))}</span>
@@ -329,7 +337,7 @@
     const empty = !list.length
       ? `<p class="ms-empty">${loading ? 'Loading matches…' : prefs.leagues.length ? `No matches ${dayLabel(d) === 'Today' ? 'today' : `on ${esc(dayLabel(d))}`} in the leagues you picked.` : 'Pick at least one league above.'}</p>`
       : '';
-    root.innerHTML = `
+    const html = `
       <div class="ms-head">
         <h2>Soccer <small>${esc(dayLabel(d))}${live ? ` · <span class="ms-live">${live} live</span>` : ''}</small></h2>
         <nav class="days ms-days" aria-label="Day">
@@ -344,6 +352,19 @@
       ${empty}
       ${list.length ? (prefs.layout === 'table' ? tableHTML(list) : `<div class="ms-grid">${list.map(cardHTML).join('')}</div>`) : ''}
       <p class="set-note ms-note">Scores from ESPN's public feed. The watch index here is a soccer-only version: closeness and the minute count most, then team quality (record), with bonuses for late drama, comebacks, red cards and goal fests. These matches don't enter the main board, Rankings, BONES or MOUSSA.</p>`;
+    if (root._html === html) return; // a poll with nothing new: leave focus and open details alone
+    // Keep what the person had open or focused across the rebuild.
+    const open = new Set([...root.querySelectorAll('.ms-card details[open]')].map((d) => d.closest('.ms-card').dataset.id));
+    const f = document.activeElement;
+    const focusSel = root.contains(f)
+      ? f.closest('.ms-card') && f.tagName === 'SUMMARY'
+        ? `.ms-card[data-id="${f.closest('.ms-card').dataset.id}"] summary`
+        : ['mleague', 'mday', 'mlayout', 'msort'].map((k) => (f.dataset?.[k] != null ? `[data-${k}="${f.dataset[k]}"]` : '')).find(Boolean)
+      : null;
+    root._html = html;
+    root.innerHTML = html;
+    for (const id of open) root.querySelector(`.ms-card[data-id="${id}"] details`)?.setAttribute('open', '');
+    if (focusSel) root.querySelector(focusSel)?.focus();
   }
 
   // Keep focus on the control that was used, since render() rebuilds the view.
