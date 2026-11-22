@@ -671,6 +671,7 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .views a:hover { color: var(--text); }
 .views a.on { color: var(--yellow-ink); background: var(--yellow); }
 @media (max-width: 420px) { .views { gap: 2px; } .views a { padding: 4px 6px; letter-spacing: .03em; } } /* four links + the cog on a phone */
+@media (max-width: 440px) { .views { gap: 0; } .views a { padding: 4px 4px; font-size: 11px; letter-spacing: 0; } } /* five links (Soccer) + the cog */
 .views .blur-switch { margin-left: 8px; }
 .blur-switch small, .seg small { font-size: 9px; font-weight: 800; opacity: .7; }
 
@@ -2061,3 +2062,50 @@ html.a11y-links a:not(.brand):not(.skip-link):not(.bones-v2-badge):not([data-vie
   .widx, .chip, .pin, .blur-switch i { border: 1px solid CanvasText; }
   #board article.game:focus-visible { outline: 3px solid Highlight; }
 }
+
+/* ---------------- Soccer tab (js/soccer.js) ---------------- */
+.soccer { max-width: 1200px; margin: 0 auto; padding: 16px; }
+.ms-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; margin-bottom: 10px; }
+.ms-head h2 { margin: 0; font-size: 22px; font-weight: 900; text-transform: uppercase; letter-spacing: .04em; margin-right: auto; }
+.ms-head h2 small { font-size: 13px; font-weight: 700; color: var(--dim); text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.ms-live { color: var(--red); }
+.ms-days { display: flex; align-items: center; gap: 4px; }
+.ms-leagues { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.ms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.ms-card {
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px;
+  border-top: 3px solid color-mix(in srgb, var(--home) 70%, var(--line));
+}
+.ms-card.is-live { border-color: color-mix(in srgb, var(--red) 45%, var(--line)); }
+.ms-card .g-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ms-card .chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 1; min-width: 0; }
+.ms-teams { display: grid; gap: 6px; }
+.ms-team { display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; }
+.ms-team .logo { width: 28px; height: 28px; object-fit: contain; }
+.ms-team.lost { opacity: .6; }
+.ms-name { display: flex; flex-direction: column; min-width: 0; }
+.ms-name b { font-size: 15px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ms-name small { font-size: 11px; color: var(--dim); }
+.ms-form { font-family: ui-monospace, Menlo, monospace; letter-spacing: .08em; }
+.ms-score { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.ms-so { font-size: 13px; color: var(--dim); }
+.ms-goals { margin-top: 8px; font-size: 12px; }
+.ms-goals summary { cursor: pointer; color: var(--dim); }
+.ms-goals ol { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; }
+.ms-min { display: inline-block; min-width: 3.2em; color: var(--dim); font-variant-numeric: tabular-nums; }
+.ms-foot { margin-top: 8px; font-size: 11px; color: var(--dim); }
+.ms-empty, .ms-err { color: var(--dim); padding: 24px 0; }
+.ms-err { color: var(--red); padding: 4px 0 10px; }
+.ms-note { margin-top: 16px; }
+.ms-table th button { all: unset; cursor: pointer; }
+.ms-table th button:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+.ms-table th[aria-sort="ascending"], .ms-table th[aria-sort="descending"] { color: var(--yellow); }
+.ms-table tbody th { border-top: 1px solid var(--line); padding: 8px 12px; font-weight: 800; color: var(--text); background: none; position: static; font-size: 13px; text-transform: none; letter-spacing: 0; }
+.ms-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.ms-table .tr { text-align: right; }
+.ms-table .ms-sc { text-align: center; font-weight: 900; }
+.ms-table .ms-why { color: var(--dim); white-space: normal; min-width: 160px; }
+.ms-table tr.is-live td:first-child { box-shadow: inset 3px 0 var(--red); }
+.ms-table .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-right: 6px; vertical-align: middle; }
+/* The board's own day picker, filter and slate don't apply to the Soccer tab, which has its own day. */
+body.view-soccer .bar #days, body.view-soccer .bar #todayBtn, body.view-soccer .bar .filter, body.view-soccer .bar .slate { display: none !important; }

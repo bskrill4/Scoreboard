@@ -98,7 +98,7 @@
   }
 
   // ---------- shortcuts ----------
-  const VIEWS = { s: '', r: '#players', p: '#plan', m: '#more', b: '#bonezone', f: '#faq' };
+  const VIEWS = { s: '', r: '#players', p: '#plan', o: '#soccer', b: '#bonezone', f: '#faq' };
   const typing = () => /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
   const cards = () => [...document.querySelectorAll('#board article.game')].filter((c) => c.offsetParent);
   function move(step) {
@@ -127,7 +127,7 @@
       ['g then s', 'Scores'],
       ['g then r', 'Rankings'],
       ['g then p', 'Plan'],
-      ['g then m', 'More sports'],
+      ['g then o', 'Soccer'],
       ['g then b', 'Bone Zone'],
       ['g then f', 'How it works'],
       ['Esc', 'Close a menu, clear the filter, leave focus mode'],

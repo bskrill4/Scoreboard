@@ -1104,7 +1104,7 @@
   // ---------- views & player metric ----------
   // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab), the viewing plan (#plan)
   // and the Bone Zone (#bonezone, a check of how reliable BONES is).
-  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq' };
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq', '#soccer': 'soccer' };
   const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
@@ -1116,6 +1116,7 @@
     $('nflseason').hidden = v !== 'nflseason';
     $('bonezone').hidden = v !== 'bonezone';
     $('faq').hidden = v !== 'faq';
+    $('soccer').hidden = v !== 'soccer'; // js/soccer.js draws and polls it
     document.body.classList.toggle('view-bonezone', v === 'bonezone');
     document.body.classList.toggle('view-faq', v === 'faq');
     const nav = v === 'season' || v === 'nflseason' ? 'players' : v; // both season tabs live under Rankings
