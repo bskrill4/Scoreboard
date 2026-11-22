@@ -115,6 +115,18 @@ Note: the morning recap caches the night's "Best game" under whichever Watch sty
 
 Also confirmed against the standings feed: ESPN's soccer record string is W-D-L (Man City 7-1-3 = 7 W, 1 D, 3 L), which is what the soccer watch index assumes.
 
+## 8. My teams picker: screen reader and keyboard fixes (`js/myteams.js`)
+
+From a whole-app accessibility pass by another review thread.
+
+| Change | Why |
+| --- | --- |
+| Team buttons no longer carry `role="listitem"`; the list is a labelled group ("Teams"). | `role=listitem` overrode the button role, so screen readers didn't call them buttons and `aria-pressed` (starred or not) was invalid. |
+| Sport tabs are now a labelled group of `aria-pressed` buttons instead of `role=tablist/tab`. | The tab roles promised tab panels and arrow-key behaviour that weren't there. Same pattern as the soccer league chips. |
+| After starring a team or switching sport, focus returns to the same button. | The list is redrawn on every toggle, which dropped keyboard focus to the page. |
+
+Not changed on purpose: `js/season.js` has a button group without an `aria-label`, and the BONES | MOUSSA switches use `role=radio` without arrow-key handling. Both sit in BONES/MOUSSA code, which this branch doesn't touch; worth a follow-up if you want it.
+
 ## How to verify the whole branch
 
 1. `python server.py` (or `ruby server.rb`), open http://localhost:5173.
