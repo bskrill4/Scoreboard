@@ -172,6 +172,20 @@ position over the last **3 weeks** (2+ games in the window, 2+ before it), rated
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
 every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
 
+**Standings** (`#standings`, `js/standings.js`, since Nov 22; NBA for now): ESPN's standings by **division,
+conference or league** (records, seeds with tiebreakers, last ten, streak; a line under the 6 seed and a dashed one under
+the 10th) and its injury report, refetched every 10 minutes, plus the team numbers behind the picks: **Diff** (point
+differential a game), **xW MOUSSA / xW BONES** (each game's metric gap between the teams, through one logistic fit of
+results on that gap, summed into expected wins; BONES swing-only, since its game floor goes to the winner), **xPts /
+xPts allowed** (expected points of the shots taken or allowed, `js/xpts.js`, plus free throws made), **xNet**, **Shot
+luck** (points a game from making, and opponents missing, more than expected; T17 says mostly luck so far) and **Top
+injury out** (the best player listed Out by the toggle's metric per 36, 100+ minutes). Below: **the bracket if the
+playoffs started tonight**: ESPN's seeds, the play-in (7 v 8, 9 v 10, then the 7-8 loser v the 9-10 winner) and
+every series projected by the toggle's pick model (higher seed home in 1, 2, 5, 7; players listed Out left out),
+favorites advancing. Each game's team shooting is cached as `_teams` (`SB.bones.teamShots`; `CACHE_VERSION` 32: it is
+deliberately not keyed by team id, because every row reader takes a key with an entry at `[3]` for a player, and team 3
+is New Orleans).
+
 **MOUSSA** (since Nov 21; until then "BONES v2"): **M**argin-**O**nly **U**ncertainty **S**wings, **S**plit by **A**ction,
 named for our second patron saint, Moussa Diabaté. It's no longer framed as a version of BONES but as its own metric beside
 it. Settings › Player value is a **BONES | MOUSSA** toggle (BONES by default, `sb.bonesV`, `SB.impact.name()`), with the
@@ -268,6 +282,38 @@ offense gets back, by spacers on the floor: 1: 31.7%, 2: 32.6%, 3: 32.7%, 4: 33.
 offensive rebound 1.24, 1.31, 1.22, 1.20, 1.26. The specialists (Diabaté, Kessler, Sabonis, Clingan) play nearly
 all their minutes with 3-4 spacers, so their own rates can't be split by it. Net of all five hypotheses (Nov 21, 15
 games a team): v2's offensive-rebound credit stands; revisit with a bigger sample.
+Defense beyond shot quality (Nov 22, after MEM at MIN: MOUSSA had MIN 16%, MIN won 104-95; 241 games, 42,552 shots):
+on-court defense credits the expected points of the shots allowed, not whether they fell. Minnesota holds opponents
+furthest below expected of any team, −0.086 points a shot (about 7 a game), while the quality of shots it allows ranks
+19th, so MOUSSA rates its defense as middling. Is that a skill? Split-half repeatability is weak: team defense r .08
+(odd/even games) and .17 (first/second half); a defender's on-court figure net of his team's .01 and .12 (shooters' own
+shot-making, a known skill, .08 and .19 at this sample). Gobert on the floor −0.098 a shot, but Minnesota without him is
+nearly as good (−0.026 relative, #52 of 172). Charging or crediting the five defenders part of each shot's result
+beyond its expected points (`tune.defMake`, 0 = off) brings team totals closer to point differential (MOUSSA r .843 →
+.865, .879, .887 at 25%, 50%, 100%: partly by construction) but predicts games worse: log-loss −0.578 → −0.586, −0.595,
+−0.613 (90% range of the change at 25%: −.014 to −.002), lineup test flat (.0651 → .0653, .0649, .0629). BONES the same
+direction. Not adopted: so far, opponents' shot-making against a team is mostly luck, as the design assumed.
+A team factor (hypothesis 2, Nov 22, 163 graded games): each team's running margin above or below what its MOUSSA edge
+predicted, shrunk by K games, added to the pick model at weight w. The residual doesn't repeat: first half vs second
+half r −0.31 (it reverses), odd vs even games −0.07 (BONES −0.14, +0.11). Minnesota +6.1 a game, Memphis −0.7. Every
+setting made MOUSSA worse (log-loss −0.578 → −0.580 at w .02 K8, −0.596 at w .1 K8, −0.619 at w .1 K3; second half the
+same). BONES gained a little at small weights (−0.629 → −0.624 at w .05 K8, within noise), fitting BONES's known blind
+spot for team strength. Not adopted: MOUSSA's ratings already carry what persists about a team.
+Depth (hypotheses 3-5, Nov 22; backtest options `shrinkTo`, `actualMinutes`, test-only). (3) Who a player with few minutes
+is pulled toward: in the second half of the season, players with under 100 prior minutes produced 8.8 MOUSSA per 36 and
+100-200 minutes 10.2, against a league average of 11.4, so the average is too generous. Shrinking toward 70% of it:
+MOUSSA log-loss −0.5776 → −0.5764, second half −0.5917 → −0.5881, lineup r .0651 → .0660; 50%: −0.5762; BONES the same
+direction (−0.6286 → −0.6261). Every move is the right way, but all inside noise (90% range at 70%: −.003 to +.006).
+(4) The minutes guess isn't the problem: with the minutes really played, −0.5776 → −0.5792. (5) Confidence by absences:
+with no team missing more than one rotation player MOUSSA is underconfident (68% average confidence, 78% right, 106
+games); with a team missing 3+ it's overconfident (78%, 64%, 11 games). But scales fit on the first half of the season
+made the second half no better (−0.5917 → −0.5937 to −0.6102), so the pattern isn't steady enough to act on yet.
+**Adopted (Nov 22): test 3**, for both metrics: `SHRINK_TO = 0.7` in `js/bones.js` (a player with few minutes, or none,
+starts at 70% of the league average). Every test so far, with its basis, procedure, result and re-run queue, is
+logged in **[TESTS.md](TESTS.md)**. T22 (Nov 22, `tune.offMake`, test-only): taking shooting luck away from shooters
+predicts worse at every share, so offense keeps its makes in full and defense stays on shot quality. T23 (Nov 22,
+`tune.shooterSkill`, `tune.skillDefense`, test-only): a shooter-aware expected value keeps skill with the shooter,
+but removing the rest still predicts worse; re-run mid-season.
 
 **Game floor** (on everywhere by default; settings › **Game floor** off = swing only): Impact pays for swings, so a
 game that stayed one-sided hands out little credit and the winner's dominance never shows (GSW–SA, Nov 13: 37 in total

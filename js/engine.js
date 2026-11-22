@@ -232,7 +232,7 @@
   // offensive rebound's and of a missed shot's credit the player keeps (the rest
   // to his teammates on the floor). spikeSec: overrides each league's spike
   // window (impactAdjust) when set; null = the league's own.
-  const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9 };
+  const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9, defMake: 0, offMake: 1, shooterSkill: null, skillDefense: false };
 
   SB.impact = { tune, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, withVersion, version: () => bonesV, name: (v = bonesV) => NAMES[v === 2 ? 2 : 1], NAMES };
 
@@ -876,7 +876,19 @@
           const prev = i > 0 ? tape.plays[i - 1] : null;
           const m0 = prev ? prev.home - prev.away : 0; // home margin before the shot
           const pointValue = (modelWP(m0 + 1, p.elapsed) - modelWP(m0 - 1, p.elapsed)) / 2;
-          const above = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) - SB.xpts.avg(league) : (p.scoring ? p.pts : 0) - (SB.xpts ? SB.xpts.avg(league) : SHOT_PTS);
+          const xpHere = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) : null;
+          // Test setting (SB.impact.tune.shooterSkill, null = off; TESTS.md, T23): a
+          // Map(player id -> [twos, threes]) of each shooter's points a shot above or
+          // below the table, from earlier games, regressed. xpShooter: the shot's
+          // expected points knowing who took it. Luck (offMake) is measured against
+          // it; with tune.skillDefense the defenders are credited by it too.
+          const skill = SB.impact.tune.shooterSkill?.get(p.p0);
+          const xpShooter = xpHere != null && skill ? xpHere + (p.shot.pts === 3 ? skill[1] : skill[0]) : xpHere;
+          const xpDef = SB.impact.tune.skillDefense ? xpShooter : xpHere;
+          // Test setting (SB.impact.tune.defMake, 0 = off): also charge or credit the
+          // defenders that share of the shot's result above or below its expected points.
+          const made = xpHere != null && SB.impact.tune.defMake ? SB.impact.tune.defMake * ((p.scoring ? p.pts : 0) - xpDef) : 0;
+          const above = (xpHere != null ? xpDef - SB.xpts.avg(league) : (p.scoring ? p.pts : 0) - (SB.xpts ? SB.xpts.avg(league) : SHOT_PTS)) + made;
           const v = (-above * pointValue * ON_COURT_D * p.weight) / 5;
           const vN = (-above * pointValue * ON_COURT_D * wN) / 5; // BONES v2: score-only leverage
           if (v && lineup[defTeam]) {
@@ -888,6 +900,22 @@
               pl.impN += vN;
               pl.defBonesN += vN;
               pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p, def: true });
+            }
+          }
+          // Test setting (SB.impact.tune.offMake, 1 = off): the share of a shot's result
+          // above or below its expected points that its credited players (shooter, and
+          // passer on an assist) keep; the rest is taken back, so they're paid for
+          // the look plus offMake of the luck (TESTS.md, T22).
+          const keepLuck = SB.impact.tune.offMake ?? 1;
+          if (keepLuck !== 1 && xpHere != null) {
+            const luck = (p.scoring ? p.pts : 0) - xpShooter;
+            const mine = (p.credits || []).filter((c) => players.get(c.id)?.teamId === shooter.teamId);
+            const tot = mine.reduce((s, c) => s + c.share, 0);
+            for (const c of tot ? mine : []) {
+              const pl = players.get(c.id);
+              const f = (1 - keepLuck) * luck * pointValue * (c.share / tot);
+              pl.imp -= f * p.weight;
+              pl.impN -= f * wN;
             }
           }
         }

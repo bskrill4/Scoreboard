@@ -14,7 +14,15 @@
   const SB = (window.SB = window.SB || {});
 
   const RECENT = 10; // a team's last N games set each player's minutes
-  const SHRINK_MIN = 150; // a player's rate is pulled toward average until he has minutes
+  const SHRINK_MIN = 150; // a player's rate is pulled toward SHRINK_TO until he has minutes
+  // ...toward 70% of the league average, not all of it (since Nov 22): players with
+  // few minutes really are below average (second half of the season: under 100 prior
+  // minutes 8.8 MOUSSA per 36, 100-200 minutes 10.2, league 11.4), so a thin bench
+  // was rated like a normal one (MEM at MIN, Nov 21). Backtest: MOUSSA log-loss
+  // −0.5776 → −0.5764, lineup r .0651 → .0660; BONES −0.6286 → −0.6261 (within noise,
+  // every measure the same way; see TESTS.md, T20). A player with no minutes at all
+  // starts there too.
+  const SHRINK_TO = 0.7;
   const CAL_MIN_GAMES = 5; // both teams need this many games before a game counts in the backtest
   const CONCURRENCY = 3;
   // Home court: the NBA's long-run edge (about 2.5 points, home teams winning
@@ -172,7 +180,8 @@
       }
     }
     const avgRate = leagueMin ? leagueImp / leagueMin : 0;
-    for (const p of players.values()) p.rate = (p.imp + avgRate * SHRINK_MIN) / (p.min + SHRINK_MIN);
+    const target = avgRate * SHRINK_TO;
+    for (const p of players.values()) p.rate = (p.imp + target * SHRINK_MIN) / (p.min + SHRINK_MIN);
 
     // The logistic slope that best fits this season's games (a coarse search is plenty).
     let k = 0.05;
@@ -187,7 +196,7 @@
     }
     const called = cal.filter((c) => c.diff !== 0);
     const right = called.filter((c) => (c.diff > 0) === (c.win === 1)).length;
-    return { players, teamGames, k, avgRate, record: { right, n: called.length }, games: games.length };
+    return { players, teamGames, k, avgRate, target, record: { right, n: called.length }, games: games.length };
   }
 
   // Projected minutes tonight. history: the team's games this season, oldest
@@ -307,7 +316,7 @@
 
   // ---------- the honest backtest ----------
   // Every game this season, predicted from what was known before it: each
-  // player's BONES a minute to that date (pulled toward the league average, as
+  // player's BONES a minute to that date (pulled toward 70% of the league average, as
   // in buildModel), times his minutes over his team's previous RECENT games.
   // Who sat that night is taken as known (players who logged no minutes are
   // left out), standing in for the injury report the live picks read.
@@ -337,15 +346,21 @@
       const ids = g.home && g.away ? [g.home, g.away] : Object.keys(g.score);
       const [home, away] = ids;
       const avg = leagueMin ? leagueImp / leagueMin : 0;
+      // What a player with few minutes is pulled toward: SHRINK_TO of the league
+      // average (opts.shrinkTo(avg) overrides it, for tests).
+      const target = opts.shrinkTo ? opts.shrinkTo(avg) : avg * SHRINK_TO;
       const rate = (id) => {
         const p = players.get(id);
-        return p ? (p.imp + avg * SHRINK) / (p.min + SHRINK) : avg;
+        return p ? (p.imp + target * SHRINK) / (p.min + SHRINK) : target;
       };
       const played = new Set();
       for (const [pid, r] of Object.entries(g.rows)) if (r[3] && r[3][1] > 0) played.add(pid);
       const strength = (team) => {
         const history = teamGames.get(team) || [];
         if (history.length < CAL_MIN_GAMES) return null;
+        // Testing: opts.actualMinutes weights each player by the minutes he really
+        // played that night (the most a perfect minutes guess could do).
+        if (opts.actualMinutes) return Object.entries(g.rows).reduce((s, [pid, r]) => s + (r[3] && String(r[3][0]) === team ? rate(pid) * (r[3][1] || 0) : 0), 0);
         const ids = [...players].filter(([, p]) => p.team === team).map(([id]) => id);
         const out = new Map(ids.filter((id) => !played.has(id)).map((id) => [id, 1])); // who sat: as if on the injury report
         const proj = projectMinutes(history, ids, out, opts.replacement !== false, RECENT_N);
@@ -582,16 +597,43 @@
     return { ids, st };
   }
 
+  // A tape's team shooting, compact for the per-game cache (Standings, js/standings.js):
+  // { ids: [home, away], s: [[fga, xp (expected points of those shots, js/xpts.js),
+  // fgPts, fta, ftPts, tov, oreb] for each] }. Not keyed by team id: cache readers
+  // take any key with an entry at [3] for a player row, and team 3 exists (New
+  // Orleans). A shot without court coordinates counts at the league's average shot.
+  function teamShots(tape) {
+    const out = { [tape.homeId]: [0, 0, 0, 0, 0, 0, 0], [tape.awayId]: [0, 0, 0, 0, 0, 0, 0] };
+    const avg = SB.xpts?.has('nba') ? SB.xpts.avg('nba') : 1.05;
+    for (const p of tape.plays) {
+      const tid = (p.p0 && tape.roster.get(p.p0)?.teamId) || p.teamId;
+      const t = out[tid];
+      if (!t || p.isSub) continue;
+      const text = `${p.type} ${p.text}`;
+      if (p.fga) {
+        t[0]++;
+        t[1] += p.shot && SB.xpts?.has('nba') ? SB.xpts.xp(p.shot, 'nba') : avg;
+        if (p.scoring) t[2] += p.pts || 0;
+      } else if (/free throw/i.test(p.text) && /\b(makes|misses)\b/.test(p.text)) {
+        t[3]++;
+        if (p.scoring) t[4] += p.pts || 1;
+      } else if (/turnover/i.test(text)) t[5]++;
+      else if (p.isRebound && /offensive/i.test(text)) t[6]++;
+    }
+    for (const t of Object.values(out)) t[1] = +t[1].toFixed(2);
+    return { ids: [tape.homeId, tape.awayId], s: [out[tape.homeId], out[tape.awayId]] };
+  }
+
   // ---------- lineup edge ----------
   // Two fives on the floor, each player's season BONES per 36 added up (a
-  // player with no season yet counts at the league average). edge > 0: home's five.
+  // player with no season yet counts at 70% of the league average). edge > 0: home's five.
   // per48: the edge as the points per 48 minutes it has been worth, from the
   // backtest's fit of every stint this season against the score while those
   // fives were on the floor (Nov 18: 0.83 points per 48 for each point of edge,
   // so a 10-point edge is about +8 per 48, under 2 points over 10 minutes).
   const PER48_FALLBACK = 0.8;
   function lineupEdge(m, homeIds, awayIds) {
-    const per36 = (id) => (m.players.get(String(id))?.rate ?? m.avgRate) * 36;
+    const per36 = (id) => (m.players.get(String(id))?.rate ?? m.target ?? m.avgRate) * 36;
     const sum = (ids) => ids.reduce((s, id) => s + per36(id), 0);
     const home = sum(homeIds);
     const away = sum(awayIds);
@@ -675,5 +717,5 @@
     settleOld: () => Promise.all([stores[1].settleOld(), stores[2].settleOld()]),
   };
 
-  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, models, picksOf, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
+  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, models, picksOf, buildModel, backtest, stints, teamShots, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
 })();

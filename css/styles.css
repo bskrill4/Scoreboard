@@ -2135,3 +2135,47 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .fw-line tbody th i { display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; }
 .fw-sub { margin: 12px 0 4px; font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); }
 .fw-note { margin: 8px 0 0; font-size: 10px; color: var(--dim); }
+
+/* ---------------- Standings (#standings, js/standings.js) ---------------- */
+.st-head { align-items: center; }
+.st-sub { margin: 22px 0 8px; }
+.st-sub small { color: var(--dim); font-weight: 600; margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.st-table td.num, .st-table th { text-align: right; font-variant-numeric: tabular-nums; }
+.st-table th:nth-child(2), .st-table th:last-child { text-align: left; }
+.st-table tbody tr:first-child td { background: none; }
+.st-table td.cur, .st-table th.cur { color: var(--yellow); font-weight: 900; }
+.st-table .pos { color: var(--text); }
+.st-table .neg { color: var(--red); }
+.st-team { display: inline-flex; align-items: center; gap: 8px; }
+.st-team img { width: 22px; height: 22px; object-fit: contain; }
+.st-inj b { font-weight: 700; }
+.st-inj small { color: var(--dim); }
+.st-table tr.st-cut td { border-bottom: 2px solid var(--yellow); }
+.st-table tr.st-cut-out td { border-bottom-style: dashed; border-bottom-color: var(--dim); }
+.st-note { color: var(--dim); font-size: 13px; line-height: 1.5; }
+.st-note a { color: var(--yellow); }
+/* the bracket */
+.bracket { display: grid; gap: 18px; }
+.br-conf h3, .br-finals h3 { margin: 4px 0 8px; font-size: 13px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; }
+.br-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; align-items: stretch; }
+.br-col { display: flex; flex-direction: column; gap: 8px; }
+.br-list { flex: 1; display: flex; flex-direction: column; justify-content: space-around; gap: 10px; }
+.br-col h4 { margin: 0; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.br-match { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; }
+.br-match small { display: block; margin-top: 3px; color: var(--dim); font-size: 10px; }
+.br-team { display: grid; grid-template-columns: 18px 20px 1fr auto auto; align-items: center; gap: 6px; padding: 3px 0; color: var(--dim); font-size: 13px; }
+.br-team i { font-style: normal; font-size: 11px; font-weight: 800; text-align: right; }
+.br-team img { width: 20px; height: 20px; object-fit: contain; }
+.br-team span { font-size: 11px; font-variant-numeric: tabular-nums; }
+.br-team em { font-style: normal; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; }
+.br-team.won { color: var(--text); }
+.br-team.won b, .br-team.won em { color: var(--yellow); }
+.br-finals { max-width: 320px; }
+.br-champ { margin: 8px 0 0; font-weight: 900; font-size: 16px; }
+.br-champ small { color: var(--dim); font-weight: 600; font-size: 12px; }
+@media (max-width: 760px) {
+  .br-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 420px) {
+  .br-grid { grid-template-columns: 1fr; }
+}
