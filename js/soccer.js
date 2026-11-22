@@ -225,9 +225,15 @@
   // ESPN's standings feed (same CORS-open host, /apis/v2/). Kept 10 minutes.
   const tables = new Map(); // league id -> { at, name, rows, error }
   const STAND = 'https://site.api.espn.com/apis/v2/sports';
-  async function loadTable(id) {
+  const tableLoads = new Map(); // league id -> in-flight promise, so two callers share one fetch
+  function loadTable(id) {
     const cur = tables.get(id);
-    if (cur && Date.now() - cur.at < 10 * 60000) return;
+    // Good tables keep 10 minutes; a failed load retries after a minute.
+    if (cur && Date.now() - cur.at < (cur.error ? 60000 : 10 * 60000)) return Promise.resolve();
+    if (!tableLoads.has(id)) tableLoads.set(id, fetchTable(id, cur).finally(() => tableLoads.delete(id)));
+    return tableLoads.get(id);
+  }
+  async function fetchTable(id, cur) {
     try {
       const json = await getJSON(`${STAND}/${byId.get(id).path}/standings`);
       const group = (json.children || [json])[0] || {};
@@ -500,7 +506,10 @@
     load();
     if (prefs.layout === 'standings') loadTable(byId.has(prefs.table) ? prefs.table : LEAGUES[0].id);
     timer = setInterval(() => {
-      if (!document.hidden) load();
+      if (document.hidden) return;
+      load();
+      // Standings open during a matchday: refresh it too (loadTable's cache keeps this to every 10 minutes).
+      if (prefs.layout === 'standings') loadTable(byId.has(prefs.table) ? prefs.table : LEAGUES[0].id);
     }, POLL);
   }
 

@@ -829,7 +829,7 @@
   // Focus mode (js/focus.js): the top game alone in the middle, panels around
   // it. NBA, once the game has started. The same button leaves it.
   function focusBtn(g) {
-    if (g.league !== 'nba' || g.state === 'pre' || !SB.focus) return '';
+    if (g.state === 'pre' || !SB.focus) return ''; // every sport on the board (js/focus.js picks its panels)
     const on = SB.focus.id() === g.id;
     return `<button type="button" class="focus-btn${on ? ' on' : ''}" data-action="focus" aria-pressed="${on}" title="${
       on ? 'Back to the full board' : 'This game alone, with more on it around it'
