@@ -5,11 +5,13 @@ Every change on this branch, with the reason, for PR review. Newest section last
 **Ground rule for the whole branch:** BONES and MOUSSA are untouched. No edits to
 `js/bones.js`, `js/bonezone.js`, `js/engine*.js`, `js/player.js`, `js/season.js`,
 `js/recap.js` or any formula, weight, cache version or output of either stat.
-New code may only *read* what is already on screen. Check with:
+New code may only *read* what is already on screen. One exception, requested by Zapp: the Bone Zone's 3D skull (`buildSkull()` in `js/bonezone.js`, drawing only) was redesigned in section 10. Check the stats are untouched with:
 
 ```bash
-git diff origin/nba-scoreboard --stat -- js/bones.js js/bonezone.js js/engine.js js/engine-nfl.js js/engine-nhl.js js/player.js js/season.js js/recap.js
+git diff origin/nba-scoreboard --stat -- js/bones.js js/engine.js js/engine-nfl.js js/engine-nhl.js js/player.js js/season.js js/recap.js
 # expected: no output
+git diff origin/nba-scoreboard -- js/bonezone.js | grep '^@@'
+# expected: one hunk, inside buildSkull()
 ```
 
 The branch starts from `nba-scoreboard` @ 1f35eb6 ("update cabinet and Moussa
@@ -127,10 +129,30 @@ From a whole-app accessibility pass by another review thread.
 
 Not changed on purpose: `js/season.js` has a button group without an `aria-label`, and the BONES | MOUSSA switches use `role=radio` without arrow-key handling. Both sit in BONES/MOUSSA code, which this branch doesn't touch; worth a follow-up if you want it.
 
+## 9. Focus mode for hockey and football (`js/focus.js`, 1 line in `js/ui.js`)
+
+| Change | Why |
+| --- | --- |
+| The **Focus mode** button now shows on the top game for every sport on the board, not just the NBA (`focusBtn` in `ui.js`). College basketball uses the NBA panels. | Zapp asked for focus pages beyond basketball. |
+| **NHL** panels. Left: Game flow, **By period** (line score, shots on goal by period, shooting %), **Scoring summary** (goals with strength, empty net). Right: Play by play, **Skaters** (top four a team: goals, assists, shots, hits, blocks, PIM), **Penalties** (latest calls and penalty minutes). | None repeat the card, which already shows shots, power plays, hits, faceoffs and goalies. |
+| **Football** panels (NFL and college). Left: Game flow, **By quarter** (line score; total, passing and rushing yards, touchdowns, interceptions thrown, sacks), **Scoring summary**. Right: Play by play, **Turnovers & misses** (interceptions, lost fumbles, turnovers on downs, missed or blocked kicks, safeties, with a giveaway count), **Explosive plays** (20+ yard plays, with a count). | None repeat the card, which already shows the drive, the leaders and the biggest swings. |
+| All of it is read from the tape and players the board already builds for the game: **no new requests**. No BONES or MOUSSA values are used in the hockey or football panels. | Zapp: "not grabbing any more data than we already do." |
+| Long play text is shortened to fit a panel, with the full text on hover; "clock 00:00" and on-ice official rows are dropped. | College football text (reviews, penalties) overflowed the panels. |
+| Focus mode's enter and exit skip their waits when Settings › Accessibility › Reduce motion is on, not only the OS setting. | With the setting on, the animations were already off, which left a dead 0.4s pause. |
+
+Checked on the Nov 21 replay: BYU–Kansas (NCAAF, 3OT) and Oilers–Hurricanes (NHL), every panel filled, no console errors.
+
+Also in this commit, from review of section 7: the standings table now refreshes during a matchday (from the 30s poll; the cache keeps it to every 10 minutes), a failed load retries after a minute instead of ten, and two callers share one in-flight fetch.
+
+## 10. Bone Zone skull redesign (`js/bonezone.js`, `buildSkull()` only; from the skull thread, commit 993a586)
+
+The Bone Zone skull was redesigned to look more like a skull while staying cartoonish: toon shading with ink outlines, a brow ridge, cheekbones, deep tilted eye sockets, an upside-down-heart nose, rounded teeth over a dark mouth, a narrower jaw with a chin, and a crack on the dome. Cursor following, float, talking jaw and eye glow are unchanged. Zapp asked for it to go on this branch. Only the drawing changed; no BONES/MOUSSA code, numbers or text were touched (the diff is one hunk inside `buildSkull()`).
+
 ## How to verify the whole branch
 
 1. `python server.py` (or `ruby server.rb`), open http://localhost:5173.
 2. Press `?` for the shortcut list; Tab to a game card and press Enter to pin it; `j`/`k` to move.
 3. Settings › Accessibility: try each switch. Settings › Watch style: switch and watch the board re-rank.
-4. Open the **Soccer** tab: cards, then Table, click column headers to sort; ‹ › to change day.
-5. Confirm no BONES/MOUSSA file changed (command at the top of this file).
+4. Open the **Soccer** tab: cards, then Table, click column headers to sort; ‹ › to change day; Standings for EPL and UCL.
+5. Start Focus mode on an NHL or football top game (`?replay` works) and check the six panels.
+6. Confirm no BONES/MOUSSA file changed (command at the top of this file).
