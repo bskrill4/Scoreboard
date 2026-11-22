@@ -136,7 +136,7 @@ Not changed on purpose: `js/season.js` has a button group without an `aria-label
 | The **Focus mode** button now shows on the top game for every sport on the board, not just the NBA (`focusBtn` in `ui.js`). College basketball uses the NBA panels. | Zapp asked for focus pages beyond basketball. |
 | **NHL** panels. Left: Game flow, **By period** (line score, shots on goal by period, shooting %), **Scoring summary** (goals with strength, empty net). Right: Play by play, **Skaters** (top four a team: goals, assists, shots, hits, blocks, PIM), **Penalties** (latest calls and penalty minutes). | None repeat the card, which already shows shots, power plays, hits, faceoffs and goalies. |
 | **Football** panels (NFL and college). Left: Game flow, **By quarter** (line score; total, passing and rushing yards, touchdowns, interceptions thrown, sacks), **Scoring summary**. Right: Play by play, **Turnovers & misses** (interceptions, lost fumbles, turnovers on downs, missed or blocked kicks, safeties, with a giveaway count), **Explosive plays** (20+ yard plays, with a count). | None repeat the card, which already shows the drive, the leaders and the biggest swings. |
-| All of it is read from the tape and players the board already builds for the game: **no new requests**. No BONES or MOUSSA values are used in the hockey or football panels. | Zapp: "not grabbing any more data than we already do." |
+| All of it is read from the tape and players the board already builds for the game: **no new requests**. No BONES or MOUSSA values are used in the hockey or football panels. | Zap p: "not grabbing any more data than we already do." |
 | Long play text is shortened to fit a panel, with the full text on hover; "clock 00:00" and on-ice official rows are dropped. | College football text (reviews, penalties) overflowed the panels. |
 | Focus mode's enter and exit skip their waits when Settings › Accessibility › Reduce motion is on, not only the OS setting. | With the setting on, the animations were already off, which left a dead 0.4s pause. |
 
@@ -146,7 +146,7 @@ Also in this commit, from review of section 7: the standings table now refreshes
 
 ## 10. Bone Zone skull redesign (`js/bonezone.js`, `buildSkull()` only; from the skull thread, commit 993a586)
 
-The Bone Zone skull was redesigned to look more like a skull while staying cartoonish: toon shading with ink outlines, a brow ridge, cheekbones, deep tilted eye sockets, an upside-down-heart nose, rounded teeth over a dark mouth, a narrower jaw with a chin, and a crack on the dome. Cursor following, float, talking jaw and eye glow are unchanged. Zapp asked for it to go on this branch. Only the drawing changed; no BONES/MOUSSA code, numbers or text were touched (the diff is one hunk inside `buildSkull()`).
+The Bone Zone skull was redesigned to look more like a skull while staying cartoonish: toon shading with ink outlines, a brow ridge, cheekbones, deep tilted eye sockets, an upside-down-heart nose, rounded teeth over a dark mouth, a narrower jaw with a chin, and a crack on the dome. Cursor following, float, talking jaw and eye glow are unchanged. Zap p asked for it to go on this branch. Only the drawing changed; no BONES/MOUSSA code, numbers or text were touched (the diff is one hunk inside `buildSkull()`).
 
 ## How to verify the whole branch
 
