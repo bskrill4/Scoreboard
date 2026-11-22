@@ -66,6 +66,7 @@
 
   // ---------- cards ----------
   let lastHero = null;
+  let lastInput = 0; // last filter keystroke or day click
   let pending = false;
   function syncCards() {
     pending = false;
@@ -76,11 +77,16 @@
       if (card.getAttribute('tabindex') !== '0') card.setAttribute('tabindex', '0');
       const name = describe(card);
       if (card.getAttribute('aria-label') !== name) card.setAttribute('aria-label', name);
-      if (card.classList.contains('is-hero')) hero = card;
-      else if (!card.hasAttribute('aria-keyshortcuts')) card.setAttribute('aria-keyshortcuts', 'Enter');
+      // Enter pins a tile; the top game is already on top, so it has no shortcut.
+      if (card.classList.contains('is-hero')) {
+        hero = card;
+        card.removeAttribute('aria-keyshortcuts');
+      } else if (!card.hasAttribute('aria-keyshortcuts')) card.setAttribute('aria-keyshortcuts', 'Enter');
     }
     const id = hero?.dataset.id || null;
-    if (id && lastHero && id !== lastHero && !board.hidden) announce(`New top game: ${describe(hero).replace(/^Top game\. /, '')}`);
+    // Not when the person's own filter typing or day change moved it: they caused it and can see it.
+    const own = Date.now() - lastInput < 3000;
+    if (id && lastHero && id !== lastHero && !board.hidden && !own) announce(`New top game: ${describe(hero).replace(/^Top game\. /, '')}`);
     lastHero = id;
   }
   const schedule = () => {
@@ -148,7 +154,7 @@
   function onKey(e) {
     if (e.metaKey || e.ctrlKey || e.altKey || typing()) return;
     // Another dialog (team picker) or the player drawer has the keyboard.
-    if (document.querySelector('dialog[open]:not(.kbd-help)') || document.querySelector('.pl-pane, .drawer.open')) return;
+    if (document.querySelector('dialog[open]:not(.kbd-help)') || document.querySelector('.drawer.open')) return;
     const onCard = document.activeElement?.matches?.('#board article.game');
     if (onCard && (e.key === 'Enter' || e.key === ' ') && e.target === document.activeElement) {
       e.preventDefault();
@@ -277,6 +283,9 @@
     markView();
     buildSettings();
     document.addEventListener('keydown', onKey);
+    const mark = () => (lastInput = Date.now());
+    $('filter')?.addEventListener('input', mark);
+    for (const id of ['dayPrev', 'dayNext', 'dayLabel', 'todayBtn']) $(id)?.addEventListener('click', mark);
   }
 
   SB.a11y = { announce, describe, prefs: () => ({ ...prefs }) };

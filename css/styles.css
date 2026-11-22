@@ -2052,7 +2052,11 @@ html.a11y-contrast {
 }
 html.a11y-contrast body { background: #000; }
 html.a11y-contrast .chip { border-color: currentColor; }
-html.a11y-large body { zoom: 1.15; } /* body sizes are in px, so zoom (not rem) scales them */
+/* Sizes are in px, so zoom (not rem) scales them. Only the content, not the header: main.js
+   positions the settings panel from the header's rect, which zoom would throw off. Slide
+   animations inside a zoomed box overshoot (their deltas come from unzoomed rects), so they're off. */
+html.a11y-large :is(#board, #recap, #banners, #notice, body > section, .foot) { zoom: 1.15; }
+html.a11y-large #board *, html.a11y-large #board { transition: none !important; animation: none !important; }
 html.a11y-calm *, html.a11y-calm *::before, html.a11y-calm *::after {
   animation: none !important; transition: none !important; scroll-behavior: auto !important;
 }

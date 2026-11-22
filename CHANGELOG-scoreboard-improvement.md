@@ -54,3 +54,17 @@ Files touched: `js/soccer.js` (new), `index.html` (menu link, `<section id="socc
 | Phones: menu links shrink a little under 440px so five links and the cog fit on one line. | The Soccer link pushed the cog off screen at 375px. |
 
 Soccer is fully separate: it never enters the main board's ranking, banners, Rankings, BONES or MOUSSA.
+
+## 3. Review fixes to the accessibility layer
+
+From a code review of section 1 (BONES/MOUSSA check: clean).
+
+| Change | Why |
+| --- | --- |
+| `g` then `m` ("More sports") replaced by `g` then `o` → `#soccer`. | `#more` was never a view; it fell back to the board. |
+| The top game drops `aria-keyshortcuts="Enter"` when it becomes the hero. | Enter does nothing on the hero (it's already on top). |
+| "New top game" isn't announced within 3s of the person typing in the filter or changing the day. | They caused the change and can see it; announcing it was chatty. |
+| Larger text zooms only the content (board, recap, banners, views, footer), not the header, and turns off the board's slide animations while on. | `main.js` places the phone settings panel from the header's rect, and FLIP slide deltas come from unzoomed rects; zooming those would misplace and overshoot them. |
+| Dropped a `.pl-pane` selector that matched nothing. | Dead code. |
+
+**Known, pre-existing (not changed):** on phones, while the board is mid view-transition (very frequent in `?replay` at 60×), the transition's snapshot layer paints over an open settings panel. That's how `document.startViewTransition` works (its pseudo-elements sit above the page); it clears as soon as the transition ends.
