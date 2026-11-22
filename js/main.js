@@ -1383,6 +1383,7 @@
       showGame(a.dataset.day || loadedDay, a.dataset.game, a.dataset.gleague);
     });
     applyView();
+    SB.refresh = () => tick(); // re-rank now (js/watchstyle.js, after a weights change)
     window.addEventListener('hashchange', () => {
       applyView();
       window.scrollTo(0, 0);

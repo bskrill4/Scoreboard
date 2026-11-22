@@ -68,3 +68,24 @@ From a code review of section 1 (BONES/MOUSSA check: clean).
 | Dropped a `.pl-pane` selector that matched nothing. | Dead code. |
 
 **Known, pre-existing (not changed):** on phones, while the board is mid view-transition (very frequent in `?replay` at 60×), the transition's snapshot layer paints over an open settings panel. That's how `document.startViewTransition` works (its pseudo-elements sit above the page); it clears as soon as the transition ends.
+
+## 4. Watch style presets (`js/watchstyle.js`, Settings › Watch style)
+
+Files touched: `js/watchstyle.js` (new), `index.html` (script tag after `watch.js`), `js/main.js` (1 line: `SB.refresh = () => tick()` so a settings change re-ranks at once).
+
+| Change | Why |
+| --- | --- |
+| Settings › **Watch style**: Balanced (default, the existing weights untouched), **Drama first** (tension .52, volatility .18, quality .12, stars .08, performance .10) or **Star power** (tension .32, volatility .08, quality .14, stars .24, performance .22). Each set sums to 1 like the default. Saved in `localStorage['sb.watchStyle']`; Balanced clears it. | Lets people tune the viewing index to taste without changing the tuned default for anyone who doesn't opt in. |
+| Works by updating `SB.watch.WEIGHTS` in place; the board re-ranks immediately. | No change to `js/watch.js` itself. |
+
+Checked on the Nov 21 replay (top 5): Balanced 92/81/57/50/44, Star power 85/77/60/52/45, Drama 98/86/55/47/42; same order on that slate, close games move up or down as expected.
+
+Note for review: the morning recap's "Best game" uses the watch index at the final, so a non-default style can change which game it picks. BONES picks and top players in the recap are unaffected.
+
+## How to verify the whole branch
+
+1. `python server.py` (or `ruby server.rb`), open http://localhost:5173.
+2. Press `?` for the shortcut list; Tab to a game card and press Enter to pin it; `j`/`k` to move.
+3. Settings › Accessibility: try each switch. Settings › Watch style: switch and watch the board re-rank.
+4. Open the **Soccer** tab: cards, then Table, click column headers to sort; ‹ › to change day.
+5. Confirm no BONES/MOUSSA file changed (command at the top of this file).
