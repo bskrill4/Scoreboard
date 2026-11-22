@@ -2113,3 +2113,11 @@ html.a11y-links a:not(.brand):not(.skip-link):not(.bones-v2-badge):not([data-vie
 .ms-table .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--red); margin-right: 6px; vertical-align: middle; }
 /* The board's own day picker, filter and slate don't apply to the Soccer tab, which has its own day. */
 body.view-soccer .bar #days, body.view-soccer .bar #todayBtn, body.view-soccer .bar .filter, body.view-soccer .bar .slate { display: none !important; }
+
+/* ---------------- tables: easier to scan (all .ptable tables) ---------------- */
+.ptable { font-variant-numeric: tabular-nums; }
+.ptable tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--text) 2.5%, transparent); }
+.ptable tbody tr:hover td, .ptable tbody tr:focus-visible td { background: color-mix(in srgb, var(--yellow) 7%, transparent); }
+.ptable tbody tr:focus-visible { outline: 2px solid var(--yellow); outline-offset: -2px; }
+.ptable-wrap { max-height: none; }
+html.a11y-contrast .ptable td { border-top-color: var(--line); }

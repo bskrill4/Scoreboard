@@ -250,6 +250,18 @@
     );
   }
 
+  // Rankings/season tables: a row that opens a player's drawer on click gets Tab and Enter too.
+  function syncRows() {
+    for (const tr of document.querySelectorAll('.ptable tbody tr[data-pid]:not([tabindex])')) tr.setAttribute('tabindex', '0');
+  }
+  document.addEventListener('keydown', (e) => {
+    const tr = e.target.closest?.('.ptable tbody tr[data-pid]');
+    if (tr && e.target === tr && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      tr.click();
+    }
+  });
+
   function init() {
     // Skip link: first thing Tab reaches.
     if (!document.querySelector('.skip-link')) {
@@ -282,6 +294,10 @@
     if (views) new MutationObserver(markView).observe(views, { attributes: true, subtree: true, attributeFilter: ['class'] });
     markView();
     buildSettings();
+    for (const id of ['players', 'season', 'nflseason', 'plan']) {
+      const el = $(id);
+      if (el) new MutationObserver(syncRows).observe(el, { childList: true, subtree: true });
+    }
     document.addEventListener('keydown', onKey);
     const mark = () => (lastInput = Date.now());
     $('filter')?.addEventListener('input', mark);

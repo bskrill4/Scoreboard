@@ -82,6 +82,15 @@ Checked on the Nov 21 replay (top 5): Balanced 92/81/57/50/44, Star power 85/77/
 
 Note for review: the morning recap's "Best game" uses the watch index at the final, so a non-default style can change which game it picks. BONES picks and top players in the recap are unaffected.
 
+## 5. Better tables (CSS "tables" block, `js/a11y.js`)
+
+| Change | Why |
+| --- | --- |
+| All `.ptable` tables (Rankings, Plays, NBA/NFL season, Soccer table): tabular numbers, light zebra striping, row hover/focus highlight. | Long numeric columns are easier to scan and line up. |
+| Player rows that open the drawer on click (`tr[data-pid]`) get `tabindex="0"`; Enter or Space opens the drawer. Added from the DOM by `js/a11y.js`; `ui.js`/`season.js` untouched. | Rankings were mouse-only. Checked: 65 rows focusable on the Nov 21 replay, Enter opens the drawer. |
+
+Values shown in these tables (BONES, MOUSSA, sport-adjusted) are untouched; only styling and keyboard access changed.
+
 ## How to verify the whole branch
 
 1. `python server.py` (or `ruby server.rb`), open http://localhost:5173.
