@@ -386,68 +386,86 @@
     const camera = new T.PerspectiveCamera(35, 1, 0.1, 50);
     camera.position.set(0, 0.1, 6);
 
-    scene.add(new T.AmbientLight(0xffffff, 0.45));
-    const key = new T.DirectionalLight(0xfff4dd, 1.1);
+    scene.add(new T.AmbientLight(0xffffff, 0.5));
+    const key = new T.DirectionalLight(0xfff4dd, 0.6);
     key.position.set(2.5, 3, 4);
     scene.add(key);
     const rim = new T.DirectionalLight(0x8ab4ff, 0.5);
     rim.position.set(-3, 1, -2);
     scene.add(rim);
 
-    const bone = new T.MeshStandardMaterial({ color: 0xe9e2cf, roughness: 0.65, metalness: 0.05 });
-    const dark = new T.MeshStandardMaterial({ color: 0x15151a, roughness: 1 });
+    // Cartoon look: two-tone toon shading plus a dark inverted-hull outline on
+    // the big bone shapes.
+    const tones = new T.DataTexture(new Uint8Array([110, 110, 110, 175, 175, 175, 255, 255, 255]), 3, 1, T.RGBFormat);
+    tones.minFilter = tones.magFilter = T.NearestFilter;
+    tones.needsUpdate = true;
+    const bone = new T.MeshToonMaterial({ color: 0xebe2c8, gradientMap: tones });
+    const dark = new T.MeshBasicMaterial({ color: 0x141418 });
+    const ink = new T.MeshBasicMaterial({ color: 0x141418, side: T.BackSide });
     const glow = new T.MeshBasicMaterial({ color: 0xffd60a });
+    const ball = (r, w = 24, h = 18) => new T.SphereGeometry(r, w, h);
+    // A part: geometry at a position, stretched, optionally outlined.
+    const part = (parent, geo, mat, [x, y, z], [sx, sy, sz] = [1, 1, 1], line = 0) => {
+      const m = new T.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.scale.set(sx, sy, sz);
+      parent.add(m);
+      if (line) {
+        const o = new T.Mesh(geo, ink);
+        o.scale.setScalar(1 + line);
+        m.add(o);
+      }
+      return m;
+    };
 
     const skull = new T.Group();
-    // Cranium and cheekbones.
-    const cranium = new T.Mesh(new T.SphereGeometry(1, 40, 32), bone);
-    cranium.scale.set(1, 1.02, 1.12);
-    cranium.position.y = 0.25;
-    skull.add(cranium);
-    const face = new T.Mesh(new T.SphereGeometry(0.78, 32, 24), bone);
-    face.scale.set(1.05, 0.9, 0.95);
-    face.position.set(0, -0.2, 0.25);
-    skull.add(face);
-    // Eye sockets with a glow deep inside.
+    // Cranium: a big round dome, a little wider at the back, plus the brow.
+    part(skull, ball(1, 40, 32), bone, [0, 0.32, -0.05], [1.02, 0.98, 1.08], 0.035);
+    part(skull, ball(0.62, 32, 16), bone, [0, 0.2, 0.6], [1.25, 0.42, 0.62]); // brow ridge
+    // Face: a narrower muzzle under the dome, with cheekbones out to the sides.
+    part(skull, ball(0.7, 32, 24), bone, [0, -0.22, 0.38], [1, 0.82, 0.88], 0.045);
+    for (const x of [-1, 1]) part(skull, ball(0.17), bone, [x * 0.5, -0.2, 0.8], [1.1, 0.75, 0.8]);
+    // Eye sockets: big, deep and dark, with a glow floating inside each.
     const eyes = [];
-    for (const x of [-0.36, 0.36]) {
-      const socket = new T.Mesh(new T.SphereGeometry(0.25, 24, 18), dark);
-      socket.scale.set(1, 0.9, 0.6);
-      socket.position.set(x, 0.0, 0.86);
-      skull.add(socket);
-      const eye = new T.Mesh(new T.SphereGeometry(0.07, 16, 12), glow);
-      eye.position.set(x, 0.0, 1.0); // pokes just out of the socket's front
-      skull.add(eye);
-      eyes.push(eye);
+    for (const x of [-0.37, 0.37]) {
+      const socket = part(skull, ball(0.27), dark, [x, -0.02, 0.88], [1, 1.05, 0.55]);
+      socket.rotation.z = x > 0 ? -0.25 : 0.25; // tilted in a little: a friendlier look
+      eyes.push(part(skull, ball(0.075, 16, 12), glow, [x, -0.03, 1.02]));
     }
-    // Nose.
-    const nose = new T.Mesh(new T.ConeGeometry(0.12, 0.26, 3), dark);
-    nose.rotation.x = Math.PI;
-    nose.position.set(0, -0.32, 1.0);
-    skull.add(nose);
-    // Upper teeth.
-    const tooth = new T.BoxGeometry(0.1, 0.16, 0.08);
-    for (let i = -3; i <= 3; i++) {
-      const t = new T.Mesh(tooth, bone);
-      const a = i * 0.16;
-      t.position.set(Math.sin(a) * 0.62, -0.62, 0.62 + Math.cos(a) * 0.2);
-      t.rotation.y = a;
-      skull.add(t);
+    // Nasal cavity: an upside-down heart.
+    for (const x of [-1, 1]) {
+      const lobe = part(skull, ball(0.07, 16, 12), dark, [x * 0.055, -0.3, 1.0], [0.85, 1.35, 0.5]);
+      lobe.rotation.z = x * 0.45;
     }
+    part(skull, new T.ConeGeometry(0.09, 0.14, 12), dark, [0, -0.39, 0.98], [1, 1, 0.5]).rotation.x = Math.PI;
+    // Upper jaw: the dark mouth behind, then a row of rounded teeth.
+    part(skull, ball(0.42), dark, [0, -0.62, 0.62], [1, 0.32, 0.78]);
+    const tooth = ball(0.075, 12, 10);
+    const teeth = (parent, y, r, z0) => {
+      for (let i = -3; i <= 3; i++) {
+        const a = i * 0.2;
+        const t = part(parent, tooth, bone, [Math.sin(a) * r, y, z0 + Math.cos(a) * r * 0.42], [0.85, 1.4, 0.7], 0.12);
+        t.rotation.y = a;
+      }
+    };
+    teeth(skull, -0.6, 0.5, 0.75);
+    // A cartoon crack across the top of the dome.
+    const crackPts = [
+      [0.42, 0.95, 0.35],
+      [0.34, 0.78, 0.55],
+      [0.46, 0.66, 0.62],
+      [0.36, 0.52, 0.8],
+    ].map(([x, y, z]) => {
+      const v = new T.Vector3(x, y - 0.32, z + 0.05).normalize();
+      return new T.Vector3(v.x * 1.03, v.y * 0.99 + 0.32, v.z * 1.09 - 0.05);
+    });
+    part(skull, new T.TubeGeometry(new T.CatmullRomCurve3(crackPts, false, 'catmullrom', 0), 24, 0.018, 6), dark, [0, 0, 0]);
     // The jaw hinges open while the skull talks.
     const jaw = new T.Group();
     jaw.position.set(0, -0.6, 0.1);
-    const mandible = new T.Mesh(new T.SphereGeometry(0.62, 28, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), bone);
-    mandible.scale.set(1.05, 0.55, 1.05);
-    mandible.position.set(0, -0.06, 0.1);
-    jaw.add(mandible);
-    for (let i = -3; i <= 3; i++) {
-      const t = new T.Mesh(tooth, bone);
-      const a = i * 0.16;
-      t.position.set(Math.sin(a) * 0.6, 0.02, 0.5 + Math.cos(a) * 0.18);
-      t.rotation.y = a;
-      jaw.add(t);
-    }
+    part(jaw, new T.SphereGeometry(0.6, 28, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), bone, [0, -0.02, 0.2], [0.82, 0.6, 0.98], 0.05);
+    part(jaw, ball(0.2), bone, [0, -0.3, 0.64], [1.3, 0.75, 0.8]); // chin
+    teeth(jaw, 0.02, 0.47, 0.52);
     skull.add(jaw);
     scene.add(skull);
 
