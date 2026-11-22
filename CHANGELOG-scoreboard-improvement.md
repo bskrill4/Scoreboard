@@ -105,6 +105,16 @@ From a second code review (BONES/MOUSSA check: clean).
 
 Note: the morning recap caches the night's "Best game" under whichever Watch style was active when the recap was first built that morning.
 
+## 7. Soccer standings (`js/soccer.js`, Soccer › Standings)
+
+| Change | Why |
+| --- | --- |
+| Third layout on the Soccer tab: **Standings**, with an EPL / UCL switch. Columns #, Team, P, W, D, L, GF, GA, GD, Pts; every header sorts (best-first on the first click, again to flip) with `aria-sort`, and abbreviations carry their full name for screen readers. From ESPN's public standings feed (`/apis/v2/sports/soccer/<league>/standings`), kept 10 minutes. | Context for which matches matter; another "better table". |
+| Each position shows ESPN's zone (Champions League, Europa League, relegation; UCL: round of 16, playoffs, eliminated) as a colored bar, with the zone named in a key underneath and in hidden text on the row. | Color isn't the only cue. |
+| The day picker and league filter chips hide while Standings is open. | They don't apply to the table. |
+
+Also confirmed against the standings feed: ESPN's soccer record string is W-D-L (Man City 7-1-3 = 7 W, 1 D, 3 L), which is what the soccer watch index assumes.
+
 ## How to verify the whole branch
 
 1. `python server.py` (or `ruby server.rb`), open http://localhost:5173.

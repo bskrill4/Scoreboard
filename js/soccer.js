@@ -221,6 +221,73 @@
     }
   }
 
+  // ---------- standings ----------
+  // ESPN's standings feed (same CORS-open host, /apis/v2/). Kept 10 minutes.
+  const tables = new Map(); // league id -> { at, name, rows, error }
+  const STAND = 'https://site.api.espn.com/apis/v2/sports';
+  async function loadTable(id) {
+    const cur = tables.get(id);
+    if (cur && Date.now() - cur.at < 10 * 60000) return;
+    try {
+      const json = await getJSON(`${STAND}/${byId.get(id).path}/standings`);
+      const group = (json.children || [json])[0] || {};
+      const rows = (group.standings?.entries || []).map((e) => {
+        const st = Object.fromEntries((e.stats || []).map((x) => [x.name, x]));
+        const num = (k) => Number(st[k]?.value ?? st[k]?.displayValue) || 0;
+        return {
+          rank: num('rank'),
+          team: e.team?.displayName || '',
+          short: e.team?.shortDisplayName || e.team?.displayName || '',
+          logo: e.team?.logos?.[0]?.href || '',
+          p: num('gamesPlayed'), w: num('wins'), d: num('ties'), l: num('losses'),
+          gf: num('pointsFor'), ga: num('pointsAgainst'), gd: num('pointDifferential'), pts: num('points'),
+          zone: e.note ? { color: e.note.color, text: e.note.description } : null,
+        };
+      });
+      tables.set(id, { at: Date.now(), name: group.name || byId.get(id).name, rows });
+    } catch (err) {
+      tables.set(id, { at: Date.now(), name: byId.get(id).name, rows: cur?.rows || [], error: true });
+    }
+    if (visible() && prefs.layout === 'standings') render();
+  }
+
+  const TSORT = {
+    rank: (a, b) => a.rank - b.rank, team: (a, b) => a.short.localeCompare(b.short), p: (a, b) => a.p - b.p, w: (a, b) => a.w - b.w,
+    d: (a, b) => a.d - b.d, l: (a, b) => a.l - b.l, gf: (a, b) => a.gf - b.gf, ga: (a, b) => a.ga - b.ga, gd: (a, b) => a.gd - b.gd, pts: (a, b) => a.pts - b.pts,
+  };
+  function standingsHTML() {
+    const id = byId.has(prefs.table) ? prefs.table : LEAGUES[0].id;
+    const t = tables.get(id);
+    const pick = LEAGUES.map((l) => `<button type="button" data-mtable="${l.id}" class="${l.id === id ? 'on' : ''}" aria-pressed="${l.id === id}">${esc(l.short)}</button>`).join('');
+    const head = `<div class="seg ms-tpick" role="group" aria-label="Standings for">${pick}</div>`;
+    if (!t) return `${head}<p class="ms-empty">Loading the table…</p>`;
+    if (!t.rows.length) return `${head}<p class="ms-err" role="alert">Couldn't load the ${esc(byId.get(id).name)} table from ESPN.</p>`;
+    const k = TSORT[prefs.tsort] ? prefs.tsort : 'rank';
+    const dir = prefs.tdir || 1;
+    const rows = t.rows.slice().sort((a, b) => dir * TSORT[k](a, b) || a.rank - b.rank);
+    const col = (key, text, title, cls = 'num') => {
+      const on = k === key;
+      return `<th scope="col" class="${cls}" aria-sort="${on ? (dir > 0 ? 'ascending' : 'descending') : 'none'}"${title ? ` title="${title}"` : ''}><button type="button" data-mtsort="${key}">${text}${on ? `<span aria-hidden="true">${dir > 0 ? ' ▴' : ' ▾'}</span>` : ''}</button>${title ? `<span class="sr-only"> (${title})</span>` : ''}</th>`;
+    };
+    const zones = [...new Map(t.rows.filter((r) => r.zone).map((r) => [r.zone.text, r.zone.color])).entries()];
+    const body = rows
+      .map(
+        (r) => `<tr>
+        <td class="num ms-rk"${r.zone ? ` style="--zone:${esc(r.zone.color)}" title="${esc(r.zone.text)}"` : ''}>${r.rank}${r.zone ? `<span class="sr-only">, ${esc(r.zone.text)}</span>` : ''}</td>
+        <th scope="row" class="ms-tteam"><img src="${esc(r.logo)}" alt="" loading="lazy"><span>${esc(r.short)}</span></th>
+        <td class="num">${r.p}</td><td class="num">${r.w}</td><td class="num">${r.d}</td><td class="num">${r.l}</td>
+        <td class="num">${r.gf}</td><td class="num">${r.ga}</td><td class="num">${r.gd > 0 ? '+' : ''}${r.gd}</td><td class="num"><b>${r.pts}</b></td>
+      </tr>`
+      )
+      .join('');
+    return `${head}<div class="ptable-wrap"><table class="ptable ms-table ms-standings">
+      <caption class="sr-only">${esc(t.name)} standings. Column headers sort the table.</caption>
+      <thead><tr>${col('rank', '#', 'Position')}${col('team', 'Team', '', 'ms-tteam')}${col('p', 'P', 'Played')}${col('w', 'W', 'Won')}${col('d', 'D', 'Drawn')}${col('l', 'L', 'Lost')}${col('gf', 'GF', 'Goals for')}${col('ga', 'GA', 'Goals against')}${col('gd', 'GD', 'Goal difference')}${col('pts', 'Pts', 'Points')}</tr></thead>
+      <tbody>${body}</tbody></table></div>
+      ${zones.length ? `<ul class="ms-zones" aria-label="Key">${zones.map(([text, color]) => `<li><i style="--zone:${esc(color)}"></i>${esc(text)}</li>`).join('')}</ul>` : ''}
+      ${t.error ? `<p class="ms-err">Showing the last table loaded; ESPN didn't answer just now.</p>` : ''}`;
+  }
+
   // ---------- rendering ----------
   const timeOf = (ms) => new Date(ms).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
   const dayLabel = (d) => {
@@ -339,18 +406,18 @@
       : '';
     const html = `
       <div class="ms-head">
-        <h2>Soccer <small>${esc(dayLabel(d))}${live ? ` · <span class="ms-live">${live} live</span>` : ''}</small></h2>
-        <nav class="days ms-days" aria-label="Day">
+        <h2>Soccer <small>${prefs.layout === 'standings' ? 'Standings' : esc(dayLabel(d))}${live ? ` · <span class="ms-live">${live} live</span>` : ''}</small></h2>
+        <nav class="days ms-days" aria-label="Day"${prefs.layout === 'standings' ? ' hidden' : ''}>
           <button type="button" class="arrow" data-mday="-1" aria-label="Previous day">‹</button>
           <button type="button" class="day-label" data-mday="0">${esc(dayLabel(d))}</button>
           <button type="button" class="arrow" data-mday="1" aria-label="Next day">›</button>
         </nav>
-        <div class="seg" role="group" aria-label="Layout">${seg('layout', 'cards', 'Cards')}${seg('layout', 'table', 'Table')}</div>
+        <div class="seg" role="group" aria-label="Layout">${seg('layout', 'cards', 'Cards')}${seg('layout', 'table', 'Table')}${seg('layout', 'standings', 'Standings')}</div>
       </div>
-      <div class="leagues ms-leagues" role="group" aria-label="Leagues">${chips}</div>
+      <div class="leagues ms-leagues" role="group" aria-label="Leagues"${prefs.layout === 'standings' ? ' hidden' : ''}>${chips}</div>
       ${errors.length ? `<p class="ms-err" role="alert">Couldn't reach ESPN for ${esc(errors.join(', '))}; retrying.</p>` : ''}
-      ${empty}
-      ${list.length ? (prefs.layout === 'table' ? tableHTML(list) : `<div class="ms-grid">${list.map(cardHTML).join('')}</div>`) : ''}
+      ${prefs.layout === 'standings' ? '' : empty}
+      ${prefs.layout === 'standings' ? standingsHTML() : list.length ? (prefs.layout === 'table' ? tableHTML(list) : `<div class="ms-grid">${list.map(cardHTML).join('')}</div>`) : ''}
       <p class="set-note ms-note">Scores from ESPN's public feed. The watch index here is a soccer-only version: closeness and the minute count most, then team quality (record), with bonuses for late drama, comebacks, red cards and goal fests. These matches don't enter the main board, Rankings, BONES or MOUSSA.</p>`;
     if (root._html === html) return; // a poll with nothing new: leave focus and open details alone
     // Keep what the person had open or focused across the rebuild.
@@ -359,7 +426,7 @@
     const focusSel = root.contains(f)
       ? f.closest('.ms-card') && f.tagName === 'SUMMARY'
         ? `.ms-card[data-id="${f.closest('.ms-card').dataset.id}"] summary`
-        : ['mleague', 'mday', 'mlayout', 'msort'].map((k) => (f.dataset?.[k] != null ? `[data-${k}="${f.dataset[k]}"]` : '')).find(Boolean)
+        : ['mleague', 'mday', 'mlayout', 'msort', 'mtable', 'mtsort'].map((k) => (f.dataset?.[k] != null ? `[data-${k}="${f.dataset[k]}"]` : '')).find(Boolean)
       : null;
     root._html = html;
     root.innerHTML = html;
@@ -391,8 +458,23 @@
       render();
       refocus(`[data-mday="${ds.mday}"]`);
       load();
+    } else if (ds.mtable) {
+      prefs.table = ds.mtable;
+      save();
+      render();
+      loadTable(prefs.table);
+    } else if (ds.mtsort) {
+      const k = ds.mtsort;
+      if (prefs.tsort === k || (!prefs.tsort && k === 'rank')) prefs.tdir = -(prefs.tdir || 1);
+      else {
+        prefs.tsort = k;
+        prefs.tdir = k === 'rank' || k === 'team' || k === 'l' || k === 'ga' ? 1 : -1; // best first
+      }
+      save();
+      render();
     } else if (ds.mlayout) {
       prefs.layout = ds.mlayout;
+      if (prefs.layout === 'standings') loadTable(byId.has(prefs.table) ? prefs.table : LEAGUES[0].id);
       save();
       render();
       refocus(`[data-mlayout="${ds.mlayout}"]`);
@@ -416,6 +498,7 @@
     if (!visible()) return;
     render();
     load();
+    if (prefs.layout === 'standings') loadTable(byId.has(prefs.table) ? prefs.table : LEAGUES[0].id);
     timer = setInterval(() => {
       if (!document.hidden) load();
     }, POLL);

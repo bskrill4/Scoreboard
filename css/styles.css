@@ -2121,3 +2121,12 @@ body.view-soccer .bar #days, body.view-soccer .bar #todayBtn, body.view-soccer .
 .ptable tbody tr:focus-visible { outline: 2px solid var(--yellow); outline-offset: -2px; }
 .ptable-wrap { max-height: none; }
 html.a11y-contrast .ptable td { border-top-color: var(--line); }
+/* Soccer standings */
+.ms-tpick { margin-bottom: 10px; }
+.ms-standings .ms-rk { position: relative; width: 3em; }
+.ms-standings .ms-rk[style]::before { content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 4px; border-radius: 2px; background: var(--zone); }
+.ms-standings .ms-tteam { text-align: left; }
+.ms-standings th.ms-tteam span, .ms-standings th.ms-tteam img { vertical-align: middle; }
+.ms-standings th.ms-tteam img { width: 20px; height: 20px; object-fit: contain; margin-right: 8px; }
+.ms-zones { display: flex; flex-wrap: wrap; gap: 6px 16px; list-style: none; padding: 0; margin: 10px 0 0; font-size: 12px; color: var(--dim); }
+.ms-zones i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--zone); margin-right: 6px; vertical-align: -1px; }
