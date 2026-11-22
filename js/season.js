@@ -10,7 +10,7 @@
 //   - Movers: the biggest risers and fallers in Impact per 36 (NBA) or per game
 //     (NFL) over a recent window;
 //   - a sortable, paginated table: counting stats (per game or totals), Impact,
-//     Impact per 36 (NBA) or per game (NFL), WPA and WPA per 36 / per game.
+//     BONES or MOUSSA, per 36 (NBA) or per game (NFL; BONES only).
 //
 // makeSeason(cfg) builds one page; the NBA and NFL configs are at the bottom.
 (function () {
@@ -140,7 +140,7 @@
           const imp = SB.impact.rowImpact(row); // with the game floor unless it's switched off
           let p = map.get(id);
           if (!p) {
-            p = { id, name: box.name, teamId: '', gp: 0, m: 0, s: {}, imp: 0, wpa: 0, games: [] };
+            p = { id, name: box.name, teamId: '', gp: 0, m: 0, s: {}, imp: 0, games: [] };
             map.set(id, p);
           }
           p.teamId = String(box.teamId); // the latest team (trades)
@@ -148,7 +148,6 @@
           p.m += box.m;
           for (const k in box.stats) p.s[k] = (p.s[k] || 0) + box.stats[k];
           p.imp += imp;
-          p.wpa += row[1];
           p.games.push({ t: g.t, v: imp * 100, m: box.m });
         }
       }
@@ -333,7 +332,8 @@
       const legend = `<p class="pl-legend ss-legend">${colored.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.p.name)}</span>`).join('')}${
         more > 0 ? `<span><i class="gray"></i>${more} more player${more === 1 ? '' : 's'}</span>` : ''
       }</p>`;
-      const what = state.mode === 'cum' ? 'Cumulative BONES' : state.smooth ? `BONES per game, ${ROLL}-game average` : 'BONES per game';
+      const stat = cfg.league === 'nfl' ? 'BONES' : SB.impact.name();
+      const what = state.mode === 'cum' ? `Cumulative ${stat}` : state.smooth ? `${stat} per game, ${ROLL}-game average` : `${stat} per game`;
       return `<div class="ss-chart">
           ${legend}
           <svg class="ss-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(what)} for ${n} players">
@@ -376,7 +376,7 @@
       const date = new Date(d.t).toLocaleDateString([], { month: 'short', day: 'numeric' });
       const label = state.mode === 'cum' ? 'season so far' : state.smooth ? `${ROLL}-game avg` : 'that game';
       const among = cfg.groups ? ` among ${cfg.groups.find(([k]) => k === state.group)[1]}` : '';
-      tip.innerHTML = `<b>${esc(s.p.name)}</b> <small>${esc(team)} · #${s.p.rank + 1} in BONES${esc(among)}</small><br>${date} · ${label} <b class="${d.v >= 0 ? 'pos' : 'neg'}">${
+      tip.innerHTML = `<b>${esc(s.p.name)}</b> <small>${esc(team)} · #${s.p.rank + 1} in ${cfg.league === 'nfl' ? 'BONES' : SB.impact.name()}${esc(among)}</small><br>${date} · ${label} <b class="${d.v >= 0 ? 'pos' : 'neg'}">${
         d.v >= 0 ? '+' : '−'
       }${Math.abs(d.v).toFixed(1)}</b>`;
       tip.hidden = false;
@@ -620,7 +620,23 @@
       if (!root.hidden) draw();
     }
 
-    return { render, refresh };
+    // For the player drawer (js/player.js): the season so far, loading it
+    // first if the page was never opened (progress(loaded, total) while it
+    // does), and every player's totals under BONES (1) or MOUSSA (2).
+    function standings(progress) {
+      if (state.status === 'idle') load();
+      return new Promise((resolve) => {
+        const check = () => {
+          if (state.status === 'done' || state.status === 'error') return resolve(state.status === 'done');
+          if (progress) progress(state.loaded, state.games.length);
+          setTimeout(check, 400);
+        };
+        check();
+      });
+    }
+    const totals = (v) => SB.impact.withVersion(v, aggregate);
+
+    return { render, refresh, standings, totals, teams: () => state.teams };
   }
 
   // ---------- NBA ----------
@@ -664,8 +680,6 @@
       { k: 'imp', label: SB.impact.name(), v: (p) => p.imp * 100, signed: true },
       { k: 'imp36', label: `${SB.impact.name()}/36`, v: (p) => per36(p.imp, p), signed: true },
       { k: 'dbones', label: `Defensive ${SB.impact.name()}`, v: (p) => p.s.dbones || 0, signed: true },
-      { k: 'wpa', label: 'WPA', v: (p) => p.wpa * 100, signed: true },
-      { k: 'wpa36', label: 'WPA/36', v: (p) => per36(p.wpa, p), signed: true },
     ],
     movers: {
       windows: [
@@ -676,14 +690,23 @@
       games: 2,
       before: 60, // minutes
       show: 6,
-      unit: 'BONES per 36',
-      note: 'Players with 2+ games in the window and 60+ minutes before it. Rating = season BONES per 36 to date.',
+      // Getters: the labels follow the BONES | MOUSSA switch.
+      get unit() {
+        return `${SB.impact.name()} per 36`;
+      },
+      get note() {
+        return `Players with 2+ games in the window and 60+ minutes before it. Rating = season ${SB.impact.name()} per 36 to date.`;
+      },
     },
-    note: `<b>BONES</b> and <b>WPA</b> are season totals from our own replay of every game (the same numbers as the board and the player drawer).
-      BONES includes the <b>game floor</b> (switch it off in settings for swing only): a game that stayed one-sided still credits the winner, up to 75% of a typical game, split by the winning players' share of its swings. Close games are untouched, so a thriller still pays more than a blowout.
-      <b>Defensive BONES</b> is the part of a player's BONES (before the game floor) that came from defense: the five defenders on the floor credited for the expected value of every shot they allowed against the league's average shot (where it was taken, what kind, how far into the possession: whether it went in doesn't matter), plus his blocks, steals, defensive rebounds and the fouls he committed on defense. Beta.
+    get note() {
+      const n = SB.impact.name();
+      const moussa = SB.impact.version() === 2;
+      return `<b>${n}</b> is a season total from our own replay of every game (the same numbers as the board and the player drawer).
+      ${moussa ? 'MOUSSA has no game floor: every game opens at 50% for both teams, so a blowout is already credited as it happens.' : "BONES includes the <b>game floor</b> (switch it off in settings for swing only): a game that stayed one-sided still credits the winner, up to 75% of a typical game, split by the winning players' share of its swings. Close games are untouched, so a thriller still pays more than a blowout."}
+      <b>Defensive ${n}</b> is the part of a player's ${n}${moussa ? '' : ' (before the game floor)'} that came from defense: the five defenders on the floor credited for the expected value of every shot they allowed against the league's average shot (where it was taken, what kind, how far into the possession: whether it went in doesn't matter), plus his blocks, steals, defensive rebounds and the fouls he committed on defense. Beta.
       <b>Per 36</b> scales a player's total to 36 minutes: total ÷ minutes × 36, so a reserve can be compared with a starter; it's noisy for players with few minutes, which is what the minutes filter is for.
-      The chart's tiers are the top 1 / 5 / 20 / 80% of players by season BONES, or everyone. The table's top six rows, in whatever order it's sorted, are colored in the chart (and drawn even if the tier leaves them out); everyone else is gray, fainter the more players are drawn. Hover a line to see who it is. A search (a name, or a team: BOS, Boston, Celtics, Boston Celtics) narrows the table and the chart to the same players; pick a tier to go back to the league. Regular season only (NBA Cup group games count; the Cup final doesn't).`,
+      The chart's tiers are the top 1 / 5 / 20 / 80% of players by season ${n}, or everyone. The table's top six rows, in whatever order it's sorted, are colored in the chart (and drawn even if the tier leaves them out); everyone else is gray, fainter the more players are drawn. Hover a line to see who it is. A search (a name, or a team: BOS, Boston, Celtics, Boston Celtics) narrows the table and the chart to the same players; pick a tier to go back to the league. Regular season only (NBA Cup group games count; the Cup final doesn't).`;
+    },
   };
 
   // ---------- NFL ----------
@@ -717,8 +740,6 @@
   const NFL_TAIL = [
     { k: 'imp', label: 'BONES', v: (p) => p.imp * 100, signed: true },
     { k: 'impg', label: 'BONES/G', v: (p) => perGame(p.imp, p), signed: true },
-    { k: 'wpa', label: 'WPA', v: (p) => p.wpa * 100, signed: true },
-    { k: 'wpag', label: 'WPA/G', v: (p) => perGame(p.wpa, p), signed: true },
   ];
   const NFL_COLS = {
     QB: [['cmp', 'CMP'], ['att', 'ATT'], ['passYd', 'YDS'], ['passTd', 'TD'], ['int', 'INT'], ['rushYd', 'RUSH YDS']],
@@ -780,9 +801,9 @@
       before: 2, // games
       show: 6,
       unit: 'BONES per game',
-      note: 'Every player, any position, with 2+ games in the window and 2+ before it. Rating = season BONES per game to date.',
+      note: 'Every player, any position, with 2+ games in the window and 2+ before it. Rating = season BONES per game to date (MOUSSA is basketball only).',
     },
-    note: `<b>BONES</b> and <b>WPA</b> are season totals from our own replay of every game; <b>BONES/G</b> and <b>WPA/G</b> are per game played (the NFL has no minutes in the feed).
+    note: `<b>BONES</b> is a season total from our own replay of every game; <b>BONES/G</b> is per game played (the NFL has no minutes in the feed). MOUSSA is basketball only, so this page is BONES either way.
       Credit goes to the players named on each play: passes are 65% the quarterback's and 35% the targeted receiver's, runs the runner's, kicks the kicker's. On defense, a sack or pick is the defender's, and on any stop (a play that cost the offense) the defenders the play names share half of it: the tacklers on a run or catch, the defender on an incompletion, the forcer and recoverer of a fumble. Coverage that keeps a receiver from being targeted still doesn't show.
       Positions are from each team's current roster. The chart's tiers are the top 1 / 5 / 20 / 80% of the chosen position by season BONES, or all of it. Search and colors work as on the NBA page. Regular season only.`,
   };

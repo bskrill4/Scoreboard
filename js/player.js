@@ -1,5 +1,5 @@
 // Player drawer: click a player anywhere (board or Rankings) to open a side
-// panel with who they are and their Impact / WPA game by game: the whole season
+// panel with who they are and their BONES or MOUSSA game by game: the whole season
 // (a 5-game rolling average against the season average) or the last 7 days (a
 // least-squares trend). Each game is replayed through the same engine as the
 // board, so the numbers match exactly, and cached once it's final.
@@ -19,7 +19,7 @@
   // the numbers match exactly. A finished game never changes, so each one's
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
-  // Bump CACHE_VERSION whenever the Impact or WPA math changes.
+  // Bump CACHE_VERSION whenever the BONES / MOUSSA math changes (saved rows still carry a WPA slot, unused).
   const CACHE_VERSION = 30; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table; 23: frozen expected-points baseline, fouls without free throws not charged; 24: BONES v2 (score-only) saved as [6] [7]; 25: v2 knows who has the ball; 26: the ball worth half a possession each way; 27: v2 model with a possession's spread; 28: v2 on its own running score; 29: v2 values a loose ball after a miss; 30: NBA spike netting at the same clock only
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
@@ -235,7 +235,7 @@
           pending: false,
           played: !!p,
           imp: p ? SB.impact.rowImpact(p) : null,
-          wpa: p ? p[1] : null,
+          row: p || null, // re-read as BONES or MOUSSA when the switch changes
           line: p ? p[2] : failed ? 'Couldn’t load' : players ? 'Did not play' : 'No play-by-play',
         });
         out.loaded++;
@@ -320,7 +320,7 @@
     const trend = f
       ? `<line class="pl-trend" x1="${x(pts[0].i)}" y1="${y(f.at(pts[0].i))}" x2="${x(pts[pts.length - 1].i)}" y2="${y(f.at(pts[pts.length - 1].i))}"/>`
       : '';
-    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${metric === 'imp' ? SB.impact.name() : 'WPA'} by game over the last week">${grid}${zero}${ticks}${trend}${line}${dots}</svg>`;
+    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${SB.impact.name()} by game over the last week">${grid}${zero}${ticks}${trend}${line}${dots}</svg>`;
 
     let note;
     if (data.loaded < data.games.length) note = `Loading ${data.loaded} of ${data.games.length} games…`;
@@ -374,7 +374,7 @@
       .map((p) => `<circle class="pl-dot ${p.v >= 0 ? 'pos' : 'neg'}${small ? ' sm' : ''}" cx="${x(p.i)}" cy="${y(p.v)}" r="${small ? 2.6 : 3.6}"><title>${esc(`${dayShort(p.g.day)} ${dayNum(p.g.day)} ${p.g.opp} · ${fmt(p.v)}`)}</title></circle>`)
       .join('');
     const labels = label(best, false) + (worst && worst !== best && worst.v < 0 ? label(worst, true) : '');
-    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${metric === 'imp' ? SB.impact.name() : 'WPA'} by game this season">${months}${zero}${ticks}${avgLine}${thin}${rollLine}${dots}${labels}</svg>`;
+    const svg = `<svg class="pl-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${SB.impact.name()} by game this season">${months}${zero}${ticks}${avgLine}${thin}${rollLine}${dots}${labels}</svg>`;
 
     let note;
     if (!rows.length) note = 'No finished games this season yet.';
@@ -396,120 +396,263 @@
     return `${svg}${pts.length > 2 ? legend : ''}<p class="pl-note">${note}</p>`;
   }
 
-  // ---- drawer ----
-  let el;
-  let state = null; // { id, league, teamId, endDay, info, data, error }
-  let metric = 'imp';
-  let range = 'season'; // 'season' | 'week', remembered while the page is open
-  let token = 0;
+  // ---- drawers ----
+  // One drawer per player, up to MAX side by side to compare: clicking a
+  // player while a drawer is open opens another to its left (the newest is
+  // leftmost); with MAX open, the next click replaces the newest. On a narrow
+  // screen each new drawer covers the last. Each drawer has the player's
+  // season (or last 7 days) chart, BONES / MOUSSA standing (NBA: total, and
+  // rank in the league, on his team and at his position) and every game,
+  // sortable by date, BONES or MOUSSA.
+  const MAX = 3;
+  const panes = []; // open drawers, oldest (rightmost) first: { el, state, range, sort, token, loadToken }
+  const basketball = (l) => l === 'nba' || l === 'ncaam';
+  const open2 = () => panes.filter((p) => p.state);
 
-  function ensure() {
-    if (el) return;
-    el = document.createElement('aside');
+  function makePane() {
+    const el = document.createElement('aside');
     el.className = 'drawer';
-    el.id = 'drawer';
     el.setAttribute('aria-label', 'Player');
     el.hidden = true;
     document.body.appendChild(el);
-    el.addEventListener('click', (e) => {
-      if (e.target.closest('[data-close]')) close();
-      const b = e.target.closest('[data-pmetric]');
-      if (b) {
-        metric = b.dataset.pmetric;
-        draw();
-      }
-      const r = e.target.closest('[data-prange]');
-      if (r && r.dataset.prange !== range) {
-        range = r.dataset.prange;
-        load();
-      }
-      openGame(e.target.closest('tr[data-game]'));
-    });
+    const pane = { el, state: null, range: 'season', sort: { key: 'day', dir: -1 }, token: 0, loadToken: 0 };
+    el.addEventListener('click', (e) => onClick(pane, e));
     el.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') openGame(e.target.closest('tr[data-game]'));
+      if (e.key === 'Enter') openGame(pane, e.target.closest('tr[data-game]'));
     });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !el.hidden) close();
-    });
+    return pane;
+  }
+
+  // Esc closes the newest drawer.
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && panes.length) closePane(panes[panes.length - 1]);
+  });
+
+  function onClick(pane, e) {
+    if (e.target.closest('[data-close]')) return closePane(pane);
+    const r = e.target.closest('[data-prange]');
+    if (r && r.dataset.prange !== pane.range) {
+      pane.range = r.dataset.prange;
+      return load(pane);
+    }
+    const srt = e.target.closest('[data-psort]');
+    if (srt) {
+      const k = srt.dataset.psort;
+      pane.sort = pane.sort.key === k ? { key: k, dir: -pane.sort.dir } : { key: k, dir: -1 };
+      return draw(pane);
+    }
+    openGame(pane, e.target.closest('tr[data-game]'));
   }
 
   // A game row: send the board to that day with that game pinned on top
   // (main.js sets onGame). The drawer stays open beside it.
-  function openGame(row) {
-    if (!row || !state || !SB.player.onGame) return;
-    for (const r of el.querySelectorAll('tr[data-game]')) r.classList.toggle('on', r === row);
-    SB.player.onGame(row.dataset.day, row.dataset.game, state.league);
+  function openGame(pane, row) {
+    if (!row || !pane.state || !SB.player.onGame) return;
+    for (const p of panes) for (const r of p.el.querySelectorAll('tr[data-game]')) r.classList.toggle('on', r === row);
+    SB.player.onGame(row.dataset.day, row.dataset.game, pane.state.league);
   }
 
-  function close() {
-    if (!el) return;
-    el.classList.remove('open');
-    el.hidden = true;
-    state = null;
-    token++;
+  // Side by side, oldest on the right: --i is each drawer's slot from the
+  // right, --dn how many are open (they narrow to fit; css/styles.css).
+  function layout() {
+    panes.forEach((p, i) => p.el.style.setProperty('--i', String(i)));
+    document.body.style.setProperty('--dn', String(Math.max(1, panes.length)));
+    document.body.classList.toggle('drawers-many', panes.length > 1);
   }
 
-  function draw() {
-    if (!state) return;
-    const { info, data, error } = state;
+  function closePane(pane) {
+    const i = panes.indexOf(pane);
+    if (i < 0) return;
+    panes.splice(i, 1);
+    pane.el.classList.remove('open');
+    pane.state = null;
+    pane.token++;
+    pane.loadToken++;
+    setTimeout(() => pane.el.remove(), 300);
+    layout();
+  }
+  const closeAll = () => [...panes].forEach(closePane);
+
+  // ---- NBA standing: total, rank in the league, on the team, at the position ----
+  // Totals come from the season page's replay of every game (js/season.js,
+  // loaded here if it hasn't been); positions from each team's roster, kept a
+  // day (guards, forwards, centers: a listed G-F counts as a guard).
+  const POS_KEY = 'sb.nbaPos';
+  const POS_NAME = { G: 'guards', F: 'forwards', C: 'centers' };
+  const posGroup = (abbr) => {
+    const t = String(abbr || '').toUpperCase().split(/[-/]/)[0];
+    return t === 'C' ? 'C' : t.endsWith('G') ? 'G' : t.endsWith('F') ? 'F' : null;
+  };
+  let posMap = null;
+  async function positions(teamIds) {
+    if (posMap) return posMap;
+    try {
+      const c = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+      if (c && Date.now() - c.t < 86400000) return (posMap = c.map);
+    } catch (e) {}
+    const map = {};
+    const lists = await Promise.all(teamIds.map((t) => SB.api.teamRoster(t, 'nba').catch(() => [])));
+    for (const list of lists) for (const a of list) if (a?.id) map[String(a.id)] = posGroup(a.position?.abbreviation);
+    try {
+      localStorage.setItem(POS_KEY, JSON.stringify({ t: Date.now(), map }));
+    } catch (e) {}
+    return (posMap = map);
+  }
+
+  // Loads what the standing needs; draw() computes it under the switch's metric.
+  async function prepareRank(pane) {
+    const st = pane.state;
+    if (st.league !== 'nba') return;
+    const my = pane.token;
+    st.rank = { loading: true, loaded: 0, total: 0 };
+    let queued = false;
+    const ok = await SB.season.standings((loaded, total) => {
+      if (pane.token !== my) return;
+      st.rank = { loading: true, loaded, total };
+      if (queued) return;
+      queued = true;
+      setTimeout(() => {
+        queued = false;
+        if (pane.token === my) draw(pane);
+      }, 300);
+    });
+    if (pane.token !== my) return;
+    if (!ok) {
+      st.rank = { error: true };
+      return draw(pane);
+    }
+    const pos = await positions([...SB.season.teams().keys()]).catch(() => ({}));
+    if (pane.token !== my) return;
+    st.rank = { ready: true, pos };
+    draw(pane);
+  }
+
+  // Every player's season under BONES (1) or MOUSSA (2), memoized per metric
+  // and game-floor setting until more games load.
+  let totalsMemo = { key: '', v: null };
+  function seasonTotals() {
+    const v = SB.impact.version();
+    const key = `${v}|${SB.impact.floorOn()}|${SB.season.teams().size}`;
+    if (totalsMemo.key !== key) totalsMemo = { key, v: SB.season.totals(v) };
+    return totalsMemo.v;
+  }
+
+  function rankHTML(pane) {
+    const st = pane.state;
+    if (st.league !== 'nba') return '';
+    const r = st.rank;
+    const name = SB.impact.name();
+    if (!r || r.loading)
+      return `<div class="pl-rank wait"><small>${name} standing</small><span>Ranking against the league…${r && r.total ? ` ${r.loaded} of ${r.total} games` : ''}</span></div>`;
+    if (r.error) return `<div class="pl-rank wait"><small>${name} standing</small><span>Couldn't load the season.</span></div>`;
+    const list = seasonTotals();
+    const me = list.find((p) => p.id === st.id);
+    if (!me) return `<div class="pl-rank wait"><small>${name} standing</small><span>No games this season yet.</span></div>`;
+    const teams = SB.season.teams();
+    const at = (arr) => [arr.indexOf(me) + 1, arr.length];
+    const [nr, nn] = at(list);
+    const team = list.filter((p) => p.teamId === me.teamId);
+    const [tr, tn] = at(team);
+    const g = r.pos[me.id] || posGroup(st.info.posAbbr);
+    const grp = g ? list.filter((p) => (r.pos[p.id] || (p === me ? g : null)) === g) : null;
+    const [pr, pn] = grp ? at(grp) : [null, null];
+    const tot = me.imp * 100;
+    const cell = (rk, n, label) => `<span class="pr-cell"><b>${rk ? `#${rk}` : '–'}</b><small>${esc(label)}</small><em>${rk ? `of ${n}` : 'no position'}</em></span>`;
+    return `<div class="pl-rank">
+      <div class="pr-total"><small>${name} this season</small><b class="${tot >= 0 ? 'pos' : 'neg'}">${fmt(tot)}</b><em>${me.gp} game${me.gp === 1 ? '' : 's'} · ${fmt(tot / Math.max(1, me.gp))} a game</em></div>
+      <div class="pr-ranks">${cell(nr, nn, 'NBA')}${cell(tr, tn, teams.get(me.teamId)?.abbr || 'Team')}${cell(pr, pn, g ? POS_NAME[g] : 'Position')}</div>
+    </div>`;
+  }
+
+  // ---- one drawer ----
+  // A game's value under each metric (MOUSSA: basketball only).
+  const under = (v, row) => SB.impact.withVersion(v, () => SB.impact.rowImpact(row)) * 100;
+
+  function draw(pane) {
+    const st = pane.state;
+    if (!st) return;
+    const { info, data, error } = st;
     const team = info.team || {};
     const meta = [info.jersey ? `#${esc(info.jersey)}` : '', esc(info.pos || ''), esc(team.name || '')].filter(Boolean).join(' · ');
-    const seg = (k, label) =>
-      `<button type="button" data-pmetric="${k}" class="${metric === k ? 'on' : ''}" aria-pressed="${metric === k}">${label}</button>`;
+    // BONES | MOUSSA: the same switch as settings (main.js handles [data-bver] and calls refresh).
+    const seg = (v) =>
+      `<button type="button" data-bver="${v}" role="radio" class="${SB.impact.version() === v ? 'on' : ''}" aria-checked="${SB.impact.version() === v}">${SB.impact.name(v)}</button>`;
     const rng = (k, label) =>
-      `<button type="button" data-prange="${k}" class="${range === k ? 'on' : ''}" aria-pressed="${range === k}">${label}</button>`;
+      `<button type="button" data-prange="${k}" class="${pane.range === k ? 'on' : ''}" aria-pressed="${pane.range === k}">${label}</button>`;
+    const both = basketball(st.league);
+    const cur = SB.impact.version();
 
     let body;
     if (error) body = `<p class="pl-note">Couldn't load this player's games (${esc(error)}).</p>`;
-    else if (!data) body = `<p class="pl-note">Loading ${range === 'week' ? 'the last 7 days' : 'the season'}…</p>`;
+    else if (!data) body = `<p class="pl-note">Loading ${pane.range === 'week' ? 'the last 7 days' : 'the season'}…</p>`;
     else {
-      const rows = data.games
-        .slice()
-        .reverse()
+      for (const g of data.games) {
+        if (!g.row) continue;
+        g.imp = SB.impact.rowImpact(g.row);
+        g.vb = under(1, g.row);
+        g.vm = both ? under(2, g.row) : null;
+      }
+      const { key, dir } = pane.sort;
+      const val = (g) => (key === 'day' ? g.t : !g.played ? null : key === 'm' ? g.vm : g.vb);
+      const sorted = data.games.slice().sort((a, b) => {
+        const x = val(a);
+        const y = val(b);
+        if (x == null || y == null) return (x == null) - (y == null); // unplayed last
+        return dir < 0 ? y - x : x - y;
+      });
+      const cell = (v, k) => `<td class="${k === cur ? 'cur' : ''}${v == null ? '' : v >= 0 ? ' pos' : ' neg'}">${v == null ? '–' : fmt(v)}</td>`;
+      const rows = sorted
         .map(
           (g) => `<tr class="${g.played ? '' : 'dnp'}${g.pending ? ' pending' : ''}" data-game="${esc(g.id)}" data-day="${esc(g.day)}" tabindex="0" title="Open this game on the scoreboard">
             <td>${dayShort(g.day)} ${dayNum(g.day)}</td>
             <td>${esc(g.opp)}</td>
             <td class="${g.result[0] === 'W' ? 'pos' : 'neg'}">${esc(g.result)}</td>
             <td class="ln">${g.pending ? '…' : esc(g.line)}</td>
-            <td class="${metric === 'imp' ? 'sorted' : ''}">${g.played ? fmt(g.imp * 100) : '–'}</td>
-            <td class="${metric === 'wpa' ? 'sorted' : ''}">${g.played ? fmt(g.wpa * 100) : '–'}</td>
+            ${cell(g.played ? g.vb : null, 1)}${both ? cell(g.played ? g.vm : null, 2) : ''}
           </tr>`
         )
         .join('');
-      body = `${(range === 'week' ? chartWeek : chartSeason)(data, metric)}
+      const th = (k, label, cls = '') => {
+        const on = key === k;
+        return `<th class="${cls}${on ? ' sorted' : ''}"><button type="button" data-psort="${k}" title="Sort by ${label}${k === 'day' ? '' : ': best games first'}">${label}${on ? (dir < 0 ? ' ▾' : ' ▴') : ''}</button></th>`;
+      };
+      body = `${(pane.range === 'week' ? chartWeek : chartSeason)(data, 'imp')}
         ${
           data.games.length
-            ? `<table class="pl-games"><thead><tr><th>Day</th><th>Opp</th><th>Result</th><th>Line</th><th class="${metric === 'imp' ? 'sorted' : ''}">${SB.impact.name()}</th><th class="${metric === 'wpa' ? 'sorted' : ''}">WPA</th></tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table class="pl-games"><thead><tr>${th('day', 'Day')}<th>Opp</th><th>Result</th><th>Line</th>${th('b', 'BONES', cur === 1 ? 'cur' : '')}${both ? th('m', 'MOUSSA', cur === 2 ? 'cur' : '') : ''}</tr></thead><tbody>${rows}</tbody></table>`
             : ''
         }`;
     }
 
-    el.innerHTML = `
+    pane.el.innerHTML = `
       <button type="button" class="drawer-x" data-close aria-label="Close">×</button>
-      <header class="pl-head" style="--tc:${esc(state.color || 'var(--yellow)')}">
+      <header class="pl-head" style="--tc:${esc(st.color || 'var(--yellow)')}">
         <span class="shot pl-shot"><img src="${esc(info.headshot || '')}" alt="" onerror="this.style.visibility='hidden'"></span>
         <div class="pl-id">
-          <span class="pl-lg">${SB.league.name(state.league)}${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}${esc(team.abbr || '')}</span>
+          <span class="pl-lg">${SB.league.name(st.league)}${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}${esc(team.abbr || '')}</span>
           <h2>${esc(info.name || '')}</h2>
           <small>${meta}</small>
         </div>
       </header>
+      ${rankHTML(pane)}
       <div class="pl-sec">
         <div class="pl-sec-h">
           <div class="pl-range" role="group" aria-label="Range">${rng('season', 'Season')}${rng('week', 'Last 7 days')}</div>
-          <div class="seg" role="group" aria-label="Metric">${seg('imp', SB.impact.name())}${seg('wpa', 'WPA')}</div>
+          <div class="seg" role="radiogroup" aria-label="Player value">${seg(1)}${seg(2)}</div>
         </div>
         ${body}
       </div>`;
   }
 
   // open({ id, league, teamId, endDay, name, headshot, color })
-  async function open(o) {
-    ensure();
-    const my = ++token;
-    metric = SB.ui.getMetric();
-    state = {
+  function open(o) {
+    // Already open: leave it.
+    if (panes.some((p) => p.state && p.state.id === String(o.id) && p.state.league === o.league)) return;
+    let pane;
+    if (panes.length >= MAX) pane = panes[panes.length - 1]; // full: the newest is replaced
+    else panes.push((pane = makePane()));
+    const my = ++pane.token;
+    pane.state = {
       id: String(o.id),
       league: o.league,
       teamId: String(o.teamId),
@@ -518,61 +661,65 @@
       info: { name: o.name, headshot: o.headshot, team: o.team || {} },
       data: null,
       error: null,
+      rank: null,
     };
-    el.hidden = false;
-    requestAnimationFrame(() => el.classList.add('open'));
-    draw();
+    pane.el.hidden = false;
+    requestAnimationFrame(() => requestAnimationFrame(() => pane.el.classList.add('open'))); // a new element: let it lay out off-screen first
+    layout();
+    draw(pane);
 
     SB.api
       .athlete(o.id, o.league)
       .then((d) => {
-        if (my !== token) return;
+        if (my !== pane.token) return;
         const a = d.athlete || {};
-        state.info = {
-          name: a.displayName || state.info.name,
-          headshot: a.headshot?.href || state.info.headshot,
+        pane.state.info = {
+          name: a.displayName || pane.state.info.name,
+          headshot: a.headshot?.href || pane.state.info.headshot,
           jersey: a.jersey || '',
           pos: a.position?.displayName || a.position?.abbreviation || '',
+          posAbbr: a.position?.abbreviation || '',
           team: a.team
             ? { name: a.team.displayName, abbr: a.team.abbreviation, logo: a.team.logos?.[0]?.href || a.team.logo || '' }
-            : state.info.team,
+            : pane.state.info.team,
         };
-        draw();
+        draw(pane);
       })
       .catch(() => {});
 
-    load();
+    load(pane);
+    prepareRank(pane);
   }
 
   // Load (or reload, for a new range) the player's games, redrawing as games
   // come in (batched, at most every 60 ms).
-  async function load() {
-    if (!state) return;
-    const my = ++loadToken;
-    state.data = null;
-    state.error = null;
-    draw();
+  async function load(pane) {
+    const st = pane.state;
+    if (!st) return;
+    const my = ++pane.loadToken;
+    st.data = null;
+    st.error = null;
+    draw(pane);
     let queued = false;
     const progress = (data) => {
-      if (my !== loadToken || !state) return;
-      state.data = data;
+      if (my !== pane.loadToken || !pane.state) return;
+      pane.state.data = data;
       if (queued) return;
       queued = true;
       // A timer, not requestAnimationFrame: that stalls in a background tab.
       setTimeout(() => {
         queued = false;
-        if (my === loadToken) draw();
+        if (my === pane.loadToken) draw(pane);
       }, 60);
     };
     try {
-      await loadGames(state.id, state.league, state.teamId, state.endDay, range, progress);
+      await loadGames(st.id, st.league, st.teamId, st.endDay, pane.range, progress);
     } catch (err) {
-      if (my !== loadToken || !state) return;
-      state.error = err.message || 'network error';
-      draw();
+      if (my !== pane.loadToken || !pane.state) return;
+      pane.state.error = err.message || 'network error';
+      draw(pane);
     }
   }
-  let loadToken = 0;
 
-  SB.player = { open, close, finalPlayers, NFL_BOX };
+  SB.player = { open, close: closeAll, finalPlayers, NFL_BOX, refresh: () => open2().forEach(draw) };
 })();

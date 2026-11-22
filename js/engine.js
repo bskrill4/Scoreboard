@@ -212,6 +212,11 @@
   // player as impV1 / defBones for saving.
   function applyVersion(view) {
     if (bonesV !== 2) return;
+    // MOUSSA's own biggest plays (basketball), on its own swing.
+    if (view.impPlaysN) {
+      view.impPlays = view.impPlaysN;
+      view.impSwings = view.impPlaysN.slice(0, 8);
+    }
     for (const p of view.players) {
       if (p.impN == null) continue;
       p.imp = p.impN;
@@ -767,6 +772,7 @@
       //   swing: the corrected swing (home side, no leverage divide: how single plays are ranked),
       //   credits: [{ id, v (Impact), s (share of the swing, their side) }] }
       const impPlays = [];
+      const impPlaysN = []; // the same plays on MOUSSA's (score-only) swing, for when MOUSSA is on
       let leadChanges = 0;
       let lastLeader = 0;
       let minWP = 1;
@@ -814,7 +820,7 @@
               pl.defBonesN += vN;
             }
             pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p });
-            credited.push({ id: c.id, v });
+            credited.push({ id: c.id, v, vN });
           }
           // A defensive rebound's other share: the rest of the defenders on the floor.
           const rebTeam = defReb && p.credits.length && players.get(p.credits[0].id)?.teamId;
@@ -860,6 +866,8 @@
           }
           if (credited.length && p.impDelta)
             impPlays.push({ play: p, v: p.impDelta * p.weight, swing: p.impDelta, credits: credited.map((c) => ({ ...c, s: c.v / p.weight })) });
+          if (credited.length && p.impDeltaN)
+            impPlaysN.push({ play: p, v: p.impDeltaN * wN, swing: p.impDeltaN, wp: p.wpN, credits: credited.map((c) => ({ id: c.id, v: c.vN, s: c.vN / wN })) });
         }
         // On-court defense (ON_COURT_D): the five on the other side of a shot.
         const shooter = p.fga && p.p0 && players.get(p.p0);
@@ -962,11 +970,13 @@
       // Single plays rank by corrected swing: the leverage divide is for fair player totals, and on
       // one play it would shrink clutch swings and inflate early ones (see README, Impact).
       impPlays.sort((x, y) => Math.abs(y.swing) - Math.abs(x.swing));
+      impPlaysN.sort((x, y) => Math.abs(y.swing) - Math.abs(x.swing));
 
       const view = {
         threes,
         impSwings: impPlays.slice(0, 8),
         impPlays, // every credited play, biggest Impact first (Rankings › Plays)
+        impPlaysN, // MOUSSA's: applyVersion swaps them in (wp: the score-only line, for the chart)
         state,
         statusText,
         period: last ? last.period : 0,

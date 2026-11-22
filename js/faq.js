@@ -80,7 +80,6 @@
           <li><b>Credit goes to the action.</b> Whoever made the play gets the swing, not everyone who happened to be standing on the floor.</li>
           <li><b>The backtest is the judge.</b> A change ships only if it makes predictions better on games it hasn't seen. It doesn't ship because it makes the leaderboard look like the usual top ten. If the data says a player we doubt is good, we keep looking at the data, not at the name.</li>
           <li><b>Show the work.</b> Every number has a play behind it you can click, and every change, kept or rejected, is written down with its test.</li>
-          <li><b>Keep the reference.</b> Classic WPA still shows as a column, so you can always see what the raw swing said.</li>
         </ul>`,
     },
   ];

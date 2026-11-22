@@ -748,6 +748,34 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
   transition: transform .28s cubic-bezier(.2, .9, .25, 1);
 }
 .drawer.open { transform: none; }
+/* Several drawers side by side (js/player.js, up to three): --i is the
+   slot from the right, --dn how many are open; they share the width when
+   three full ones don't fit. Under 900px each new one covers the last. */
+.drawer {
+  --w: min(440px, calc(100vw / var(--dn, 1)));
+  width: var(--w);
+  right: calc(var(--i, 0) * var(--w));
+  z-index: calc(30 + var(--i, 0));
+  transition: transform .28s cubic-bezier(.2, .9, .25, 1), right .28s, width .28s;
+}
+@media (max-width: 900px) {
+  .drawer { --w: min(440px, 100vw); right: 0; }
+}
+/* Standing: the season total and three ranks. */
+.pl-rank { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 14px; background: var(--panel-2); border-radius: 12px; }
+.pl-rank.wait { display: block; }
+.pl-rank.wait small { display: block; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--yellow); }
+.pl-rank.wait span { color: var(--dim); font-size: 12px; font-weight: 600; }
+.pr-total small { display: block; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--yellow); }
+.pr-total b { display: block; font-size: 30px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.pr-total b.pos { color: var(--text); }
+.pr-total b.neg { color: var(--red); }
+.pr-total em { font-style: normal; font-size: 11px; color: var(--dim); font-weight: 600; }
+.pr-ranks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.pr-cell { display: flex; flex-direction: column; align-items: center; padding: 6px 4px; background: var(--bg); border-radius: 8px; text-align: center; }
+.pr-cell b { font-size: 18px; font-weight: 900; color: var(--yellow); font-variant-numeric: tabular-nums; }
+.pr-cell small { font-size: 10px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--text); }
+.pr-cell em { font-style: normal; font-size: 10px; color: var(--dim); }
 .drawer-x {
   position: absolute;
   top: 10px;
@@ -797,7 +825,11 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .pl-games th { padding: 6px 4px; text-align: left; font-size: 9px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); }
 .pl-games td { padding: 7px 4px; border-bottom: 1px solid var(--line); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .pl-games td.ln { white-space: normal; color: var(--dim); font-size: 11px; }
-.pl-games .sorted { color: var(--yellow); font-weight: 900; }
+.pl-games .sorted, .pl-games th.sorted button { color: var(--yellow); font-weight: 900; }
+.pl-games th button { padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.pl-games th button:hover { color: var(--text); }
+.pl-games td.cur { font-weight: 900; }
+.pl-games th.cur button { text-decoration: underline; text-underline-offset: 3px; }
 .pl-games td.pos { color: var(--text); }
 .pl-games td.neg { color: var(--red); }
 .pl-games tr.dnp td { color: var(--dim); }

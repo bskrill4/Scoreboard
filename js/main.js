@@ -1123,8 +1123,8 @@
     document.body.classList.toggle('view-players', v !== 'board');
   }
 
-  // Rankings and cards rank by BONES or MOUSSA (the toggle below). Classic WPA
-  // is no longer a choice (Nov 21); it stays as a column where it's shown.
+  // Rankings and cards rank by BONES or MOUSSA (the toggle below). WPA is gone
+  // from the app (Nov 21).
   function setMetric(m) {
     SB.ui.setMetric(m);
   }
@@ -1313,6 +1313,7 @@
       if (v === SB.impact.version()) return;
       SB.impact.setVersion(v);
       showValue();
+      SB.player.refresh(); // an open player drawer re-reads its games
       bonesModel = bonesModels ? bonesModels[v] : null;
       for (const t of tapes.values()) t._n = -1;
       SB.season.refresh();

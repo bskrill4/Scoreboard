@@ -95,7 +95,7 @@
   ];
   const RIGHT = [
     ['pbp', 'Play by play', 'latest first'],
-    ['defense', 'Defense', 'Credit on defense (BONES or MOUSSA)'],
+    ['defense', 'Defense', () => `${SB.impact.name()} on defense`],
     ['rotation', 'Rotation', 'minutes · current stretch'],
   ];
   function build() {
@@ -106,7 +106,7 @@
       el.innerHTML = list
         .map(
           ([k, title, sub], i) =>
-            `<section class="fw fw-${k}" data-k="${k}" style="--i:${i}"><h3>${title}${sub ? ` <small>${sub}</small>` : ''}</h3><div class="fw-body"></div></section>`
+            `<section class="fw fw-${k}" data-k="${k}" style="--i:${i}"><h3>${title}${sub ? ` <small>${typeof sub === 'function' ? sub() : sub}</small>` : ''}</h3><div class="fw-body"></div></section>`
         )
         .join('');
       return el;

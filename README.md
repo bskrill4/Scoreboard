@@ -69,7 +69,7 @@ from 5:04 left in the 1st half stamped 12:16:54 AM, 86 minutes late, and froze t
 | `js/season.js` | Rankings › NBA season (`#season`) and NFL season (`#nfl-season`): season standings, Impact chart and Movers from our own replay of every regular-season game (`makeSeason(cfg)`, one config per league). |
 | `js/main.js` | Polling (play-by-play every 8s for the top 4 games and a pinned one, 30s for the rest; the full college football board once a minute), stream delay, ordering/pinning, replay mode. |
 
-**WPA** — each play changes the home team's win probability. Football passes are split 65/35 between quarterback and receiver, caught or not (`QB_SHARE` in `js/engine-nfl.js`); sacks and interceptions are the quarterback's. On defense, a sack or pick is the defender's, and on any **stop** (a play that cost the offense) the defenders the play names share half of it on top of the offense's debit (`DEF_SHARE`): the tacklers on a run or catch, the defender on an incompletion (NFL "(D.Turner)", college "broken up by"), the forcer and recoverer of a fumble; tackles, pass breakups and forced fumbles are counted too. Defenders can only gain (except by penalty), so they average above zero and are best compared within a position. A defensive penalty on a sack or pick moves the defense's share to the penalized player. A one-row phantom score (the feed's score jumps for one row and the next row puts it back) keeps the previous score and win probability, so the swing back isn't pinned on the next play. The player drawer lists a traded player's games with his old team too (from his ESPN game log, marked with that team). In the NBA that change is credited to the
+**WPA** (internal only since Nov 21; no longer shown) — each play changes the home team's win probability. Football passes are split 65/35 between quarterback and receiver, caught or not (`QB_SHARE` in `js/engine-nfl.js`); sacks and interceptions are the quarterback's. On defense, a sack or pick is the defender's, and on any **stop** (a play that cost the offense) the defenders the play names share half of it on top of the offense's debit (`DEF_SHARE`): the tacklers on a run or catch, the defender on an incompletion (NFL "(D.Turner)", college "broken up by"), the forcer and recoverer of a fumble; tackles, pass breakups and forced fumbles are counted too. Defenders can only gain (except by penalty), so they average above zero and are best compared within a position. A defensive penalty on a sack or pick moves the defense's share to the penalized player. A one-row phantom score (the feed's score jumps for one row and the next row puts it back) keeps the previous score and win probability, so the swing back isn't pinned on the next play. The player drawer lists a traded player's games with his old team too (from his ESPN game log, marked with that team). In the NBA that change is credited to the
 five players on the floor for the team it helped and debited from the five it hurt. The NFL feed has no
 substitutions, so a play's swing goes to the players named on it (passer and receiver split a catch).
 
@@ -105,10 +105,20 @@ a When filter (1st half / 2nd half & OT) for comparing early plays with each oth
 **Player drawer** (`js/player.js`): click any player for their **Season** (default) or **Last 7 days**, game by
 game. Season shows each game as a dot, a 5-game rolling average and the season average, with "Heating up" /
 "Cooling off" when the last 5 are 2+ off the season average; missed games leave gaps. Every finished game is
-replayed through the same engine as the board and its per-player Impact/WPA kept in localStorage
+replayed through the same engine as the board and its per-player BONES and MOUSSA kept in localStorage (rows still carry an unused WPA slot)
 (`sb.final.v1.<event>`, ~1.3 KB a game), so each game is downloaded once and every player in it is free after.
-Bump `CACHE_VERSION` in `js/player.js` whenever the Impact or WPA math changes.
-**Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by Impact or WPA, with their
+Bump `CACHE_VERSION` in `js/player.js` whenever the BONES or MOUSSA math changes.
+Under the header, NBA players get a **standing** card: their season total under whichever of BONES or MOUSSA is on
+(and per game), and their rank among every NBA player with a game this season, on their current team, and at their
+position (guards, forwards, centers, from each team's roster, kept a day in `sb.nbaPos`; a G-F counts as a guard).
+The totals are the NBA season page's (`SB.season.standings()` / `totals(v)`, loaded on first ask if that page was
+never opened). The game table shows **BONES and MOUSSA** side by side (basketball; BONES only elsewhere), the switched-on
+one in bold, and sorts by Day, BONES or MOUSSA (click a header; again to flip) to find a player's best games.
+The drawer has the same BONES | MOUSSA switch as settings. **Compare**: click another player while a drawer is open
+and a second opens to its left; up to **three** side by side (the newest leftmost; with three open, the next click
+replaces the newest). They share the width when three full ones don't fit, and under 900px each new one covers the
+last. Closing one slides the rest together; Esc closes the newest.
+**Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by BONES or MOUSSA (whichever is on), with their
 counting stats and a Player of the Day, filtered by sport if you like, and either **sport-adjusted** (the default) or by
 the raw number. Impact isn't zero-sum and each sport has its own baseline and spread: basketball credits a make without
 debiting a defender, hockey debits misses and goalies (Nov 15, total Impact per game: NBA +146, college basketball +87,
@@ -131,7 +141,7 @@ by spread, 35 by percentile; by rarity per game NHL 28, NCAAM 11, NBA 9, NFL 2).
 Nov 21): how many players a game would be expected to have doing worse. With the top rule alone a sport with more
 regulars per game than the pool ran out of room at the bottom (Nov 20: five NCAAF players from −4.7 to −0.4 BONES all
 showed −8.3); the top of the list is unchanged. **Plays** (`#plays`) ranks the day's biggest single plays, with who
-was credited, the score at that moment, and each play's Impact and WPA (a click opens the game).
+was credited, the score at that moment, and each play's swing under BONES or MOUSSA: with MOUSSA on, basketball plays are ranked by MOUSSA's own score-only swing (engine `impPlaysN`), football and hockey by BONES's (a click opens the game).
 
 **NBA season** (Rankings › NBA season, `#season`, `js/season.js`): every finished regular-season game is replayed
 through the same engine and kept in the drawer's cache (now with each player's minutes and box line, ~2 KB a game:
@@ -152,11 +162,11 @@ the column. After: Wembanyama +40.7, Adebayo +37.1, Giannis +36.6, Vassell +34.1
 (steals 21.1); the bottom is about −9 to −3 (Dort −6.0, still fouls −27 against steals +13). Backtest after: 64.6% with
 the home prior, log-loss −0.638; second half −0.601, better than point differential's −0.616 there. The table sorts on
 any column and pages 25 at a time: GP, minutes and counting stats (per game or totals), Impact, **Impact per 36**
-(total ÷ minutes × 36), WPA and WPA per 36, with a search (name or team) and a minutes filter (default 100+).
+(total ÷ minutes × 36), all under whichever of BONES or MOUSSA is on, with a search (name or team) and a minutes filter (default 100+).
 **NFL season** (Rankings › NFL season, `#nfl-season`): the same page for the NFL, one position at a time (QB, RB, WR,
 TE, pass rush, LB, CB, S, K; positions from each team's current roster, or guessed from what a player did if he's no
 longer on one). Each position has its own columns (a QB's completions, yards, TDs, INTs and rushing yards; a kicker's
-FGs; a defender's sacks and picks), and Impact and WPA are also given **per game** (the feed has no snaps). Tiers are
+FGs; a defender's sacks and picks), and BONES is also given **per game** (football has no MOUSSA) (the feed has no snaps). Tiers are
 the top 1/5/20/80% of the chosen position; the filter is games played (default 3+). Movers cover every player at any
 position over the last **3 weeks** (2+ games in the window, 2+ before it), rated by Impact per game. On defense only
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
@@ -165,7 +175,7 @@ every box-score athlete (so a defender's games played are right): ~6 KB a game, 
 **MOUSSA** (since Nov 21; until then "BONES v2"): **M**argin-**O**nly **U**ncertainty **S**wings, **S**plit by **A**ction,
 named for our second patron saint, Moussa Diabaté. It's no longer framed as a version of BONES but as its own metric beside
 it. Settings › Player value is a **BONES | MOUSSA** toggle (BONES by default, `sb.bonesV`, `SB.impact.name()`), with the
-same chips on Rankings; classic WPA is no longer selectable there (it stays as a column). The header badge reads MOUSSA
+same chips on Rankings and in the player drawer. **WPA is gone from the app** (Nov 21): no columns, captions or labels; the card's biggest plays, chart bubbles and Rankings › Plays use MOUSSA's own swings when it's on (basketball), and the NFL drive and play cards show the team's win-probability change in %. The header badge reads MOUSSA
 and links to the **FAQ** (`#faq`, `js/faq.js`: what each is for, how it's built, the rules they're held to), which settings
 also links. Every label (cards, picks, leaders, Rankings, the drawer, season standings, the Bone Zone's skull) names
 whichever is on; single-play swings always say BONES. **Picks for both**: `SB.bones.models()` builds both models at once
@@ -378,7 +388,7 @@ per-game cache as the season pages. Players with 8+ games and 15+ minutes a game
 first half of a player's season vs second half; **winning**: a team's swing-only BONES in a game vs its final margin,
 and per game vs point differential over the season (without the game floor, which is paid to the winner and made the
 check partly true by construction: .65/.81 with it, .42/.42 without, Nov 16). The numbers are counted again when the
-Game floor switch changes and after 6 hours; finished games are saved only once their tape has the closing play. Points and on-court WPA run through the same checks for scale.
+Game floor switch changes and after 6 hours; finished games are saved only once their tape has the closing play. Points run through the same checks for scale.
 Grades: .70+ solid, .50 getting there, .30 shaky, below that mostly noise. "The numbers" opens the table.
 
 **Expected points per shot** (`js/xpts.js`, NBA and men's college, one table each): every shot's cell is its zone (from the feed's court coordinates: the

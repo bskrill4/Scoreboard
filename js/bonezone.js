@@ -1,7 +1,7 @@
 // The Bone Zone (#bonezone): is BONES real yet? A floating 3D skull reads out a
 // reliability check of BONES on this NBA season, in speech bubbles:
 //   - consistency: a player's BONES per 36 in his odd games vs his even games
-//     (and the same for points and on-court WPA, for scale);
+//     (and the same for points, for scale);
 //   - holding up: his first half of the season vs his second half;
 //   - team level: a team's total BONES in a game vs its point margin, per game
 //     and over the season.
@@ -76,7 +76,7 @@
       const swing = {}; // swing-only BONES: the "does it win" check
       for (const [id, r] of Object.entries(g.rows)) {
         if (!r[3]) continue;
-        const row = { imp: SB.impact.rowImpact(r) * 100, wpa: r[1] * 100, team: String(r[3][0]), min: r[3][1], pts: r[3][2] };
+        const row = { imp: SB.impact.rowImpact(r) * 100, team: String(r[3][0]), min: r[3][1], pts: r[3][2] };
         team[row.team] = (team[row.team] || 0) + row.imp;
         swing[row.team] = (swing[row.team] || 0) + (v === 2 && r[6] != null ? r[6] : r[0]) * 100; // MOUSSA has no floor
         const p = players.get(id) || { name: r[3][7], g: [] };
@@ -119,7 +119,6 @@
       avgGames,
       bones: metric('imp'),
       pts: metric('pts'),
-      wpa: metric('wpa'),
       teamGame: corr(
         teamGames.map((x) => x.imp),
         teamGames.map((x) => x.margin)
@@ -232,12 +231,12 @@
     const ratio = Math.round((rel / relPts) * 100);
     return [
       `Welcome to the Bone Zone. I've counted the bones of ${s.games} NBA games: ${s.players} players with ${MIN_GAMES}+ games and ${MIN_MPG}+ minutes a night. Is BONES real yet? Let's rattle it.`,
-      `First, consistency. If BONES measures something real about a player, his odd games should look like his even games. They line up at r = ${r2(b.oddEven)}. Points do ${r2(s.pts.oddEven)}; on-court WPA only ${r2(s.wpa.oddEven)}.`,
-      `Stretched to a full season so far, that's a reliability of ${r2(rel)} for BONES against ${r2(relPts)} for points: ${grade(rel)}. BONES carries about ${ratio}% of the signal points do, and nearly four times WPA's.`,
-      `Second, does it hold up? A player's first half of the season against his second: BONES ${r2(b.firstSecond)}, points ${r2(s.pts.firstSecond)}, WPA ${r2(s.wpa.firstSecond)}. ${b.firstSecond >= 0.5 ? 'A good BONES player mostly stays a good BONES player.' : 'It drifts a lot from half to half.'}`,
+      `First, consistency. If BONES measures something real about a player, his odd games should look like his even games. They line up at r = ${r2(b.oddEven)}. Points do ${r2(s.pts.oddEven)}.`,
+      `Stretched to a full season so far, that's a reliability of ${r2(rel)} for BONES against ${r2(relPts)} for points: ${grade(rel)}. BONES carries about ${ratio}% of the signal points do.`,
+      `Second, does it hold up? A player's first half of the season against his second: BONES ${r2(b.firstSecond)}, points ${r2(s.pts.firstSecond)}. ${b.firstSecond >= 0.5 ? 'A good BONES player mostly stays a good BONES player.' : 'It drifts a lot from half to half.'}`,
       `Third, does it win? Add up a team's BONES in a game (swings only, no game floor, since the floor goes to the winner) and compare it with the final margin: r = ${r2(s.teamGame)}. Over the season, across ${s.teams} teams, BONES per game tracks point differential at ${r2(s.teamSeason)}. ${s.teamSeason >= 0.7 ? 'The skull approves: BONES follows winning.' : 'Winning and BONES are only loosely tied so far.'}`,
       ...testLines(s.model?.backtest),
-      `My verdict: BONES is ${grade(rel)}. It's steadier than WPA by a mile${s.teamSeason >= 0.7 ? ' and tracks winning well' : s.teamSeason >= 0.4 ? ', and it follows winning, loosely' : ', though it barely follows winning yet'}, but swings make it noisier than points; with about ${Math.round(s.avgGames)} games a player, one wild night still moves it. Ask me again in a few weeks. The bones never lie, but they do take time.`,
+      `My verdict: BONES is ${grade(rel)}${s.teamSeason >= 0.7 ? ' and tracks winning well' : s.teamSeason >= 0.4 ? ', and it follows winning, loosely' : ', though it barely follows winning yet'}, but swings make it noisier than points; with about ${Math.round(s.avgGames)} games a player, one wild night still moves it. Ask me again in a few weeks. The bones never lie, but they do take time.`,
     ];
   }
 
@@ -516,11 +515,11 @@
   }
 
   function numbersHTML(s) {
-    const row = (label, k) => `<tr><th>${label}</th><td>${r2(s.bones[k])}</td><td>${r2(s.pts[k])}</td><td>${r2(s.wpa[k])}</td></tr>`;
+    const row = (label, k) => `<tr><th>${label}</th><td>${r2(s.bones[k])}</td><td>${r2(s.pts[k])}</td></tr>`;
     return `<table class="bz-table">
-        <thead><tr><th></th><th>BONES</th><th>Points</th><th>WPA</th></tr></thead>
+        <thead><tr><th></th><th>BONES</th><th>Points</th></tr></thead>
         <tbody>${row('Odd vs even games', 'oddEven')}${row('1st half vs 2nd half', 'firstSecond')}
-          <tr><th>Team BONES (swings only) vs margin</th><td colspan="3">per game ${r2(s.teamGame)} · season ${r2(s.teamSeason)} (${s.teams} teams)</td></tr></tbody>
+          <tr><th>Team BONES (swings only) vs margin</th><td colspan="2">per game ${r2(s.teamGame)} · season ${r2(s.teamSeason)} (${s.teams} teams)</td></tr></tbody>
       </table>${backtestHTML(s.model?.backtest)}
       <p class="bz-fine">Correlations (r) per 36 minutes, ${s.players} players with ${MIN_GAMES}+ games and ${MIN_MPG}+ minutes a game, ${s.games} games. 1 is perfectly repeatable, 0 is coin flips.</p>`;
   }

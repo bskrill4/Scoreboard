@@ -51,20 +51,22 @@
     return [css(ac), css(hc)];
   }
 
-  // ---------- player value: classic WPA or experimental Impact ----------
-  // WPA: NBA/college credit every swing to all ten players on the floor (NFL:
-  // the players named on the play). Impact: only the players responsible for
-  // each play, leverage-adjusted (see SB.impact in engine.js).
-  let metric = 'imp';
-  const val = (p) => (metric === 'imp' ? p.imp || 0 : p.wpa || 0);
-  const momentVal = (m) => (metric === 'imp' ? m.imp ?? 0 : m.wpa ?? 0);
+  // ---------- player value: BONES or MOUSSA ----------
+  // Only the players responsible for each play, leverage-adjusted (see
+  // SB.impact in engine.js), on ESPN's win probability (BONES) or our own
+  // score-only one (MOUSSA). p.imp holds whichever is on. WPA is gone (Nov 21).
+  const metric = 'imp';
+  const val = (p) => p.imp || 0;
+  const momentVal = (m) => m.imp ?? 0;
   // The toggle's metric by name: BONES or MOUSSA (settings › Player value).
   const bonesLabel = () => SB.impact.name();
   const N = bonesLabel;
-  const metricShort = () => (metric === 'imp' ? bonesLabel() : 'WPA');
-  // Single-play swings are always BONES's (ESPN's win probability), whichever metric is on.
-  const swingLabel = () => 'BONES';
-  const setMetric = (m) => (metric = m === 'imp' ? 'imp' : 'wpa');
+  const metricShort = bonesLabel;
+  // A single play's swing: MOUSSA's own in basketball when it's on (engine
+  // impPlaysN); football and hockey have only BONES's.
+  const hasMoussa = (g) => !!g && (g.league === 'nba' || g.league === 'ncaam');
+  const swingLabel = (g) => (SB.impact.version() === 2 && hasMoussa(g) ? 'MOUSSA' : 'BONES');
+  const setMetric = () => {};
 
   // ---------- formatting ----------
   const fmtWPA = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}`;
@@ -289,13 +291,12 @@
     </div>`;
   }
 
-  // ---------- hover a player: when they made their WPA ----------
+  // ---------- hover a player: when they made their BONES / MOUSSA ----------
   let focus = null; // { game, pid } while the pointer is on a player row
   let playHover = null; // { game, i } while the pointer is on a play on the football field
   const isFocus = (g, p) => (focus && focus.game === g.id && focus.pid === p.id ? ' hl' : '');
 
-  // NBA: shade each stint on the floor, relight the line inside it and tag it
-  // with the WPA banked there. NFL: a dot on the line at every play they were in.
+  // A dot on the line at every play they were credited with, sized by its value.
   function focusHTML(g, total, W, H, d, id) {
     if (!focus || focus.game !== g.id) return null;
     const p = g.players.find((pl) => pl.id === focus.pid);
@@ -305,23 +306,6 @@
     const cls = (v) => (v >= 0 ? 'pos' : 'neg');
     const name = esc(p.last || p.name);
 
-    if (p.stints && metric === 'wpa') {
-      const stints = p.stints.filter((s) => s.e > s.s);
-      const rects = stints.map((s) => `<rect x="${x(s.s)}" y="0" width="${(x(s.e) - x(s.s)).toFixed(1)}" height="${H}"/>`).join('');
-      const tags = stints
-        .filter((s) => pct(s.e) - pct(s.s) >= 6 && Math.abs(s.wpa) >= 0.005)
-        .map((s) => `<span class="stint-tag ${cls(s.wpa)}" style="left:${pct(s.s).toFixed(2)}%;width:${(pct(s.e) - pct(s.s)).toFixed(2)}%">${fmtWPA(s.wpa)}</span>`)
-        .join('');
-      const mins = Math.round(stints.reduce((t, s) => t + s.e - s.s, 0) / 60);
-      return {
-        defs: `<clipPath id="${id}f">${rects}</clipPath>`,
-        under: `<g class="stint">${rects}</g>`,
-        over: `<path d="${d}" class="wpline lit" clip-path="url(#${id}f)"/>`,
-        html: tags,
-        cap: `<span class="focus-cap"><b>${name}</b> ${mins} min on court · <em class="${cls(p.wpa)}">${fmtWPA(p.wpa)} WPA</em></span>`,
-      };
-    }
-
     // A dot on the line at every play they were credited with (NFL always;
     // basketball in Impact mode), sized by its value.
     const moments = (p.moments || []).filter((m) => momentVal(m) !== 0);
@@ -330,7 +314,9 @@
     const dots = moments
       .map((m) => {
         const size = (5 + (Math.abs(momentVal(m)) / big) * 9).toFixed(1);
-        return `<i class="mom ${cls(momentVal(m))}" style="left:${pct(m.t).toFixed(2)}%;top:${wpTop(m.wp)}%;--s:${size}px"></i>`;
+        // On MOUSSA's dashed score-only line when MOUSSA is on (basketball).
+        const wp = SB.impact.version() === 2 && m.play?.wpN != null ? m.play.wpN : m.wp;
+        return `<i class="mom ${cls(momentVal(m))}" style="left:${pct(m.t).toFixed(2)}%;top:${wpTop(wp)}%;--s:${size}px"></i>`;
       })
       .join('');
     const plays = `${moments.length} play${moments.length === 1 ? '' : 's'}`;
@@ -567,7 +553,7 @@
       </div>
       <div class="dcell"><small>Time</small><b>${mmss(d.time)}</b></div>
       <div class="dcell"><small>Yards</small><b class="${cls(d.yards)}">${signed(d.yards)}</b>${sparkHTML(d.yardSeries)}</div>
-      <div class="dcell"><small>WPA</small><b class="${cls(d.wpa)}">${signed(d.wpa * 100, 1)}</b>${sparkHTML(d.wpaSeries)}</div>
+      <div class="dcell"><small>Win prob</small><b class="${cls(d.wpa)}">${signed(d.wpa * 100, 0)}%</b>${sparkHTML(d.wpaSeries)}</div>
     </div>`;
   }
 
@@ -586,7 +572,7 @@
       .join(' ');
     return `<h3>Play ${i + 1} of ${d.rows.length} <small>${esc(meta)}</small></h3>
       <p class="lastplay-text">${esc(r.text)}</p>
-      <p class="play-swing"><b class="${r.wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(r.wpa)} WPA</b> for ${esc(team.abbr)}${who ? ` · ${who} ${metricShort()}` : ''}</p>`;
+      <p class="play-swing"><b class="${r.wpa >= 0 ? 'pos' : 'neg'}">${signed(r.wpa * 100, 0)}% win prob</b> for ${esc(team.abbr)}${who ? ` · ${who} BONES` : ''}</p>`;
   }
 
   function driveHTML(g) {
@@ -613,18 +599,17 @@
   function swingsHTML(g) {
     const fp = focusedPlayer(g);
     if (fp) {
-      // Basketball WPA is on-court, so its plays have no per-player WPA: rank by Impact there.
-      const key = metric === 'wpa' && (fp.moments || []).some((m) => m.wpa != null) ? 'wpa' : 'imp';
+      const key = 'imp';
       const top = (fp.moments || [])
         .filter((m) => m.play && m[key])
         .sort((a, b) => Math.abs(b[key]) - Math.abs(a[key]))
         .slice(0, 3);
-      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays${key !== metric ? ` <small>by ${N()}</small>` : ''}</div>`;
+      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays <small>by ${N()}</small></div>`;
       if (!top.length) return `<div class="swings">${head}<div class="swing"><span>No credited plays yet</span></div></div>`;
       return `<div class="swings">${head}${top
         .map(
           (m) => `<div class="swing ${m[key] >= 0 ? 'pos' : 'neg'}">
-            <b>${fmtWPA(m[key])} ${key.toUpperCase()}</b>
+            <b>${fmtWPA(m[key])} ${N()}</b>
             <span>${esc(playWhen(g, m.play))} · <em class="sc">${esc(scoreAt(g, m.play))}</em> · ${esc(m.play.text)}</span>
           </div>`
         )
@@ -636,7 +621,7 @@
         .map((s) => {
           const t = s.swing > 0 ? g.home : g.away;
           return `<div class="swing" style="--tc:${t.css}">
-            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} ${swingLabel()}</b>
+            <b>${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} ${swingLabel(g)}</b>
             <span>${esc(playWhen(g, s.play))} · <em class="sc">${esc(scoreAt(g, s.play))}</em> · ${esc(s.play.text)}</span>
           </div>`;
         })
@@ -663,7 +648,7 @@
       .map((s) => {
         const t = s.swing > 0 ? g.home : g.away;
         const left = Math.min(98.5, Math.max(1.5, (s.play.elapsed / total) * 100)); // in from the edges so its tip fits
-        const top = Number(wpTop(s.play.wp));
+        const top = Number(wpTop(s.wp ?? s.play.wp)); // MOUSSA's plays sit on its score-only line
         const size = (10 + (Math.abs(s.swing) / big) * 12).toFixed(1);
         const who = s.credits
           .map((c) => {
@@ -682,7 +667,7 @@
             ? ' sr'
             : ' sl';
         return `<i class="bub" tabindex="0" style="left:${left.toFixed(2)}%;top:${top}%;--s:${size}px;--tc:${t.css}">
-          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} ${swingLabel()}</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
+          <span class="tip${side}"><b style="color:${t.css}">${esc(t.abbr)} ${fmtWPA(Math.abs(s.swing))} ${swingLabel(g)}</b> · ${esc(playWhen(g, s.play))} · ${esc(scoreAt(g, s.play))}
           <span class="tip-t">${esc(s.play.text)}</span>${who ? `<small>${who}</small>` : ''}</span>
         </i>`;
       })
@@ -872,11 +857,7 @@
       ? `Top ${N()} per 36 <small>this season · tonight's rotation</small>`
       : !g.players.length
       ? 'Players to watch'
-      : metric === 'imp'
-      ? `${bonesLabel()} leaders <small>${SB.impact.version() === 2 ? 'on a score-only win probability, 50% at tip · beta' : 'credit for their own plays, leverage-adjusted · beta'}</small>`
-      : SB.league.football(g.league) || g.league === 'nhl'
-      ? 'Top performers <small>WPA on plays they were part of</small>'
-      : 'WPA leaders <small>win probability added while on court</small>';
+      : `${bonesLabel()} leaders <small>${SB.impact.version() === 2 && hasMoussa(g) ? 'on a score-only win probability, 50% at tip · beta' : SB.impact.version() === 2 ? 'BONES numbers here: MOUSSA is basketball only · beta' : 'credit for their own plays, leverage-adjusted · beta'}</small>`;
     const courtTitle = g.state === 'final' ? 'Starting lineup' : 'On court';
     const middle =
       SB.league.football(g.league)
@@ -1183,8 +1164,6 @@
     const anyLive = models.some((g) => g.state === 'live');
     const played = models.filter((g) => (g.state === 'live' || g.state === 'final') && g.players.length);
     const col = (k) => (metric === k ? ' class="sorted"' : '');
-    const seg = (k, label) =>
-      `<button type="button" data-metric="${k}" class="${metric === k ? 'on' : ''}" aria-pressed="${metric === k}">${label}</button>`;
     const soFar = anyLive ? ' · so far' : '';
 
     const head = `
@@ -1202,7 +1181,7 @@
     const html = `${head}${body}
       <p class="players-note"><b>BONES</b> (<b>B</b>ounded <b>O</b>dds <b>N</b>et <b>E</b>ffect <b>S</b>core, beta; named for our patron saint, Bones Hyland) credits each play's win-probability swing only to the players responsible for it (shooter and assister, the player who turned it over or fouled, the rebounder or stopper; a free-throw trip is split between the fouler and the shooter), then divides it by the square root of the play's leverage, so a blowout or a heavy underdog's game still counts and a thriller doesn't count five times over. Because it's all in win probability, it ranks every sport on one list.
       <b>MOUSSA</b> (<b>M</b>argin-<b>O</b>nly <b>U</b>ncertainty <b>S</b>wings, <b>S</b>plit by <b>A</b>ction; named for our second patron saint, Moussa Diabaté) does the same on our own win probability from the score, the clock and who has the ball, 50% at tip for everyone, so a favorite's lead counts as much as an underdog's (basketball; football and hockey show BONES). Switch between them in settings or with the chips above; <a href="#faq">how they work</a>.
-      <b>WPA</b> is the classic number: in basketball every player on the floor shares each swing, in football the players named on the play. Basketball and football WPA aren't on the same scale. A play's WPA is its raw swing for the team it helped. <b>Single plays</b> are ranked by their BONES swing: the free-throw and spike corrections without the leverage divide, which exists to make player totals fair across games and on one play would shrink clutch swings and inflate early ones. Win probability already makes a late play in a close game bigger than an early one, and a play after the game is decided nearly worthless, so there's no extra time factor; use When to compare early plays with each other.</p>`;
+      <b>Single plays</b> are ranked by their swing under whichever is on (MOUSSA's own swing in basketball, BONES's elsewhere): the free-throw and spike corrections without the leverage divide, which exists to make player totals fair across games and on one play would shrink clutch swings and inflate early ones. Win probability already makes a late play in a close game bigger than an early one, and a play after the game is decided nearly worthless, so there's no extra time factor; use When to compare early plays with each other.</p>`;
     if (html !== playersHTMLCache) {
       playersHTMLCache = html;
       root.innerHTML = html;
@@ -1357,7 +1336,6 @@
           <td class="pl">${headshot(p, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${SB.league.name(g.league)} · ${esc(team.abbr)}</small></span></td>
           <td class="gm">${gameLabel(g)}</td>
           <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
-          <td${col('wpa')}><span class="${(p.wpa || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.wpa || 0)}</span></td>
           <td${relCol}><span class="${rel({ p, g }) >= 0 ? 'pos' : 'neg'}">${fmtWPA(rel({ p, g }))}</span></td>
           <td class="ln">${statLine(p)}</td>
         </tr>`;
@@ -1368,14 +1346,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
     return `${filters}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${col('wpa')}>WPA</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'
@@ -1392,20 +1370,18 @@
   const setPlaysWhen = (w) => (playsWhen = WHEN[w] ? w : 'all');
   const inWhen = (g, p) => playsWhen === 'all' || (playsWhen === 'first') === p.elapsed < g.reg / 2;
 
-  // Every credited play from every game, from the side of the team it helped:
-  // its Impact (leverage-adjusted, after the feed corrections) and its WPA (the
-  // raw swing; a free-throw trip's is the whole trip's).
+  // Every credited play from every game, from the side of the team it helped,
+  // ranked by its swing under BONES or MOUSSA (whichever is on; MOUSSA's own
+  // plays in basketball, BONES's elsewhere).
   function playsTab(games, opts, col, soFar) {
     const rows = [];
     for (const g of games) {
       for (const s of g.impPlays || []) {
-        const raw = s.play.rawDelta ?? s.play.delta;
-        const homeHelped = s.swing ? s.swing > 0 : raw > 0;
-        if (!inWhen(g, s.play)) continue;
-        rows.push({ g, s, team: homeHelped ? g.home : g.away, imp: Math.abs(s.swing), wpa: homeHelped ? raw : -raw });
+        if (!s.swing || !inWhen(g, s.play)) continue;
+        rows.push({ g, s, team: s.swing > 0 ? g.home : g.away, imp: Math.abs(s.swing) });
       }
     }
-    rows.sort((a, b) => (metric === 'imp' ? b.imp - a.imp : b.wpa - a.wpa));
+    rows.sort((a, b) => b.imp - a.imp);
     const top = rows.slice(0, 50);
 
     const by = (g, s) =>
@@ -1428,18 +1404,17 @@
           <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
             <small>${SB.league.name(crown.g.league)} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
             <div class="by-list">${by(crown.g, crown.s)}</div></div>
-          <div class="potd-v"><b>${fmtWPA(metric === 'imp' ? crown.imp : crown.wpa)}</b><small>${metricShort()} · ${esc(crown.team.abbr)}</small></div>
+          <div class="potd-v"><b>${fmtWPA(crown.imp)}</b><small>${swingLabel(crown.g)} · ${esc(crown.team.abbr)}</small></div>
         </div>`
       : '';
     const body = top
       .map(
-        ({ g, s, team, imp, wpa }, i) => `<tr class="play-row" ${gameAttrs(g)}>
+        ({ g, s, team, imp }, i) => `<tr class="play-row" ${gameAttrs(g)}>
           <td class="rk">${i + 1}</td>
           <td class="pt"><span class="pt-team" style="--tc:${team.css}"><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${SB.league.name(g.league)} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
           <td class="by-cell"><div class="by-list">${by(g, s)}</div></td>
           <td class="sc">${esc(scoreAt(g, s.play))}</td>
           <td${col('imp')}><span class="pos">${fmtWPA(imp)}</span></td>
-          <td${col('wpa')}><span class="${wpa >= 0 ? 'pos' : 'neg'}">${fmtWPA(wpa)}</span></td>
         </tr>`
       )
       .join('');
@@ -1449,7 +1424,7 @@
     return `${whenSeg}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable plays">
-            <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>${bonesLabel()}</th><th${col('wpa')}>WPA</th></tr></thead>
+            <thead><tr><th>#</th><th>Play</th><th>By</th><th>Score</th><th${col('imp')}>${bonesLabel()}</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>`
         : '<div class="empty-note">No plays with play-by-play yet today.</div>'
