@@ -51,11 +51,15 @@
   let chimeFilter = '';
   let userRerank = false; // set by SB.refresh: the next tick's top-game change was the person's doing
 
+  // Soccer competitions on the board (js/soccer.js: score-only, no play-by-play),
+  // switched on and off like any sport. Since Nov 23 they're here, not on a tab.
+  const SOCCER_IDS = (SB.soccer?.LEAGUES || []).map((l) => l.id);
+  const ALL_SPORTS = SB.api.leagues.length + SOCCER_IDS.length;
   // Sports switched off in the top bar (remembered per browser).
   let hiddenLeagues = new Set();
   try {
     const saved = JSON.parse(localStorage.getItem('sb.hidden') || '[]');
-    if (Array.isArray(saved)) hiddenLeagues = new Set(saved.filter((l) => SB.api.leagues.includes(l)));
+    if (Array.isArray(saved)) hiddenLeagues = new Set(saved.filter((l) => SB.api.leagues.includes(l) || SOCCER_IDS.includes(l)));
   } catch (e) {}
   const shown = (ev) => !hiddenLeagues.has(ev._league);
 
@@ -601,8 +605,11 @@
     const evs = events.filter(shown);
     const terms = view() === 'board' ? SB.filter.parse(filterText) : [];
     const built = new Map(evs.map((ev) => [ev.id, buildModel(ev, T)]));
+    // Soccer matches join the board as they are (their own card and watch index).
+    // Not in replays: the soccer feed has no play-by-play to replay.
+    if (SB.soccer && !replay) for (const m of SB.soccer.boardModels(loadedDay, (id) => !hiddenLeagues.has(id))) built.set(m.id, m);
     const evById = new Map(evs.map((ev) => [ev.id, ev]));
-    const models = arrange([...built.values()], terms.length ? (m) => SB.filter.matches(terms, evById.get(m.id), m) : null);
+    const models = arrange([...built.values()], terms.length ? (m) => (m.soccer ? SB.soccer.matches(terms, m) : SB.filter.matches(terms, evById.get(m.id), m)) : null);
     shownTop = models[0]?.id || null;
     // Chime when a different game takes the top spot on its own: not on the
     // first paint, a day change, a pin, a filter change, or the old top game leaving the board.
@@ -619,9 +626,10 @@
     // In focus mode (js/focus.js) they stay quiet: what happens meanwhile is
     // noted, not announced, and waiting banners stay hidden until it's left.
     const focusing = SB.focus.isOn();
-    SB.banners.update({ day: loadedDay, board: view() === 'board' && !focusing, topId: shownTop, games: [...built.values()] });
+    // Banners and alerts read play-by-play detail soccer doesn't have.
+    SB.banners.update({ day: loadedDay, board: view() === 'board' && !focusing, topId: shownTop, games: [...built.values()].filter((m) => !m.soccer) });
     const mineHidden = [...built.values()].filter((m) => m.mine?.length && !models.includes(m));
-    const watched = mineHidden.length ? [...models, ...mineHidden] : models;
+    const watched = (mineHidden.length ? [...models, ...mineHidden] : models).filter((m) => !m.soccer);
     SB.clutch.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
     SB.bigNight.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
     SB.recap.update({ day: loadedDay, board: view() === 'board', replay: !!replay });
@@ -631,7 +639,6 @@
     else if (view() === 'nflseason') SB.nflSeason.render();
     else if (view() === 'bonezone') SB.boneZone.render();
     else if (view() === 'faq') SB.faq.render();
-    else if (view() === 'soccer') {} // js/soccer.js draws its own tab
     else if (view() === 'standings') SB.standings.render();
     else SB.ui.render(models, { heroId: shownTop, pinnedId, toTop });
     if (focusing) {
@@ -653,7 +660,7 @@
     } else if (!models.length) {
       const day = viewDay();
       const off = [...hiddenLeagues].map((l) => l.toUpperCase()).join(', ');
-      if (hiddenLeagues.size === SB.api.leagues.length) showNotice('Every sport is switched off. Tap a sport above to bring it back.');
+      if (hiddenLeagues.size === ALL_SPORTS) showNotice('Every sport is switched off. Tap a sport above to bring it back.');
       else {
         const msg =
           day === todayDay() && !replay
@@ -1108,7 +1115,7 @@
   // ---------- views & player metric ----------
   // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab), the viewing plan (#plan)
   // and the Bone Zone (#bonezone, a check of how reliable BONES is).
-  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq', '#soccer': 'soccer', '#standings': 'standings' };
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq', '#standings': 'standings' };
   const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
@@ -1120,7 +1127,6 @@
     $('nflseason').hidden = v !== 'nflseason';
     $('bonezone').hidden = v !== 'bonezone';
     $('faq').hidden = v !== 'faq';
-    $('soccer').hidden = v !== 'soccer'; // js/soccer.js draws and polls it
     $('standings').hidden = v !== 'standings';
     document.body.classList.toggle('view-bonezone', v === 'bonezone');
     document.body.classList.toggle('view-faq', v === 'faq');
@@ -1235,6 +1241,7 @@
   }
 
   function initControls() {
+    if (SB.soccer) SB.soccer.onUpdate = () => tick(); // soccer scores land on their own schedule
     SB.player.onGame = showGame;
     initSettings();
     initFilter();

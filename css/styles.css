@@ -2148,8 +2148,12 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .st-table .neg { color: var(--red); }
 .st-team { display: inline-flex; align-items: center; gap: 8px; }
 .st-team img { width: 22px; height: 22px; object-fit: contain; }
-.st-inj b { font-weight: 700; }
-.st-inj small { color: var(--dim); }
+/* Fit the frame: tighter cells, long headers wrap, the injury on two short lines. */
+.st-table th, .st-table td { padding: 8px 9px; }
+.st-table th { white-space: normal; line-height: 1.25; vertical-align: bottom; }
+.st-inj { white-space: normal; line-height: 1.2; min-width: 120px; }
+.st-inj b { display: block; font-weight: 700; white-space: nowrap; }
+.st-inj small { display: block; color: var(--dim); white-space: nowrap; }
 .st-table tr.st-cut td { border-bottom: 2px solid var(--yellow); }
 .st-table tr.st-cut-out td { border-bottom-style: dashed; border-bottom-color: var(--dim); }
 .st-note { color: var(--dim); font-size: 13px; line-height: 1.5; }
@@ -2179,3 +2183,39 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 @media (max-width: 420px) {
   .br-grid { grid-template-columns: 1fr; }
 }
+/* Bone Zone: best bets (BONES and MOUSSA) */
+.bz-bets { margin: 4px 0 18px; display: grid; gap: 8px; }
+.bz-bets h3 small { color: var(--dim); font-weight: 600; margin-left: 6px; }
+.bz-bet { display: grid; grid-template-columns: 70px auto 1fr; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--yellow); border-radius: 12px; background: rgba(255, 214, 10, .06); font-size: 13px; }
+.bz-bet.none { border-color: var(--line); background: none; }
+.bz-bet em { font-style: normal; font-size: 10px; font-weight: 900; letter-spacing: .08em; color: var(--dim); }
+.bz-bet-pick { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; font-size: 15px; white-space: nowrap; }
+.bz-bet-pick img { width: 22px; height: 22px; object-fit: contain; }
+.bz-bet-pick b { color: var(--yellow); }
+.bz-bet-pick small { color: var(--dim); font-weight: 600; font-size: 12px; }
+.bz-bet-why { color: var(--dim); text-align: right; }
+.bz-bet-why b { color: var(--text); }
+.bz-call b.bz-bb { background: none; border: 1px solid var(--yellow); color: var(--yellow); }
+@media (max-width: 560px) {
+  .bz-bet { grid-template-columns: 1fr; gap: 4px; }
+  .bz-bet-why { text-align: left; }
+}
+
+/* Soccer on the Scores board (since Nov 23; js/soccer.js boardTileHTML / boardHeroHTML) */
+.lg-soccer { --lg: #3ddc84; }
+.ms-board .g-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ms-board .chips { display: flex; flex-wrap: nowrap; gap: 4px; flex: 1; min-width: 0; overflow: hidden; }
+.ms-board .lg { font-size: 11px; font-weight: 900; letter-spacing: .08em; color: var(--dim); }
+.ms-board .status { font-size: 12px; font-weight: 800; white-space: nowrap; }
+.ms-board .status.live { color: var(--red); }
+.ms-board .widx { margin-left: auto; min-width: 30px; padding: 2px 8px; border-radius: 8px; background: var(--yellow); color: var(--yellow-ink, #141418); font-weight: 900; text-align: center; }
+.ms-board-hero .ms-teams { gap: 12px; }
+.ms-board-hero .ms-team { grid-template-columns: 48px 1fr auto; }
+.ms-board-hero .ms-team .logo { width: 48px; height: 48px; }
+.ms-board-hero .ms-name b { font-size: 24px; }
+.ms-board-hero .ms-score { font-size: 56px; line-height: 1; }
+.ms-board-hero .ms-goals { font-size: 13px; }
+/* Standings: the sport switch, and a soccer table */
+.st-head { flex-wrap: wrap; gap: 10px; }
+.st-sports { margin-left: auto; }
+.st-soccer .ptable-wrap { max-width: 760px; }

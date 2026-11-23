@@ -202,6 +202,7 @@
   }
 
   function tileHTML(g) {
+    if (g.soccer) return SB.soccer.boardTileHTML(g); // score-only: its own card (js/soccer.js)
     const wpLabels =
       g.wp == null || g.state === 'final'
         ? ''
@@ -599,21 +600,26 @@
   function swingsHTML(g) {
     const fp = focusedPlayer(g);
     if (fp) {
+      // A hovered player's biggest plays take the game's rows exactly: the same
+      // number of single-line rows and no header of their own (his name is in the
+      // chart heading). Any change in height here moves the leaders under a still
+      // pointer, which ends the hover, which moves them back: the card shook.
+      const slots = metric === 'imp' && g.impSwings?.length ? Math.min(3, g.impSwings.length) : g.swings.length;
+      if (!slots) return '';
       const key = 'imp';
       const top = (fp.moments || [])
         .filter((m) => m.play && m[key])
         .sort((a, b) => Math.abs(b[key]) - Math.abs(a[key]))
-        .slice(0, 3);
-      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays <small>by ${N()}</small></div>`;
-      if (!top.length) return `<div class="swings">${head}<div class="swing"><span>No credited plays yet</span></div></div>`;
-      return `<div class="swings">${head}${top
-        .map(
-          (m) => `<div class="swing ${m[key] >= 0 ? 'pos' : 'neg'}">
+        .slice(0, slots);
+      const rows = top.map(
+        (m) => `<div class="swing ${m[key] >= 0 ? 'pos' : 'neg'}">
             <b>${fmtWPA(m[key])} ${N()}</b>
             <span>${esc(playWhen(g, m.play))} · <em class="sc">${esc(scoreAt(g, m.play))}</em> · ${esc(m.play.text)}</span>
           </div>`
-        )
-        .join('')}</div>`;
+      );
+      if (!rows.length) rows.push(`<div class="swing"><b>&nbsp;</b><span>No credited plays yet for ${esc(fp.last || fp.name)}</span></div>`);
+      while (rows.length < slots) rows.push(`<div class="swing" aria-hidden="true"><b>&nbsp;</b><span>&nbsp;</span></div>`);
+      return `<div class="swings">${rows.join('')}</div>`;
     }
     if (metric === 'imp' && g.impSwings?.length) {
       return `<div class="swings">${g.impSwings
@@ -839,6 +845,7 @@
   }
 
   function heroHTML(g, opts) {
+    if (g.soccer) return SB.soccer.boardHeroHTML(g);
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
       : `<span class="pin">Top game</span>`;

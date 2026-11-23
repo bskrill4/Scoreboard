@@ -172,6 +172,15 @@ position over the last **3 weeks** (2+ games in the window, 2+ before it), rated
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
 every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
 
+**Soccer** (`js/soccer.js`; Premier League and Champions League): score-only, from ESPN's scoreboard feed, with no
+play-by-play, so it stays outside BONES, MOUSSA, Rankings, banners and alerts. Since Nov 23 there's no Soccer tab: its
+matches are on the **Scores board** with every other sport (`SB.soccer.boardModels`, ids prefixed `s`), ranked by
+soccer's own watch index (closeness and the minute, then team quality, bonuses for late drama, comebacks, red cards and
+goal fests) and drawn with soccer's card (`boardTileHTML`, `boardHeroHTML`: the top spot opens the goals and red cards).
+**EPL** and **UCL** are sport toggles in settings like the others; the board filter matches team and competition names
+and "soccer"; the Plan counts a match as about 115 minutes. Not in replays (no play-by-play to replay). The Premier
+League table is on **Standings** (the NBA / Premier League switch; soccer's sortable table with its zones).
+
 **Standings** (`#standings`, `js/standings.js`, since Nov 22; NBA for now): ESPN's standings by **division,
 conference or league** (records, seeds with tiebreakers, last ten, streak; a line under the 6 seed and a dashed one under
 the 10th) and its injury report, refetched every 10 minutes, plus the team numbers behind the picks: **Diff** (point
@@ -200,7 +209,14 @@ the games where they split and who was right. **The Bone Zone** has its own **BO
 chosen metric (rows read under it with `SB.impact.withVersion`; its team-vs-margin check uses MOUSSA's own rows, which
 have no floor). Asking about upcoming games lists **both** metrics' calls for every game, the checked one brighter, and
 marks a **Split** (blue) wherever they pick different winners; the skull names the splits ("whichever is right there is
-the one that's learning something"). Below, "v1" is BONES and "v2" is MOUSSA.
+the one that's learning something"). **Best bets** (since Nov 23, NBA): above the list, each metric's one bet for the
+night: among the first day with games left to tip, the moneyline side with the highest expected return per $100 from
+the metric's own win chance (chance × profit if it wins − (1 − chance) × 100), against the first sportsbook in the game
+summary's pick center. The card shows the price, the metric's chance and the chance the price implies; a game holding a
+best bet is tagged in the list; the skull reads out the checked metric's. With no positive return anywhere it says so.
+This is the one place the app shows odds. Max expected return leans toward long shots wherever a metric is
+under-confident in favorites (BONES's first one was Utah at +554), so it doubles as a calibration check. Below, "v1"
+is BONES and "v2" is MOUSSA.
 
 **BONES v2** (beta, basketball; settings › **BONES v2**, off by default, `sb.bonesV`): the same play credits, but on a
 **score-only win probability** instead of ESPN's. ESPN's opens every game with team strength priced in (San Antonio
@@ -420,8 +436,9 @@ receiving leaders at smaller weights than the NFL's, plus a **ranked team's own 
 .6 each for a top-10 team, .4 for 11–25; ESPN's team leaders before kickoff, the game's top passer, rusher and receiver
 once it starts, past 75 passing or 40 rushing/receiving yards; kept per game, never added to the shared star list), since the FBS lists are mostly Group of Five volume (Nov 15: #19 Ole Miss at Oklahoma had none; at the
 half it went from 33 to 41). Plan length is an estimated 3h30.
-NFL big nights are tiered to be as rare as the NBA's: 400 passing yards or 200 from scrimmage 1, 4 TD passes .8,
-150 from scrimmage or 3 TDs .7, 350 passing .6, 125 from scrimmage .5, 300 passing .35, 100 from scrimmage .3.
+NFL big nights are tiered to be as rare as the NBA's (recalibrated Nov 23, TESTS.md I01): 400 passing yards, 5 TD
+passes or 200 from scrimmage 1; 4 TD passes, 175 from scrimmage or a back's or receiver's 3 TDs .7; 150 from scrimmage or
+350 passing .45; a passer's 3 total TDs .4; 125 from scrimmage .3; 300 passing .2; 100 from scrimmage .15.
 Live games rank first, then upcoming, then finals. Upcoming games go by index until one is within 45 minutes of its
 start; then they go by start time, with the index breaking ties among games starting within 10 minutes of each other
 (`SOON_MIN` in `js/main.js`; Nov 15 the 7:20 PM PIT–CIN sat on top from 11:37 to noon with eight noon games about to start). Click a tile to pin it to the top. Per-sport tuning

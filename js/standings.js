@@ -36,6 +36,17 @@
   let root = null;
   let started = false;
   let view = 'conference';
+  // Which table: the NBA, or a soccer league (js/soccer.js; since Nov 23 its tables
+  // live here, not on a Soccer tab). More sports to come.
+  const SPORTS = [
+    { id: 'nba', name: 'NBA' },
+    { id: 'eng.1', name: 'Premier League' },
+  ];
+  let sport = 'nba';
+  try {
+    const s = localStorage.getItem('sb.standingsSport');
+    if (SPORTS.some((x) => x.id === s)) sport = s;
+  } catch (e) {}
   try {
     const v = localStorage.getItem('sb.standingsView');
     if (VIEWS.includes(v)) view = v;
@@ -248,6 +259,11 @@
   }
 
   // ---------- drawing ----------
+  // "G. Antetokounmpo": the injury column stays narrow (the full name is in the cell's title).
+  const shortName = (n) => {
+    const parts = String(n).split(' ');
+    return parts.length > 1 ? `${parts[0][0]}. ${parts.slice(1).join(' ')}` : n;
+  };
   const team = (t) =>
     `<span class="st-team">${t.logo ? `<img src="${esc(t.logo)}" alt="" loading="lazy">` : ''}<b>${esc(t.short)}</b></span>`;
   function rowHTML(t, rank, leader, cls = '') {
@@ -272,7 +288,7 @@
       <td class="num">${s ? fix1(s.xPa) : '…'}</td>
       <td class="num ${s ? tone(s.xNet) : ''}">${s ? sign1(s.xNet) : '…'}</td>
       <td class="num ${s ? tone(s.luck) : ''}">${s ? sign1(s.luck) : '…'}</td>
-      <td class="st-inj">${inj ? `<b>${esc(inj.o.name)}</b> <small>${fix1(inj.p.rate * 36)}${inj.o.what ? ` · ${esc(inj.o.what)}` : ''}</small>` : m ? '<small>—</small>' : '…'}</td>
+      <td class="st-inj"${inj ? ` title="${esc(`${inj.o.name}: ${fix1(inj.p.rate * 36)} ${SB.impact.name()} per 36${inj.o.what ? `, ${inj.o.what}` : ''}${inj.o.back ? `, back ${inj.o.back}` : ''}`)}"` : ''}>${inj ? `<b>${esc(shortName(inj.o.name))}</b><small>${fix1(inj.p.rate * 36)}${inj.o.what ? ` · ${esc(inj.o.what)}` : ''}</small>` : m ? '<small>—</small>' : '…'}</td>
     </tr>`;
   }
   function tableHTML(title, teams, opts = {}) {
@@ -291,7 +307,7 @@
           ${h('xPts allowed', 'Expected points a game from the shots the team allows, plus opponents’ free throws made')}
           ${h('xNet', 'Expected points minus expected points allowed, a game')}
           ${h('Shot luck', 'Points a game from making, and opponents missing, more than those shots’ expected points. Mostly luck so far')}
-          ${h('Top injury out', `The best player listed Out, by ${N} per 36 (100+ minutes)`)}
+          ${h('Top injury', `The best player listed Out, by ${N} per 36 (100+ minutes)`)}
         </tr></thead>
         <tbody>${teams
           .map((t, i) => rowHTML(t, opts.seeds ? t.seed : i + 1, leader, opts.seeds && t.seed === 6 ? 'st-cut' : opts.seeds && t.seed === 10 ? 'st-cut st-cut-out' : ''))
@@ -346,8 +362,28 @@
     } else {
       body = state.confs.map((c) => tableHTML(`${c.name}`, c.teams.slice().sort((a, b) => a.seed - b.seed), { seeds: true })).join('');
     }
+    const sportSeg = `<div class="seg st-sports" role="group" aria-label="Sport">${SPORTS.map(
+      (x) => `<button type="button" data-stsport="${x.id}" class="${x.id === sport ? 'on' : ''}" aria-pressed="${x.id === sport}">${esc(x.name)}</button>`
+    ).join('')}</div>`;
+    if (sport !== 'nba') {
+      // A soccer league table: soccer's own (rank, played, W-D-L, goals, points, zones).
+      const name = SPORTS.find((x) => x.id === sport)?.name || '';
+      SB.soccer?.loadTable(sport); // kept 10 minutes; redraws through the board's tick when it lands
+      const html = `<div class="players-head st-head">
+          <div><h2>Standings</h2><p>${esc(name)}</p></div>
+          ${sportSeg}
+        </div>
+        <div class="st-soccer">${SB.soccer ? SB.soccer.tableHTML(sport) : ''}</div>
+        <p class="players-note st-note">From ESPN's standings feed. Click a column to sort; the colored edge marks each team's zone (Champions League places, relegation and the rest).</p>`;
+      if (html !== root._html) {
+        root._html = html;
+        root.innerHTML = html;
+      }
+      return;
+    }
     const html = `<div class="players-head st-head">
         <div><h2>Standings</h2><p>NBA · ${state.at ? `updated ${new Date(state.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}` : 'loading'}</p></div>
+        ${sportSeg}
         <div class="seg" role="group" aria-label="Group by">${seg}</div>
       </div>
       ${loading}${body}
@@ -365,6 +401,19 @@
     if (!started) {
       started = true;
       root.addEventListener('click', (e) => {
+        const sp = e.target.closest('[data-stsport]');
+        if (sp) {
+          sport = sp.dataset.stsport;
+          try {
+            localStorage.setItem('sb.standingsSport', sport);
+          } catch (err) {}
+          return draw();
+        }
+        const ts = e.target.closest('[data-mtsort]');
+        if (ts && SB.soccer) {
+          SB.soccer.sortTable(ts.dataset.mtsort);
+          return draw();
+        }
         const b = e.target.closest('[data-stview]');
         if (!b) return;
         view = b.dataset.stview;
@@ -374,7 +423,7 @@
         draw();
       });
     }
-    if (!state.loading && Date.now() - state.at > FRESH_MS) load();
+    if (sport === 'nba' && !state.loading && Date.now() - state.at > FRESH_MS) load();
     draw();
   }
 

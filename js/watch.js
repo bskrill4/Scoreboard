@@ -384,19 +384,25 @@
     for (const p of g.players) {
       const offense = p.rushYd + p.recYd;
       const tds = p.passTd + p.rushTd + p.recTd;
-      // Tiers as rare as the NBA's: a 100-yard day or a 300-yard passer happens in
-      // most NFL games, so they score less than a 30-point night (Nov 15: NFL
-      // performance averaged .27 against the NBA's .08).
+      const runCatchTd = p.rushTd + p.recTd;
+      // Tiers as rare as the NBA's (TESTS.md, I01; Nov 23). Until then 3 total TDs
+      // or 150 scrimmage yards scored 0.7, about an NBA 40-point night (0.8), and
+      // happened in most games: 21% of NFL snapshots carried 0.7+ (NBA 1%), which
+      // kept decided NFL games rated 17 to the NBA's 12. A passer's third TD is
+      // routine; a back's or receiver's third is not.
       const options = [
         [p.passYd >= 400, 1, `${p.last} ${p.passYd} YDS`],
-        [p.passTd >= 4, 0.8, `${p.last} ${p.passTd} TD`],
-        [p.passYd >= 350, 0.6, `${p.last} ${p.passYd} YDS`],
-        [p.passYd >= 300, 0.35, `${p.last} ${p.passYd} YDS`],
+        [p.passTd >= 5, 1, `${p.last} ${p.passTd} TD`],
+        [p.passTd >= 4, 0.7, `${p.last} ${p.passTd} TD`],
+        [p.passYd >= 350, 0.45, `${p.last} ${p.passYd} YDS`],
+        [p.passYd >= 300, 0.2, `${p.last} ${p.passYd} YDS`],
         [offense >= 200, 1, `${p.last} ${offense} YDS`],
-        [offense >= 150, 0.7, `${p.last} ${offense} YDS`],
-        [p.passTd < 4 && tds >= 3, 0.7, `${p.last} ${tds} TD`],
-        [offense >= 125, 0.5, `${p.last} ${offense} YDS`],
-        [offense >= 100, 0.3, `${p.last} ${offense} YDS`],
+        [offense >= 175, 0.7, `${p.last} ${offense} YDS`],
+        [runCatchTd >= 3, 0.7, `${p.last} ${runCatchTd} TD`],
+        [offense >= 150, 0.45, `${p.last} ${offense} YDS`],
+        [p.passTd < 4 && tds >= 3, 0.4, `${p.last} ${tds} TD`],
+        [offense >= 125, 0.3, `${p.last} ${offense} YDS`],
+        [offense >= 100, 0.15, `${p.last} ${offense} YDS`],
       ];
       for (const [hit, score, label] of options) {
         if (hit && score > best.score) best = { score, label };

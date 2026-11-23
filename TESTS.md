@@ -267,6 +267,31 @@ them, which suggests a make also carries shot quality the table can't see (how o
 real value, not luck. **Re-run** mid-season, when each shooter's estimate rests on 300+ shots and the regression
 leaves more of it as skill.
 
+## Watch index
+
+### I01: The NFL against the NBA and NHL at equal game states (Nov 23)
+**Basis.** Nov 22's replay suggested close NFL games rate below close NBA games (second-half one-score NFL games averaged
+37.9, NBA within 5 points 50.3) and lopsided ones above (NFL 17+ points 17.6, NBA 20+ 6.8): "NFL scoring left behind".
+**Procedure.** Every live game scored every 2 minutes through five replayed days (Nov 1, 8, 15, 16, 22), through the
+board's own model builder: 9,813 snapshots (NFL 4,565, NBA 2,461, NHL 1,757, college 1,030). Compared by the trailing
+side's win chance (under 5%, 5-15%, 15-30%, 30-50%) and share of regulation played.
+**Result.** At equal win chance and time left the NFL matches the NBA within about 3 points everywhere a game is live
+(e.g. trailing 30-50%: first half NFL 34.5 / NBA 33.9; third quarter 41.5 / 44.4; early fourth 54.3 / 56.9; last 8%
+68.2 / 68.5). The Nov 22 gap was a mix effect: a one-score NFL game is often less in doubt than its margin looks. The
+real excess is decided games (trailing under 5%, second half): NFL 17.0, NBA 12.4, NHL 15.8. The "alive" fade is the
+same (0.51 in each); the difference is big-performance credit, 3.5 index points in a decided NFL game against 1.1 in
+the NBA. 21% of NFL snapshots carry a performance score of 0.7+ (NBA 1%, NHL 1%) and 34 of 49 NFL games reach 0.5 at
+some point (NBA 20 of 35): 3 total TDs or 150 scrimmage yards scores 0.7, as much as an NBA 40-point night is 0.8.
+**Status.** **Adopted** (Nov 23): NFL performance tiers recalibrated toward NBA rarity (`performanceNFL` in
+`js/watch.js`): a passer's 3 TDs 0.7 → 0.4, 150 scrimmage yards 0.7 → 0.45, 125 → 0.3, 100 → 0.15, 300 passing
+yards 0.35 → 0.2, 350 → 0.45, 4 passing TDs 0.8 → 0.7; new tiers for 5 passing TDs (1), 175 scrimmage yards (0.7) and a
+back's or receiver's 3 TDs (0.7, still rare). Re-scored on the same 9,813 moments: NFL snapshots at 0.7+ 20.9% → 5.8%,
+at 0.5+ 24% → 5.8% (NBA 11.7%, NHL 5.7%), games reaching 0.5 34 → 13 of 49. Index: decided second halves 17.0 → 16.1
+(NHL 15.8, NBA 12.4), trailing 5-15% 33.3 → 31.7, 15-30% 39.9 → 38.8, 30-50% 47.8 → 46.7 (NBA 50.3); first halves move
+less than a point. The decided-game drop is small because the "alive" fade already halves performance there; the rest
+of the NFL's excess over the NBA is stars and small bonuses, and it now sits with the NHL. Raw snapshots kept in the
+test browser (`localStorage['tmp.idx']` before, `['tmp.idx2']` after) to re-score further changes against.
+
 ## Re-run queue
 
 | # | Re-run when | What would change our mind |

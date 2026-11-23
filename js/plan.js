@@ -13,7 +13,7 @@
 (function () {
   const SB = (window.SB = window.SB || {});
 
-  const LENGTH_MIN = { nba: 151, ncaam: 127, nhl: 164, nfl: 195, ncaaf: 210 }; // college football: ~3h30 estimate
+  const LENGTH_MIN = { nba: 151, ncaam: 127, nhl: 164, nfl: 195, ncaaf: 210, soccer: 115 }; // college football: ~3h30 estimate
   // The next game may start up to GRACE before the last one is expected to end:
   // the times include a pregame stretch, so you'd miss a minute or two at most.
   const GRACE_MIN = 10;
@@ -142,7 +142,7 @@
     const lockedHere = [...locks].filter((id) => ids.has(id)).length;
     const free = lockedHere ? plan(models, now).total : total; // the best plan with no checks
 
-    const leagues = ['nba', 'nhl', 'ncaam', 'nfl', 'ncaaf'].filter((l) => all.some((x) => x.g.league === l));
+    const leagues = ['nba', 'nhl', 'ncaam', 'nfl', 'ncaaf', 'soccer'].filter((l) => all.some((x) => x.g.league === l));
     const legend = leagues.map((l) => `<span class="lg-key lg-${l}">${SB.league.name(l)}</span>`).join('');
     const head = `
       <div class="players-head">

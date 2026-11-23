@@ -200,6 +200,9 @@
         const call = (x) => (x ? { pick: x.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(x.pHome, 1 - x.pHome) } : null);
         const [h, a] = [pr.home, pr.away];
         const favHome = favoredHome(sum);
+        // The moneyline (the first sportsbook in ESPN's pick center), for the best bets below.
+        const pc = (sum?.pickcenter || [])[0];
+        const ml = { home: Number(pc?.homeTeamOdds?.moneyLine), away: Number(pc?.awayTeamOdds?.moneyLine) };
         const team = (c, s) => ({ id: String(c.team.id), abbr: c.team.abbreviation, name: c.team.shortDisplayName || c.team.displayName, logo: c.team.logo, missing: s.missing });
         return {
           id: e.id,
@@ -207,6 +210,8 @@
           home: team(home, h),
           away: team(away, a),
           calls: { 1: call(prs[1]), 2: call(prs[2]) },
+          ml: Number.isFinite(ml.home) && Number.isFinite(ml.away) ? ml : null,
+          book: pc?.provider?.name || '',
           fav: favHome == null ? null : favHome ? 'home' : 'away',
         };
       }
@@ -304,6 +309,46 @@
   // A split: BONES and MOUSSA pick different winners.
   const isSplit = (g) => !!(g.calls[1] && g.calls[2] && g.calls[1].pick !== g.calls[2].pick);
 
+  // ---------- best bets (since Nov 23) ----------
+  // Each metric's one bet tonight: among the night's games (the first day with
+  // games still to tip), the side with the highest expected return on the
+  // moneyline, from the metric's own win chance. Per $100: chance × profit if it
+  // wins − (1 − chance) × 100. A price only says how much is paid; the edge is
+  // the metric's chance against the chance the price implies (vig included). Not
+  // advice, and it loses plenty of nights: a scoreboard of what each metric
+  // believes, to grade like the picks.
+  const profit = (ml) => (ml > 0 ? ml / 100 : 100 / -ml);
+  const implied = (ml) => (ml > 0 ? 100 / (ml + 100) : -ml / (-ml + 100));
+  const fmtML = (ml) => (ml > 0 ? `+${ml}` : `${ml}`);
+  function bestBet(games, v) {
+    const priced = games.filter((g) => g.ml && g.calls[v]);
+    if (!priced.length) return null;
+    const night = priced.map((g) => SB.days.dayOf(g.t)).sort()[0];
+    let best = null;
+    for (const g of priced.filter((x) => SB.days.dayOf(x.t) === night))
+      for (const side of ['home', 'away']) {
+        const c = g.calls[v];
+        const p = side === c.pick ? c.conf : 1 - c.conf;
+        const ev = (p * profit(g.ml[side]) - (1 - p)) * 100;
+        if (!best || ev > best.ev) best = { g, side, p, ev, ml: g.ml[side], implied: implied(g.ml[side]) };
+      }
+    return best;
+  }
+  function betsHTML(games) {
+    const card = (v, tok) => {
+      const b = bestBet(games, v);
+      if (!b) return `<div class="bz-bet"><em>${tok}</em><span>No lines posted yet.</span></div>`;
+      const t = b.g[b.side];
+      const opp = b.g[b.side === 'home' ? 'away' : 'home'];
+      return `<div class="bz-bet${b.ev > 0 ? '' : ' none'}"><em>${tok}</em>
+          <span class="bz-bet-pick"><img src="${esc(t.logo || '')}" alt="">${esc(t.abbr)} <b>${fmtML(b.ml)}</b> <small>${b.side === 'home' ? 'vs' : 'at'} ${esc(opp.abbr)}</small></span>
+          <span class="bz-bet-why">${pct(b.p)} to win, the price says ${pct(b.implied)} · ${b.ev > 0 ? `<b>+$${b.ev.toFixed(0)}</b> expected per $100` : `no edge (${b.ev.toFixed(0)} per $100)`}</span>
+        </div>`;
+    };
+    const book = games.find((g) => g.book)?.book;
+    return `<div class="bz-bets"><h3>Best bets <small>tonight's highest expected return for each, on the moneyline${book ? ` (${esc(book)})` : ''}</small></h3>${card(1, KB)}${card(2, KM)}</div>`;
+  }
+
   function predictScript(model, games) {
     const { right, n } = model.record;
     // The second half of the season is where BONES has its footing (players have
@@ -340,12 +385,22 @@
           )}. Those are the ones to watch: whichever is right there is the one that's learning something.`
         : `${KB} and ${KM} agree on every game this time.`
     );
+    const bet = bestBet(games, checkV);
+    if (bet) {
+      const t = bet.g[bet.side];
+      lines.push(
+        bet.ev > 0
+          ? `If I made one bet tonight: the ${t.name} at ${fmtML(bet.ml)}. I give them ${pct(bet.p)}; the price says ${pct(bet.implied)}. That's about $${bet.ev.toFixed(0)} back on every $100, on average. On average. The bones have lost money before.`
+          : `No bet worth making tonight: every price is at least as good as my read.`
+      );
+    }
     lines.push(`That's the reading. The bones never lie, but basketball does. Check back after tip-off.`);
     return lines;
   }
 
   function picksHTML(games) {
     if (!games.length) return '';
+    const bets = { 1: bestBet(games, 1), 2: bestBet(games, 2) };
     const callText = (g, c) => (!c ? '—' : c.conf < UPSET_MIN ? 'Toss-up' : `${esc(g[c.pick].abbr)} ${pct(c.conf)}`);
     const row = (g) => {
       const upset = isUpset(g);
@@ -355,11 +410,11 @@
       return `<li class="${upset ? 'upset' : ''}${split ? ' split' : ''}">
           <span class="bz-when">${esc(whenText(g.t))}</span>
           <span class="bz-match">${side('away')}<i>@</i>${side('home')}</span>
-          <span class="bz-call"><span class="bz-two"><span${mine(1)}><em>${KB}</em> ${callText(g, g.calls[1])}</span><span${mine(2)}><em>${KM}</em> ${callText(g, g.calls[2])}</span></span>${split ? '<b class="bz-split">Split</b>' : ''}${upset ? '<b>Upset pick</b>' : g.fav || g.conf < UPSET_MIN ? '' : '<small>no favorite yet</small>'}</span>
+          <span class="bz-call"><span class="bz-two"><span${mine(1)}><em>${KB}</em> ${callText(g, g.calls[1])}</span><span${mine(2)}><em>${KM}</em> ${callText(g, g.calls[2])}</span></span>${split ? '<b class="bz-split">Split</b>' : ''}${[1, 2].filter((v) => bets[v]?.g.id === g.id).map((v) => `<b class="bz-bb">${v === 1 ? KB : KM} best bet</b>`).join('')}${upset ? '<b>Upset pick</b>' : g.fav || g.conf < UPSET_MIN ? '' : '<small>no favorite yet</small>'}</span>
         </li>`;
     };
     const nSplit = games.filter(isSplit).length;
-    return `<h3>The skull's picks <small>${KB} and ${KM}${nSplit ? ` · ${nSplit} split${nSplit === 1 ? '' : 's'}` : ' · no splits'}</small></h3><ul class="bz-picks">${games.map(row).join('')}</ul>
+    return `${betsHTML(games)}<h3>The skull's picks <small>${KB} and ${KM}${nSplit ? ` · ${nSplit} split${nSplit === 1 ? '' : 's'}` : ' · no splits'}</small></h3><ul class="bz-picks">${games.map(row).join('')}</ul>
       <p class="bz-fine">Each metric on its own: each player's rating a minute × his minutes over his team's last ${RECENT} games, players listed out (or doubtful) removed, questionable at half. No home court. Win chances are fit to this season's results. <b>Split</b>: ${KB} and ${KM} pick different winners. Upset pick (for the check that's showing): it takes the team that isn't favored, by at least ${pct(UPSET_MIN)}; closer than that is a toss-up.</p>`;
   }
 

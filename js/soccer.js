@@ -1,7 +1,10 @@
-// Soccer tab (#soccer): Premier League and Champions League.
+// Soccer: Premier League and Champions League.
 // Score-only, straight from ESPN's public scoreboard feed (no play-by-play, no
-// engine), so it is fully separate from the main board, its ranking, and from
-// BONES and MOUSSA: nothing here reads or writes them.
+// engine), and separate from BONES and MOUSSA: nothing here reads or writes them.
+// Since Nov 23 there's no Soccer tab: matches are on the Scores board with every
+// other sport (boardModels, boardTileHTML / boardHeroHTML; EPL and UCL are sport
+// toggles in settings), and league tables are on Standings (tableHTML). The tab's
+// own page code below still works if a #soccer section is ever added back.
 //
 // Each match gets a light watch index (0–99) built from the same ideas as
 // js/watch.js (a close game late is the best thing on; good teams help), tuned
@@ -190,16 +193,16 @@
 
   // ---------- fetching ----------
   let again = false; // a load asked for mid-fetch (day or league change) runs right after
-  async function load(force) {
+  // d: the day to load (the board passes its own); leagues: which (default: the tab's picks).
+  async function load(force, d = viewDay(), leagues = prefs.leagues) {
     if (busy) {
       again = true;
       return;
     }
     busy = true;
-    const d = viewDay();
     const now = Date.now();
     await Promise.all(
-      prefs.leagues.map(async (id) => {
+      leagues.map(async (id) => {
         const key = `${id}:${d}`;
         const cur = data.get(key);
         const live = cur?.games?.some((g) => g.state === 'live');
@@ -215,6 +218,7 @@
     );
     busy = false;
     if (visible()) render();
+    if (onUpdate) onUpdate();
     if (again) {
       again = false;
       load();
@@ -255,6 +259,7 @@
       tables.set(id, { at: Date.now(), name: byId.get(id).name, rows: cur?.rows || [], error: true });
     }
     if (visible() && prefs.layout === 'standings') render();
+    if (onUpdate) onUpdate();
   }
 
   const TSORT = {
@@ -521,7 +526,92 @@
     onRoute();
   }
 
-  SB.soccer = { LEAGUES, WATCH, rate, modelOf, render, load };
+  // ---------- on the Scores board (since Nov 23) ----------
+  let onUpdate = null; // main.js: redraw when new scores or a table arrive
+  const FRESH = (games, d) => (games?.some((g) => g.state === 'live') || d === SB.days.today() ? POLL - 1000 : 10 * 60000);
+  // This day's matches as board models, for the leagues switched on (isOn(id)).
+  // Loads what's missing or stale in the background; onUpdate redraws when it lands.
+  function boardModels(d, isOn = () => true) {
+    const ids = LEAGUES.map((l) => l.id).filter(isOn);
+    const stale = ids.filter((id) => {
+      const cur = data.get(`${id}:${d}`);
+      return !cur || Date.now() - cur.at >= FRESH(cur.games, d);
+    });
+    if (stale.length && !busy) load(false, d, stale);
+    const out = [];
+    for (const id of ids)
+      for (const g of data.get(`${id}:${d}`)?.games || [])
+        out.push({
+          ...g,
+          id: `s${g.id}`, // ESPN's soccer ids could collide with another sport's
+          soccer: true,
+          comp: g.league,
+          league: 'soccer',
+          players: [],
+          seasonLeaders: [],
+          swings: [],
+          impSwings: [],
+          home: { ...g.home, css: g.home.color },
+          away: { ...g.away, css: g.away.color },
+        });
+    return out;
+  }
+  // The board filter for a soccer match: team names, the competition, or "soccer".
+  const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').trim();
+  function matches(terms, g) {
+    if (!terms.length) return true;
+    const lg = byId.get(g.comp) || {};
+    const words = ['soccer', 'futbol', norm(lg.name), norm(lg.short), ...['home', 'away'].flatMap((s) => [norm(g[s].name), norm(g[s].short), norm(g[s].abbr)])];
+    return terms.some((t) => words.some((w) => w && (w === t || w.split(' ').some((x) => x.startsWith(t)) || (t.length >= 3 && w.includes(t)))));
+  }
+  function boardInner(g, hero) {
+    const lg = byId.get(g.comp);
+    return `<div class="g-top">
+        <span class="lg">${esc(lg?.short || 'Soccer')}</span>
+        <span class="status ${g.state}">${g.state === 'live' ? '<i class="dot"></i>' : ''}${esc(statusOf(g))}</span>
+        <span class="chips">${chipsHTML(g)}</span>
+        <span class="widx" title="Watch index (soccer's own: closeness and the minute, then team quality)">${g.index}</span>
+      </div>
+      <div class="ms-teams${hero ? ' ms-hero' : ''}">${teamHTML(g, 'home')}${teamHTML(g, 'away')}</div>
+      ${hero ? goalsHTML(g).replace('<details class="ms-goals">', '<details class="ms-goals" open>') : goalsHTML(g)}
+      ${hero ? `<div class="ms-foot">${[lg?.name, g.note, g.tv, g.venue].filter(Boolean).map(esc).join(' · ')}${g.link ? ` <a href="${esc(g.link)}" target="_blank" rel="noopener">Match page<span class="sr-only"> (opens ESPN in a new tab)</span></a>` : ''}</div>` : ''}`;
+  }
+  const boardTileHTML = (g) => `<div class="ms-board">${boardInner(g, false)}</div>`;
+  const boardHeroHTML = (g) => `<div class="ms-board ms-board-hero">${boardInner(g, true)}</div>`;
+
+  // A league table for the Standings page (js/standings.js): the table without
+  // the tab's competition chips. Sorting by a header: data-mtsort, sortTable(key).
+  function tableHTML(id) {
+    prefs.table = id;
+    return standingsHTML().replace(/<div class="seg ms-tpick"[\s\S]*?<\/div>/, '');
+  }
+  function sortTable(k) {
+    if (prefs.tsort === k || (!prefs.tsort && k === 'rank')) prefs.tdir = -(prefs.tdir || 1);
+    else {
+      prefs.tsort = k;
+      prefs.tdir = k === 'rank' || k === 'team' || k === 'l' || k === 'ga' ? 1 : -1; // best first
+    }
+    save();
+  }
+
+  SB.soccer = {
+    LEAGUES,
+    WATCH,
+    rate,
+    modelOf,
+    render,
+    load,
+    boardModels,
+    boardTileHTML,
+    boardHeroHTML,
+    matches,
+    tableHTML,
+    sortTable,
+    loadTable,
+    set onUpdate(fn) {
+      onUpdate = fn;
+    },
+  };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
