@@ -230,8 +230,12 @@
   }
 
   // ---------- loading ----------
-  async function load() {
-    if (state.loading) return;
+  let loadP = null;
+  function load() {
+    if (state.loading) return loadP;
+    return (loadP = doLoad());
+  }
+  async function doLoad() {
     state.loading = true;
     state.error = null;
     draw();
@@ -273,7 +277,7 @@
     const gb = leader && leader !== t ? ((leader.w - t.w + (t.l - leader.l)) / 2) : 0;
     const cur = (v) => (SB.impact.version() === v ? ' class="cur"' : '');
     const tone = (x) => (x > 0 ? 'pos' : x < 0 ? 'neg' : '');
-    return `<tr class="${cls}">
+    return `<tr class="${cls}" data-tid="${esc(t.id)}" tabindex="0" title="Open the ${esc(t.name)} drawer">
       <td class="rk">${rank}</td>
       <td>${team(t)}</td>
       <td class="num">${t.w}-${t.l}</td>
@@ -414,6 +418,8 @@
           SB.soccer.sortTable(ts.dataset.mtsort);
           return draw();
         }
+        const tm = e.target.closest('tr[data-tid]');
+        if (tm) return SB.player.openTeam({ id: tm.dataset.tid });
         const b = e.target.closest('[data-stview]');
         if (!b) return;
         view = b.dataset.stview;
@@ -427,5 +433,22 @@
     draw();
   }
 
-  SB.standings = { render };
+  // For the team drawer (js/team.js): load if stale (whether or not the page is
+  // open), and one team's numbers with the whole league's for ranking.
+  function ensure() {
+    if (state.loading) return loadP;
+    if (state.confs && state.stats && Date.now() - state.at <= FRESH_MS) return Promise.resolve();
+    return load();
+  }
+  function teamData(id) {
+    if (!state.confs) return null;
+    const teams = new Map(state.confs.flatMap((c) => c.teams).map((t) => [t.id, t]));
+    const t = teams.get(String(id));
+    if (!t) return null;
+    const all = {};
+    for (const [tid, x] of teams) all[tid] = { ...(state.stats?.[tid] || {}), diff: x.diff };
+    return { t, teams, all, stats: state.stats?.[t.id] || null, injuries: state.injuries.get(t.id) || [], model: state.models?.[SB.impact.version()] || null, games: state.games || [] };
+  }
+
+  SB.standings = { render, ensure, team: teamData, error: () => state.error };
 })();

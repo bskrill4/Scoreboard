@@ -255,7 +255,7 @@
     for (const tr of document.querySelectorAll('.ptable tbody tr[data-pid]:not([tabindex])')) tr.setAttribute('tabindex', '0');
   }
   document.addEventListener('keydown', (e) => {
-    const tr = e.target.closest?.('.ptable tbody tr[data-pid]');
+    const tr = e.target.closest?.('.ptable tbody tr[data-pid], .ptable tbody tr[data-tid]');
     if (tr && e.target === tr && (e.key === 'Enter' || e.key === ' ')) {
       e.preventDefault();
       tr.click();

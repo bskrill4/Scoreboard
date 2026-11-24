@@ -22,6 +22,11 @@ html { background: var(--bg); }
 body {
   margin: 0;
   min-height: 100vh;
+  /* The page is a size container: its layout follows the width it has, which
+     shrinks when drawers take the right side (js/player.js sets --push). The
+     width breakpoints below are container queries on it, not media queries. */
+  container: page / inline-size;
+  padding-right: var(--push, 0px);
   background:
     radial-gradient(900px 400px at 85% -10%, rgba(255, 214, 10, .08), transparent 60%),
     var(--bg);
@@ -178,6 +183,9 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .notice { margin: 20px 24px 0; padding: 14px 18px; background: var(--panel); border: 2px dashed var(--line); border-radius: var(--radius); font-weight: 600; }
 .notice .dim { color: var(--dim); }
 
+/* --pw: 1% of the page's width beside any drawers (js/player.js sets it in
+   px while drawers push the page; otherwise 1vw). Not cqi: container units
+   here made every frame relayout the whole page. */
 /* ---------------- board ---------------- */
 .board {
   display: grid;
@@ -447,14 +455,14 @@ button.league:not(.on) { color: var(--dim); text-decoration: line-through; text-
 .h-score { display: grid; grid-template-columns: 1fr minmax(120px, auto) 1fr; align-items: center; gap: 16px; }
 .h-team { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .h-team.home { flex-direction: row-reverse; text-align: right; }
-.h-team .logo { width: clamp(56px, 7vw, 96px); height: clamp(56px, 7vw, 96px); object-fit: contain; flex: none; }
+.h-team .logo { width: clamp(56px, calc(7 * var(--pw, 1vw)), 96px); height: clamp(56px, calc(7 * var(--pw, 1vw)), 96px); object-fit: contain; flex: none; }
 .h-name { min-width: 0; display: flex; flex-direction: column; }
-.h-name b { font-size: clamp(18px, 2.2vw, 30px); font-weight: 900; font-stretch: 110%; text-transform: uppercase; line-height: 1.05; overflow: hidden; text-overflow: ellipsis; }
+.h-name b { font-size: clamp(18px, calc(2.2 * var(--pw, 1vw)), 30px); font-weight: 900; font-stretch: 110%; text-transform: uppercase; line-height: 1.05; overflow: hidden; text-overflow: ellipsis; }
 .h-name small { font-size: 13px; color: var(--dim); font-weight: 600; font-variant-numeric: tabular-nums; }
-.h-team .score { margin-left: auto; font-size: clamp(60px, 8.5vw, 124px); letter-spacing: -.02em; text-shadow: 4px 4px 0 color-mix(in srgb, var(--tc) 55%, transparent); }
+.h-team .score { margin-left: auto; font-size: clamp(60px, calc(8.5 * var(--pw, 1vw)), 124px); letter-spacing: -.02em; text-shadow: 4px 4px 0 color-mix(in srgb, var(--tc) 55%, transparent); }
 .h-team.home .score { margin-left: 0; margin-right: auto; }
 .h-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; max-width: 260px; }
-.h-mid b { font-size: clamp(18px, 2vw, 28px); font-weight: 900; font-stretch: 85%; font-variant-numeric: tabular-nums; color: var(--yellow); white-space: nowrap; }
+.h-mid b { font-size: clamp(18px, calc(2 * var(--pw, 1vw)), 28px); font-weight: 900; font-stretch: 85%; font-variant-numeric: tabular-nums; color: var(--yellow); white-space: nowrap; }
 .h-mid small { font-size: 12px; color: var(--dim); font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 32px; }
 
 .h-body { display: grid; grid-template-columns: 1.25fr 1.15fr 1fr; gap: 24px; margin-top: 4px; }
@@ -554,12 +562,12 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .foot { max-width: 1680px; margin: 0 auto; padding: 16px 24px 32px; font-size: 11px; color: #62626e; }
 
 /* ---------------- responsive ---------------- */
-@media (max-width: 1180px) {
+@container page (max-width: 1180px) {
   .board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .h-body { grid-template-columns: 1fr 1fr; }
   .h-body .h-col:first-child { grid-column: 1 / -1; }
 }
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .bar { padding: 10px 16px; gap: 10px; }
   .leagues .soon, .slate { display: none; }
   .delay { width: 100%; }
@@ -583,7 +591,7 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 
 /* hero team name: nickname when there is room, abbreviation when there isn't */
 .h-name .short { display: none; }
-@media (max-width: 1020px) {
+@container page (max-width: 1020px) {
   .h-name .full { display: none; }
   .h-name .short { display: inline; }
 }
@@ -651,7 +659,7 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 /* every tile is the same size, whatever its sport or state */
 .game:not(.is-hero) { min-height: 224px; }
 
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .replay { flex-wrap: wrap; margin-left: 0; }
 }
 
@@ -670,8 +678,8 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 }
 .views a:hover { color: var(--text); }
 .views a.on { color: var(--yellow-ink); background: var(--yellow); }
-@media (max-width: 420px) { .views { gap: 2px; } .views a { padding: 4px 6px; letter-spacing: .03em; } } /* four links + the cog on a phone */
-@media (max-width: 440px) { .views { gap: 0; } .views a { padding: 4px 4px; font-size: 11px; letter-spacing: 0; } } /* five links (Soccer) + the cog */
+@container page (max-width: 420px) { .views { gap: 2px; } .views a { padding: 4px 6px; letter-spacing: .03em; } } /* four links + the cog on a phone */
+@container page (max-width: 520px) { .views { gap: 0; } .views a { padding: 4px 4px; font-size: 11px; letter-spacing: 0; } } /* five links (Soccer) + the cog */
 .views .blur-switch { margin-left: 8px; }
 .blur-switch small, .seg small { font-size: 9px; font-weight: 800; opacity: .7; }
 
@@ -722,7 +730,7 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .ptable tbody tr:first-child td { background: color-mix(in srgb, var(--yellow) 6%, transparent); }
 .players-note { margin: 14px 0 0; color: var(--dim); font-size: 12px; line-height: 1.5; max-width: 900px; }
 
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .players { padding: 16px 16px 8px; }
   .ptable td.gm, .ptable th:nth-child(3) { display: none; }
   .potd-v { align-items: flex-start; }
@@ -738,8 +746,6 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
   top: 0;
   right: 0;
   bottom: 0;
-  z-index: 30;
-  width: min(440px, 100vw);
   overflow-y: auto;
   padding: 20px 20px 28px;
   background: var(--panel);
@@ -750,18 +756,40 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 }
 .drawer.open { transform: none; }
 /* Several drawers side by side (js/player.js, up to three): --i is the
-   slot from the right, --dn how many are open; they share the width when
-   three full ones don't fit. Under 900px each new one covers the last. */
+   slot from the right; js/player.js sets the width (--w, on body) and, where
+   there's room, pushes the page over (--push) so nothing sits under them.
+   Older drawers are on top, so a new one slides out from under them and a
+   closing one slides away beneath its neighbour. Under 900px each new one
+   covers the last (newest on top). */
 .drawer {
-  --w: min(440px, calc(100vw / var(--dn, 1)));
-  width: var(--w);
-  right: calc(var(--i, 0) * var(--w));
-  z-index: calc(30 + var(--i, 0));
-  transition: transform .28s cubic-bezier(.2, .9, .25, 1), right .28s, width .28s;
+  width: var(--w, min(440px, 100vw));
+  right: calc(var(--i, 0) * var(--w, 440px));
+  z-index: calc(33 - var(--i, 0));
+  view-transition-class: drawer;
+  --ease: cubic-bezier(.25, .9, .3, 1);
+  transition: transform .42s var(--ease), right .42s var(--ease), width .42s var(--ease);
 }
+.drawer.swap > * { animation: fade .3s ease both; }
+.drawer { container: drawer / inline-size; }
 @media (max-width: 900px) {
-  .drawer { --w: min(440px, 100vw); right: 0; }
+  .drawer { width: min(440px, 100vw); right: 0; z-index: calc(30 + var(--i, 0)); }
 }
+/* During a page transition the drawers are drawn live, above the cards, and
+   keep their own slide (no snapshot, no morph). */
+::view-transition-group(*.drawer) { z-index: 10; animation: none; overflow: visible; border-radius: 0; background: none; }
+::view-transition-old(*.drawer) { display: none; }
+::view-transition-new(*.drawer) { animation: none; height: auto; }
+/* The menu bar: above the cards (cards never fly over it), and it resizes
+   with the page. */
+.bar { view-transition-name: bar; }
+::view-transition-group(bar) { z-index: 5; overflow: visible; border-radius: 0; background: none; }
+/* A page reflow (drawers opening or closing) runs at the drawers' pace. */
+html.vt-reflow::view-transition-group(*) { animation-duration: .42s; animation-timing-function: cubic-bezier(.25, .9, .3, 1); }
+/* The cards keep their content (nothing changes but the width), so no
+   cross-fade, which double-exposes the old and new layouts: each card shows
+   its new layout at once while its box glides to the new size. */
+html.vt-reflow::view-transition-old(*) { animation: none; opacity: 0; }
+html.vt-reflow::view-transition-new(*) { animation: none; }
 /* Standing: the season total and three ranks. */
 .pl-rank { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 14px; margin-top: 14px; padding: 12px 14px; background: var(--panel-2); border-radius: 12px; }
 .pl-rank.wait { display: block; }
@@ -800,6 +828,34 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .pl-id small { color: var(--dim); font-size: 13px; font-weight: 600; }
 .pl-lg { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 900; letter-spacing: .1em; color: var(--dim); }
 .pl-lg img { width: 18px; height: 18px; object-fit: contain; }
+button.pl-team { padding: 2px 6px 2px 0; margin-left: -1px; border: 0; border-radius: 6px; background: none; font-family: inherit; cursor: pointer; }
+button.pl-team:hover { color: var(--yellow); }
+
+/* Team drawer (js/team.js): the same pieces as a player's, plus its own. */
+.tm-logo { border-radius: 16px; display: grid; place-items: center; }
+.tm-logo img { width: 78%; height: 78%; object-fit: contain; }
+.tm-rank { grid-template-columns: 1fr; }
+.tm-ranks { grid-template-columns: repeat(4, 1fr); }
+.tm-ranks .pr-cell b.neg { color: var(--red); }
+.tm-out { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; margin-top: 10px; }
+.tm-out > small { font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--red); margin-right: 2px; }
+.tm-inj { display: inline-flex; flex-direction: column; padding: 5px 9px; background: var(--panel-2); border-radius: 8px; border-left: 2px solid var(--red); font-size: 12px; }
+.tm-inj[data-pid] { cursor: pointer; }
+.tm-inj[data-pid]:hover { background: color-mix(in srgb, var(--red) 14%, var(--panel-2)); }
+.tm-inj em { font-style: normal; font-size: 10px; color: var(--dim); font-weight: 600; }
+.tm-roster tr[data-pid] { cursor: pointer; }
+.tm-roster tr[data-pid]:hover td, .tm-roster tr[data-pid]:focus-visible td { background: color-mix(in srgb, var(--yellow) 8%, transparent); }
+.tm-roster tr[data-pid]:focus-visible { outline: none; }
+.tm-pl { display: flex; align-items: center; gap: 7px; font-weight: 700; }
+.tm-pl img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: var(--panel-2); flex: none; }
+.tm-o { font-style: normal; font-size: 9px; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; color: var(--red); }
+.tm-opp img { width: 16px; height: 16px; object-fit: contain; vertical-align: -3px; margin-right: 3px; }
+.tm-games td.tm-odd { text-decoration: underline dotted; text-underline-offset: 3px; }
+.tlink { cursor: pointer; }
+b.tlink:hover { color: var(--yellow); }
+img.tlink:hover { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tc, var(--yellow)) 70%, transparent)); }
+.st-table tr[data-tid] { cursor: pointer; }
+.st-table tr[data-tid]:hover td, .st-table tr[data-tid]:focus-visible td { background: color-mix(in srgb, var(--yellow) 8%, transparent); }
 
 .pl-sec { padding-top: 16px; }
 .pl-sec-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
@@ -839,6 +895,26 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .pl-games tr[data-game]:focus-visible { outline: none; }
 .pl-games tr.on td { background: color-mix(in srgb, var(--yellow) 14%, transparent); }
 .pl-games tr.on td:first-child { box-shadow: inset 3px 0 0 var(--yellow); }
+/* A narrow drawer (three side by side on a laptop): tighter, and nothing
+   wraps a letter at a time. After the drawer styles it overrides. */
+@container drawer (max-width: 330px) {
+  .pl-head { gap: 10px; }
+  .pl-shot { width: 60px; height: 60px; }
+  .pl-id h2 { font-size: 21px; }
+  .pl-id small { font-size: 12px; }
+  .pl-rank { grid-template-columns: 1fr; gap: 10px; padding: 10px 12px; }
+  .pr-total b { font-size: 26px; }
+  .pl-sec-h { flex-wrap: wrap; row-gap: 8px; }
+  .pl-range button, .seg button { white-space: nowrap; }
+  .seg button { padding: 5px 10px; }
+  .pl-games { font-size: 11px; }
+  .pl-games td, .pl-games th { padding-left: 3px; padding-right: 3px; }
+  .pl-games td { white-space: normal; }
+  .pl-games td.ln { min-width: 72px; font-size: 10px; }
+  .pl-games th { font-size: 8px; letter-spacing: .02em; }
+  .tm-ranks { gap: 4px; }
+  .tm-ranks .pr-cell b { font-size: 16px; }
+}
 
 /* ---------------- top plays: hovered player / Impact bubbles ---------------- */
 .swings-h { font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--yellow); }
@@ -953,7 +1029,7 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .ptable.plays td.sc { font-weight: 800; font-variant-numeric: tabular-nums; color: var(--text); font-size: 12px; }
 .ptable.plays td.by-cell { white-space: normal; min-width: 150px; }
 
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .ptable.plays td.by-cell, .ptable.plays th:nth-child(3) { display: none; }
   .ptable.plays td.pt { min-width: 220px; }
 }
@@ -1049,12 +1125,12 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .radios label:has(input:checked) { background: color-mix(in srgb, var(--yellow) 8%, transparent); }
 .radios label:has(input:checked) b { color: var(--yellow); }
 
-@media (max-width: 680px) {
-  .settings-panel { position: fixed; top: 64px; left: 16px; right: 16px; width: auto; }
+@container page (max-width: 680px) {
+  .settings-panel { position: fixed; top: 64px; left: 16px; right: calc(16px + var(--push, 0px)); width: auto; }
 }
 
 /* Phones: the top card's header row (status, Pinned · release, Hide score, watch index) wraps instead of overflowing. */
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .game.is-hero .g-top { flex-wrap: wrap; row-gap: 8px; }
 }
 
@@ -1162,7 +1238,7 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .plan-undo:hover:not(:disabled) { border-color: var(--yellow); color: var(--yellow); }
 .plan-undo:disabled { opacity: .4; cursor: default; }
 
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .plan-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .plan-sum > div:nth-child(2) { grid-column: 1 / -1; order: -1; }
   .pp-teams .full { display: none; }
@@ -1264,7 +1340,7 @@ body.bones-v2 .wp-key i.k-score { border-top-color: #7fd4ff; opacity: 1; }
 .mv-top h3 { margin: 0; font-size: 18px; font-weight: 900; }
 .mv-top p { margin: 2px 0 0; color: var(--dim); font-size: 12px; font-weight: 600; }
 .mv-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
-@media (max-width: 680px) { .mv-cols { grid-template-columns: 1fr; } }
+@container page (max-width: 680px) { .mv-cols { grid-template-columns: 1fr; } }
 .mv-head { display: flex; justify-content: space-between; padding: 6px 0; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); border-bottom: 1px solid var(--line); }
 .mv-col ol { margin: 0; padding: 0; list-style: none; }
 .mv-col li { display: grid; grid-template-columns: 1fr 76px 56px; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
@@ -1335,11 +1411,11 @@ body.view-bonezone .days, body.view-bonezone .today-btn, body.view-bonezone .sla
 .bz-call { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
 .bz-call b { display: inline-block; margin-left: 8px; padding: 2px 7px; border-radius: 999px; background: var(--yellow); color: var(--yellow-ink, #141418); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .bz-call small { margin-left: 6px; color: var(--dim); font-weight: 500; }
-@media (max-width: 520px) {
+@container page (max-width: 520px) {
   .bz-picks li { grid-template-columns: 1fr auto; }
   .bz-when { grid-column: 1 / -1; font-size: 11px; }
 }
-@media (max-width: 520px) { .bz-bubble { font-size: 15px; padding: 14px 16px; } }
+@container page (max-width: 520px) { .bz-bubble { font-size: 15px; padding: 14px 16px; } }
 @media (prefers-reduced-motion: reduce) { .bz-stage, .bz-bubble, .bz-fallback { animation: none; } }
 
 /* Pre-game basketball: the BONES pick (hatched bar: a prediction, not a live
@@ -1427,7 +1503,7 @@ body.view-bonezone .days, body.view-bonezone .today-btn, body.view-bonezone .sla
 .filter-clear:hover { background: var(--yellow); color: var(--yellow-ink); }
 .filter-clear[hidden] { display: none; }
 body.view-players .filter, body.view-bonezone .filter { display: none; }
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .filter { order: 20; width: 100%; }
 }
 
@@ -1487,7 +1563,7 @@ body.view-players .filter, body.view-bonezone .filter { display: none; }
 .bn-x:hover { background: var(--panel-2); color: var(--text); }
 .bn-timer { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--accent); transform-origin: left; transform: scaleX(var(--left, 1)); transition: transform .25s linear; opacity: .8; }
 body.view-players .banners { display: none; }
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .banners { margin-top: 14px; padding: 0 12px; gap: 10px; }
   /* One at a time on phones, so the top game stays near the top; the rest
      wait (their clock doesn't run while hidden). */
@@ -1653,12 +1729,12 @@ body.view-players .banners { display: none; }
 .rc-best .chart { height: 140px; }
 .rc-peak { margin: 6px 0 0; font-size: 12px; color: var(--dim); }
 .rc-peak b { color: var(--yellow); }
-@media (max-width: 1020px) {
+@container page (max-width: 1020px) {
   .rc-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rc-best { grid-column: 1 / -1; }
 }
 body.view-players .recap, html.duo body:not(.view-players) .recap { display: none; }
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   .recap { margin-top: 16px; padding: 0 16px; }
   .rc-cols { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .rc-picks { grid-template-columns: 1fr 1fr; column-gap: 14px; font-size: 12px; }
@@ -1960,13 +2036,13 @@ body.focus-back .game:not(.is-hero) { animation: rise .55s cubic-bezier(.2, .9, 
   .fw-prow { margin-top: 6px; }
 }
 
-@media (max-width: 1180px) {
+@container page (max-width: 1180px) {
   body.focus-mode { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; row-gap: 16px; }
   body.focus-mode #board { grid-column: 1 / -1; grid-row: 1; }
   .focus-side.l { grid-column: 1; grid-row: 2; --from: 0px; }
   .focus-side.r { grid-column: 2; grid-row: 2; --from: 0px; }
 }
-@media (max-width: 680px) {
+@container page (max-width: 680px) {
   body.focus-mode { grid-template-columns: minmax(0, 1fr); padding: 12px; }
   .focus-side.l, .focus-side.r { grid-column: 1; }
   .focus-side.r { grid-row: 3; }
@@ -2177,10 +2253,10 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .br-finals { max-width: 320px; }
 .br-champ { margin: 8px 0 0; font-weight: 900; font-size: 16px; }
 .br-champ small { color: var(--dim); font-weight: 600; font-size: 12px; }
-@media (max-width: 760px) {
+@container page (max-width: 760px) {
   .br-grid { grid-template-columns: 1fr 1fr; }
 }
-@media (max-width: 420px) {
+@container page (max-width: 420px) {
   .br-grid { grid-template-columns: 1fr; }
 }
 /* Bone Zone: best bets (BONES and MOUSSA) */
@@ -2196,7 +2272,7 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .bz-bet-why { color: var(--dim); text-align: right; }
 .bz-bet-why b { color: var(--text); }
 .bz-call b.bz-bb { background: none; border: 1px solid var(--yellow); color: var(--yellow); }
-@media (max-width: 560px) {
+@container page (max-width: 560px) {
   .bz-bet { grid-template-columns: 1fr; gap: 4px; }
   .bz-bet-why { text-align: left; }
 }

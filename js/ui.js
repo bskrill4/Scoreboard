@@ -699,16 +699,18 @@
   function heroTeam(g, side, hide) {
     const t = g[side];
     const showScore = g.state === 'live' || g.state === 'final';
+    // NBA: the logo and name open the team's drawer (js/team.js).
+    const tid = g.league === 'nba' && t.id ? ` data-tid="${esc(t.id)}" data-tcolor="${esc(t.css || '')}" title="Open the ${esc(t.name)} drawer"` : '';
     if (hide) {
       return `<div class="h-team ${side}">
-      <img class="logo" src="${esc(t.logo)}" alt="">
-      <div class="h-name"><b>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}</small></div>
+      <img class="logo${tid ? ' tlink' : ''}" src="${esc(t.logo)}" alt=""${tid}>
+      <div class="h-name"><b${tid ? ` class="tlink"${tid}` : ''}>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}</small></div>
       <span class="score hidden" data-side="${side}" style="--tc:${t.css}" aria-label="Score hidden">–</span>
     </div>`;
     }
     return `<div class="h-team ${side}">
-      <img class="logo" src="${esc(t.logo)}" alt="">
-      <div class="h-name"><b>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}${
+      <img class="logo${tid ? ' tlink' : ''}" src="${esc(t.logo)}" alt=""${tid}>
+      <div class="h-name"><b${tid ? ` class="tlink"${tid}` : ''}>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}${
       g.wp != null && g.state === 'live' ? ` · ${pct(side === 'home' ? g.wp : 1 - g.wp)} to win` : ''
     }</small></div>
       <span class="score" data-side="${side}" style="--tc:${t.css}">${showScore ? t.score : ''}</span>
@@ -1052,6 +1054,35 @@
         render(m, o);
       }
     });
+  }
+
+  // The page changes width (a drawer opened or closed, js/player.js): one
+  // view transition, so the cards resize and move into the space that's left
+  // while the drawers slide (they're drawn live, above the cards: the
+  // ::view-transition-group(*.drawer) rules). A board morph already running
+  // takes the change live instead of being cut short. Returns a promise that
+  // settles when it's done.
+  function reflow(fn) {
+    if (morphing || !canMorph()) {
+      fn();
+      return Promise.resolve();
+    }
+    morphing = true;
+    const root = document.documentElement;
+    root.classList.add('vt-reflow');
+    const t = document.startViewTransition(fn);
+    t.ready.catch(() => {});
+    return t.finished
+      .catch(() => {})
+      .then(() => {
+        root.classList.remove('vt-reflow');
+        morphing = false;
+        if (pending && board) {
+          const [m, o] = pending;
+          pending = null;
+          render(m, o);
+        }
+      });
   }
 
   // Cards glide to their new slots; used where morphing isn't available.
@@ -1443,5 +1474,5 @@
     for (const id of lineupMemo.keys()) if (!keep.has(id)) lineupMemo.delete(id);
   }
 
-  SB.ui = { forget, isBlurred: (id) => blurred.has(id), statLine, headshot, fmtWPA, sportAdjusted, chartHTML, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
+  SB.ui = { reflow, forget, isBlurred: (id) => blurred.has(id), statLine, headshot, fmtWPA, sportAdjusted, chartHTML, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

@@ -1415,6 +1415,8 @@
 
     $('board').addEventListener('click', (e) => {
       if (openPlayerFrom(e)) return;
+      const tm = e.target.closest('[data-tid]');
+      if (tm) return SB.player.openTeam({ id: tm.dataset.tid, color: tm.dataset.tcolor || undefined });
       let toTop = false;
       if (e.target.closest('[data-action="focus"]')) {
         SB.focus.toggle(e.target.closest('.game').dataset.id);

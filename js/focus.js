@@ -46,6 +46,9 @@
     if (phase !== 'off') return;
     phase = 'entering';
     focusId = id;
+    // Focus is the whole screen: open drawers close first (the page takes
+    // their space back), then the board clears.
+    if (SB.player?.isOpen()) await SB.player.close();
     onChange(id); // pin it (it's already the top game, so nothing moves)
     const body = document.body;
     body.classList.add('focus-out');

@@ -116,8 +116,26 @@ never opened). The game table shows **BONES and MOUSSA** side by side (basketbal
 one in bold, and sorts by Day, BONES or MOUSSA (click a header; again to flip) to find a player's best games.
 The drawer has the same BONES | MOUSSA switch as settings. **Compare**: click another player while a drawer is open
 and a second opens to its left; up to **three** side by side (the newest leftmost; with three open, the next click
-replaces the newest). They share the width when three full ones don't fit, and under 900px each new one covers the
-last. Closing one slides the rest together; Esc closes the newest.
+replaces the newest, its content fading over). Where there's room the page **makes way**: the drawers take the right
+side (body `--push`) and the board, menu and banners lay out in what's left (the width breakpoints are container
+queries on `body`, `container: page`, not media queries; the top card's vw-style sizes read `--pw`, 1% of the page,
+set by `js/player.js`). Each drawer is 440px, or narrower down to 330px so the board keeps 440px (three on a 14"
+MacBook Air: 343px each, with a compact drawer layout under 330px of content); without that room they cover the page as
+before (sharing the width, or under 900px each new one on top of the last). Opening and closing run as one view
+transition (`SB.ui.reflow`): the cards resize into the new space while the drawers slide, drawn live above them
+(`view-transition-class: drawer`), a new drawer slides out from under the ones already open and a closing one slides
+away beneath its neighbour (older drawers sit on top). Banners coming and going move the board the same way. Focus mode
+closes open drawers before it starts. Closing one slides the rest together; Esc closes the newest.
+**Team drawer** (`js/team.js`, NBA, since Nov 23): click a team on Standings, a team's logo or name on the top game's
+card, or the team badge in a player's drawer. It opens in the same stack as the player drawers (up to three in all, so a
+team can sit next to two of its players). It shows the record against the switch's **xW** (how many wins ahead or behind,
+"lucky" or "unlucky"), with xW, Diff, xNet and Shot luck each ranked in the NBA; who's **Out** (return date and BONES or
+MOUSSA per 36); the **roster** (every player whose latest game was for this team: GP, minutes a game, season BONES and
+MOUSSA as the player drawer counts them, sortable; a row opens that player's drawer beside it); and **games** (last 10 or
+the season: result, the game's gap under the switch's metric, this team's total minus the opponent's, with a dotted
+underline where the result and the metric disagree, and who led the team; a row opens the game on the board). Nothing
+new is fetched: it reads what Standings loads (`SB.standings.ensure()` / `team(id)`, loaded on first ask) and the
+season's player rows (`SB.bones.seasonGames`).
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by BONES or MOUSSA (whichever is on), with their
 counting stats and a Player of the Day, filtered by sport if you like, and either **sport-adjusted** (the default) or by
 the raw number. Impact isn't zero-sum and each sport has its own baseline and spread: basketball credits a make without
