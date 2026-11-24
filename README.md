@@ -294,7 +294,10 @@ Nov 17: v1 had Brunson first (46.4) and Towns at 28.6, because ESPN's probabilit
 misses cost him +0.4 in v1; the value lands on the defensive rebound) or an offensive rebound (Towns's 6 were worth 0.6).
 v2: Towns 51.0 (7 of 9, offensive rebounds +18.3, assists +9.1) and Brunson 27.7 (makes +42.4, misses −32.4). Backtest after:
 74.3% of winners, log-loss −0.567 (best yet; second half 73.0%, −0.555).
-**Test settings** (`SB.impact.tune`, defaults 1 = unchanged): `orebShare` and `missShare`, the share of an offensive
+**Test settings** (`SB.impact.tune`, defaults 1 = unchanged): `missCost` (since Nov 24, TESTS.md T24), the share of a
+missed field goal's v2 charge its shooter takes, the rest dropped; BONES's lighter charge (about 0.55) tested worse
+beyond noise, so it stays at 1. `missRecovery` (null = off; T26), how often a miss comes back by its shot type, which sets
+the loose ball's value in place of the flat `OREB`; no version beat the flat 27%. `orebShare` and `missShare`, the share of an offensive
 rebound's and of a missed shot's v2 credit the player keeps, the rest going to his teammates on the floor (the theory:
 v2 over-credits efficient rebounding bigs and over-charges creators whose misses are the cost of running an offense).
 Grid-tested Nov 20 (148 games): every sharing setting made the game backtest's log-loss worse (misses at 75% −0.574, 50%

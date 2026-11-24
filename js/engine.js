@@ -232,7 +232,7 @@
   // offensive rebound's and of a missed shot's credit the player keeps (the rest
   // to his teammates on the floor). spikeSec: overrides each league's spike
   // window (impactAdjust) when set; null = the league's own.
-  const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9, defMake: 0, offMake: 1, shooterSkill: null, skillDefense: false };
+  const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9, defMake: 0, offMake: 1, shooterSkill: null, skillDefense: false, missCost: 1, missRecovery: null };
 
   SB.impact = { tune, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, withVersion, version: () => bonesV, name: (v = bonesV) => NAMES[v === 2 ? 2 : 1], NAMES };
 
@@ -546,6 +546,7 @@
       let prevWPN = null; // BONES v2: score-only win probability
       let ball = null; // who has the ball after each row (team id), for v2; null: loose or unknown
       let loose = null; // while the ball is loose after a miss: the team that missed
+      let looseR = OREB; // how often that miss comes back (tests: SB.impact.tune.missRecovery)
       let curPeriod = 0;
       let periodStartTotal = 0; // combined score when the period began
       let ftPending = false; // a foul's free throws still to come
@@ -630,7 +631,13 @@
           else if (ft) ball = lastFt ? (p.scoringPlay ? other : null) : team;
           else if (p.shootingPlay) ball = p.scoringPlay ? other : null;
           // A miss (a shot, or a last free throw) leaves the ball loose for the shooting team's side.
-          if (ball === null && was !== null && (p.shootingPlay || ft) && !p.scoringPlay) loose = team;
+          if (ball === null && was !== null && (p.shootingPlay || ft) && !p.scoringPlay) {
+            loose = team;
+            // Test setting (SB.impact.tune.missRecovery, null = off): the share of this
+            // miss the shooting team gets back, from the shot's type (TESTS.md, T26).
+            const rec = SB.impact.tune.missRecovery;
+            looseR = rec && !ft && SB.xpts ? rec(SB.xpts.features(p, elapsed - possStart, league), / blocks /.test(rowText)) ?? OREB : OREB;
+          }
           else if (ball !== null || /end (period|game)|jump ?ball/i.test(rowType)) loose = null;
         }
         // The possession's own spread (POSS_SD) too: what it scores is 0, 2 or 3,
@@ -646,7 +653,7 @@
         // 0, a miss cost only −0.57 (really about −0.88), a defensive rebound was
         // worth 0.57 (about 0.26) and an offensive rebound 0.57 (about 0.88).
         const half = possPts / 2;
-        const looseV = loose ? (loose === homeId ? 1 : -1) * half * (2 * OREB - 1) : 0;
+        const looseV = loose ? (loose === homeId ? 1 : -1) * half * (2 * looseR - 1) : 0;
         const possAdj = ball === homeId ? half : ball === awayId ? -half : looseV;
         const wpN = modelWP(hN - aN + possAdj, elapsed, REG_GAME, OT_PERIOD, POSS_SD);
         const deltaN = prevWPN == null ? 0 : wpN - prevWPN;
@@ -812,7 +819,10 @@
             if (!pl) continue;
             const side = pl.teamId === homeId ? 1 : -1;
             const v = side * p.impDelta * c.share * p.weight * rebShare;
-            const vN = side * (p.impDeltaN || 0) * c.share * wN * rebShare; // BONES v2
+            // Test setting (SB.impact.tune.missCost, 1 = off): the share of a missed
+            // field goal's v2 charge its shooter takes; the rest is dropped (TESTS.md, T24).
+            const missK = SB.impact.tune.missCost !== 1 && p.fga && !p.scoring && c.id === p.p0 ? SB.impact.tune.missCost : 1;
+            const vN = side * (p.impDeltaN || 0) * c.share * wN * rebShare * missK; // BONES v2
             pl.imp += v;
             pl.impN += vN;
             if (defensiveCredit(p, c.id)) {

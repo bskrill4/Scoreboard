@@ -46,6 +46,9 @@ range for the change; when it includes 0, the change is within noise.
 | T21 | Nov 22 | Confidence vs players out | Real pattern; fix didn't hold out of sample | **Re-run** |
 | T22 | Nov 22 | Take shooting luck away from shooters | Worse at every share; it is all of Memphis's edge | Rejected |
 | T23 | Nov 22 | Shooter-aware expected value, then remove the rest | Skill is real but small; still worse | Rejected; **Re-run** mid-season |
+| T24 | Nov 24 | MOUSSA's charge for a missed shot (BONES charges about half) | BONES-sized charge worse beyond noise; heavier within noise | Kept as is; **Re-run** |
+| T25 | Nov 24 | Is getting your misses back a shooter's own trait? | No (r .03); it's shot type and teammates (team r .34) | Shooter rate rejected; shot-type price proposed |
+| T26 | Nov 24 | Price each miss by its shot type's recovery rate | Neutral to slightly worse, all within noise | Rejected; **Re-run** |
 
 ## The tests
 
@@ -267,6 +270,92 @@ them, which suggests a make also carries shot quality the table can't see (how o
 real value, not luck. **Re-run** mid-season, when each shooter's estimate rests on 300+ shots and the regression
 leaves more of it as skill.
 
+### T24: How much a missed shot should cost (Nov 24)
+**Basis.** Jayson Tatum has the league's biggest gap between the two metrics: BONES 22.4 a game (#3), MOUSSA 11.0
+(#73). Rebuilt play by play over his 15 games, about 7.4 of the 11.4 is missed shots and turnovers: MOUSSA charges
+a missed field goal −2.3 (per 100) on average, BONES −1.3, because ESPN's win probability barely moves on a miss
+while MOUSSA's model counts it as the ball given away (a make of 2 nets +0.86 points, a miss about −0.88, against an
+average possession of 1.14). The other 4.0 is BONES's game floor (Tatum #1 in the league). The same split runs
+league-wide: MOUSSA marks down volume shot-creators (Tatum, Acuff, Miller, Lillard, Quickley, Brunson, Trae Young)
+and marks up efficient bigs (Diabaté, Sabonis, Clingan, Carter, Queta). Which charge is right?
+**Procedure.** `tune.missCost` (1 = off): the share of a missed field goal's MOUSSA charge its shooter takes, the
+rest dropped (not passed to anyone). Every game this season rebuilt from its play-by-play at 1.5, 1.25, 1.1, 1, 0.9,
+0.8, 0.7, 0.55 (about BONES's charge), 0.4, 0.2 and 0, then the game backtest (180 graded games) and lineup test.
+A rebuild at 1 reproduced the saved rows exactly. 90% ranges by bootstrapping games (2,000 resamples).
+**Result.**
+
+| Miss charge | Winners | Log-loss | Second half | Last third | Lineup r |
+|---|---|---|---|---|---|
+| 1.5 | 70.6% | −0.5852 | −0.6097 | −0.6639 | .052 |
+| 1.25 | 71.1% | −0.5798 | −0.5997 | −0.6417 | .059 |
+| 1.1 | 72.2% | −0.5801 | −0.5961 | −0.6297 | .062 |
+| **1 (now)** | 72.2% | −0.5817 | −0.5952 | −0.6233 | .063 |
+| 0.9 | 74.4% | −0.5844 | −0.5944 | −0.6188 | .064 |
+| 0.8 | 75.0% | −0.5881 | −0.5952 | −0.6160 | .065 |
+| 0.7 | 74.4% | −0.5925 | −0.5965 | −0.6140 | .065 |
+| 0.55 (≈ BONES) | 72.2% | −0.6002 | −0.6000 | −0.6140 | .065 |
+| 0.4 | 71.7% | −0.6085 | −0.6047 | −0.6163 | .063 |
+| 0 | 65.6% | −0.6302 | −0.6202 | −0.6290 | .059 |
+
+Against the current charge, per game: 0.55 −0.0184 [−0.0355, −0.0007] (better in 4% of resamples), 0.8 −0.0064
+[−0.0144, +0.0020] (11%), 1.1 +0.0017 [−0.0028, +0.0060] (72%), 1.25 +0.0019 [−0.0087, +0.0127] (61%). Charging
+misses as lightly as BONES does is worse beyond noise; a lighter charge picks a few more winners (75% at 0.8) but
+with worse odds; a slightly heavier one is a hair better in log-loss, within noise. The measures disagree near 1:
+the full-season log-loss leans heavier, the last third and the lineup test lean lighter (0.7–0.8).
+**Status.** Kept as is (MOUSSA's full charge). Tatum's MOUSSA rating is what a full charge for his misses says; BONES's
+lighter charge is a likely reason MOUSSA has predicted better. Follow-up idea: charge BONES's misses the same way
+(it credits on ESPN's line, so this setting can't test it). **Re-run** in mid-December: move only if one side of 1
+wins on log-loss beyond noise.
+
+### T25: How often a shooter's misses come back (Nov 24)
+**Basis.** The user's idea after T24: missed shots are volume players' big cost, but some players' misses come back
+to their own team more often (and threes may differ), so they don't really give the ball away. A shooter's own
+recovery rate could set how much of a possession each of his misses costs.
+**Procedure.** 24,712 missed field goals this season (258 games) with the rebound that followed. Recovery rate by
+shot cell (points, zone, shot family). Each shooter's rate against what his shots' cells predict, split by odd and
+even games (83 shooters with 40+ misses in each half; 53 with 25+ missed threes); the same for teams.
+**Result.** The offense gets back 32.8% of misses (threes 31.4%, twos 34.2%; rim layups 39%, putbacks 44%, blocked
+shots 42%, mid-range jumpers 25%, corner and above-the-break threes 29–30%). Beyond shot type, a shooter's rate
+doesn't repeat: r .03 (all misses), .01 (threes). A team's does: r .34 across 30 teams, which is who's on the
+floor to chase the ball (and that rebounder already gets the credit). Across 46 shooters with 120+ misses the
+spread beyond shot type is 4.3 points against 3.8 from chance alone, about 2 points of real difference, most of
+it teammates. Tatum's teammates get back 30.4% against 27.9% expected (rates without his own rebounds).
+Two side findings: MOUSSA prices every miss's loose ball at a 27% recovery (`OREB`), below the 32.8% measured, the
+same for every shot; and the recovery rate does depend on shot type.
+**Status.** A shooter's own rate: rejected, it's noise plus teammates. Proposed as **T26**: price each miss's loose
+ball by its shot type's recovery rate (and check `OREB` against the measured rate), judged on the game backtest.
+
+### T26: A miss priced by how often its shot type comes back (Nov 24)
+**Basis.** T25: a shooter's own recovery rate is noise, but shot type isn't. Putbacks (someone is already in the paint
+going for it), blocked shots (they go anywhere) and rim layups come back far more often than mid-range jumpers, and
+threes more than middies (more room to crash). MOUSSA prices every miss's loose ball the same, at a 27% recovery
+(`OREB`), below the 32.8% measured.
+**Procedure.** `tune.missRecovery` (null = off): a function of the missed shot's cell (points, zone, family; blocked
+shots their own cell) giving the share the offense gets back, which sets the loose ball's value, half a possession ×
+(2·rate − 1). Rates from all 24,600 misses this season, pulled toward the league rate by 30 misses; deep heaves (61%,
+an end-of-quarter artifact) set to the league rate. Four versions against the current flat 27%: **uniform** (flat at
+the measured 32.8%), **cells** (each cell's own rate), **shape** (each cell's difference from the league, around the
+current 27%: shot type alone, no change in level), **cells early** (rates from the first half of the season only, so
+later games are out of sample). Every game rebuilt from its play-by-play; the base rebuild reproduced the saved rows.
+**Result.** Rates: putbacks 43%, blocked 42%, rim layups 38%, floaters 32–34%, threes 29–30%, mid-range pull-ups 25–27%.
+
+| Version | Winners | Log-loss | Second half | Last third | Lineup r | Change per game [90% range] |
+|---|---|---|---|---|---|---|
+| **Flat 27% (now)** | 72.2% | −0.5817 | −0.5952 | −0.6233 | .063 | |
+| Uniform 32.8% | 73.9% | −0.5847 | −0.5929 | −0.6184 | .064 | −0.0030 [−0.0073, +0.0015] |
+| Cells | 73.3% | −0.5845 | −0.5934 | −0.6215 | .063 | −0.0027 [−0.0062, +0.0008] |
+| Shape only | 72.8% | −0.5820 | −0.5962 | −0.6272 | .062 | −0.0002 [−0.0030, +0.0027] |
+| Cells, early rates | 73.9% | −0.5839 | −0.5925 | −0.6203 | .063 | −0.0022 [−0.0057, +0.0015] |
+
+All within noise. Shot type alone (shape) changes nothing: players move 0.4 a game on average (Wembanyama 25.7 →
+24.2, Gilgeous-Alexander 16.1 → 14.8, Tatum 11.0 → 9.9; rim misses get cheaper, but so does the offensive rebound
+after them, and mid-range misses cost more). Raising the level (uniform, cells) makes every miss cheaper; like the
+lighter charges in T24 it picks a few more winners and gives slightly worse odds over the season, though slightly
+better in the second half (Tatum 11.0 → 12.5).
+**Status.** Rejected for now: no version beats the flat 27% beyond noise. The flat price stays (T10 found the same
+for the rebound side). **Re-run** with T24 in mid-December; the second half leaning toward the measured 32.8% is
+worth watching.
+
 ## Watch index
 
 ### I01: The NFL against the NBA and NHL at equal game states (Nov 23)
@@ -319,3 +408,5 @@ Arsenal 38 (66/20/14, Big match), Villa at Galatasaray 35; Napoli at City 22 (75
 | T16 | When specialists log real minutes with 0–2 spacers | Their offensive-rebound rate drops sharply with fewer spacers |
 | T03 | A couple more weeks of games | A blend weight that holds steady from one stretch to the next |
 | T23 | Mid-season (shooters at 300+ shots) | Removing the non-skill part of shooting stops hurting the backtest |
+| T26 | Mid-December, with T24 | The measured recovery rate (uniform or by cell) beats the flat 27% on log-loss beyond noise |
+| T24 | Mid-December | A miss charge on one side of 1 (heavier ~1.1–1.25, or lighter ~0.7–0.8) beats the full charge on log-loss beyond noise |
