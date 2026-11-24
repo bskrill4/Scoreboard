@@ -15,10 +15,10 @@
   const SPORT = {
     // periods: regulation periods (anything past them is overtime). lineups: the feed says who is on the floor.
     // Basketball crunch time is the NBA's own "clutch": the last 5 minutes within 5 points.
-    nba: { periods: 4, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
-    nfl: { periods: 4, marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
+    nba: { periods: 4, otSec: 300, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
+    nfl: { periods: 4, otSec: 600, marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
     // College: shorter game, bigger talent gaps; rankings beat early-season records.
-    ncaam: { periods: 2, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
+    ncaam: { periods: 2, otSec: 300, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
     // Hockey: a goal is a big deal. One goal is close, three is about decided, four a blowout.
     // suddenDeath: overtime ends on the next goal, so it scores as "anything can happen
     // any second" (full volatility) even when nobody has scored for minutes.
@@ -131,11 +131,17 @@
     // favorite is 85% to hold on, and more so the closer the horn.
     const doubt = doubtOf(g);
     const win = cfg.crunchSec || CRUNCH.sec;
-    const left = g.reg - g.elapsed;
+    // Overtime (since Nov 24): crunch time counts down to the end of the overtime
+    // period too. Until then it only ran in regulation, so a 3-point game with 25
+    // seconds left in overtime (PHX at NO, Nov 23) rated 41 and lost the top spot
+    // to a 4-point NFL game with 10 minutes left. Sudden-death overtimes (hockey,
+    // college football) are scored apart (suddenDeath) and have no otSec.
+    const inOT = g.period > cfg.periods && cfg.otSec;
+    const left = inOT ? cfg.otSec - ((g.elapsed - g.reg) % cfg.otSec) : g.reg - g.elapsed;
     const cm = cfg.crunchMargin ?? cfg.oneScore;
     const near = margin <= cm ? 1 : clamp01(1 - (margin - cm) / (cm * CRUNCH.fade));
     const crunch =
-      g.period <= cfg.periods && left <= win && near > 0
+      (g.period <= cfg.periods || inOT) && left <= win && near > 0
         ? (CRUNCH.floor + (CRUNCH.top - CRUNCH.floor) * (1 - left / win)) * doubt * near
         : 0;
     return clamp01(Math.max(close * late, crunch));

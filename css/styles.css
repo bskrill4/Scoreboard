@@ -2295,3 +2295,112 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .st-head { flex-wrap: wrap; gap: 10px; }
 .st-sports { margin-left: auto; }
 .st-soccer .ptable-wrap { max-width: 760px; }
+
+/* Soccer pitch on the top card (js/soccer.js pitchHTML; since Nov 24) */
+.ms-pitch-wrap { max-width: 760px; margin: 14px auto 4px; }
+.ms-pitch-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); margin-bottom: 6px; }
+.ms-pitch-head b { color: var(--text); font-weight: 900; margin: 0 4px; }
+.ms-pitch { position: relative; aspect-ratio: 105 / 68; border-radius: 10px; overflow: hidden; color: rgba(255, 255, 255, .28);
+  background: repeating-linear-gradient(90deg, #1d5e34 0 9.5%, #22683a 9.5% 19%); }
+.ms-pitch svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ms-dot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; gap: 2px; pointer-events: auto; }
+.ms-dot b { display: grid; place-items: center; width: clamp(20px, 3.2cqw, 30px); aspect-ratio: 1; border-radius: 50%; background: var(--c); color: var(--t);
+  font-size: clamp(9px, 1.3cqw, 12px); font-weight: 900; box-shadow: 0 0 0 2px rgba(255, 255, 255, .85), 0 2px 4px rgba(0, 0, 0, .4); }
+.ms-dot span { font-size: clamp(9px, 1.2cqw, 12px); font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, .9); white-space: nowrap; max-width: 11ch; overflow: hidden; text-overflow: ellipsis; }
+.ms-dot em { position: absolute; top: -6px; left: calc(50% + 8px); display: flex; gap: 2px; font-style: normal; }
+.ms-dot em i { font-style: normal; font-size: 9px; font-weight: 900; line-height: 1; }
+.ms-dot .b-goal { min-width: 12px; height: 12px; border-radius: 50%; background: #fff; color: #111; display: grid; place-items: center; box-shadow: inset 0 0 0 2px #111; }
+.ms-dot .b-ast { padding: 1px 3px; border-radius: 3px; background: #111; color: #fff; }
+.ms-dot .b-yel, .ms-dot .b-red { width: 8px; height: 11px; border-radius: 2px; background: #ffd60a; }
+.ms-dot .b-red { background: #e5383b; }
+.ms-dot .b-on { padding: 1px 3px; border-radius: 3px; background: #3ddc84; color: #0b2b17; }
+.ms-dot.off b { opacity: .45; }
+.ms-off { margin: 6px 0 0; font-size: 12px; color: var(--dim); }
+.ms-off b { color: var(--text); font-weight: 800; }
+.ms-pitch-note { margin: 10px 0 0; font-size: 12px; color: var(--dim); }
+
+/* Soccer top card (ui.js soccerHeroHTML, since Nov 24): the shared frame, soccer inside */
+.h-col .ms-pitch-wrap { max-width: none; margin: 0; }
+.h-col .ms-pitch-head { font-size: 11px; margin-bottom: 4px; }
+.ms-pitch { container-type: inline-size; }
+.h-col .ms-dot b { width: 6.2cqw; font-size: 3cqw; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .85); }
+.h-col .ms-dot span { font-size: 2.9cqw; max-width: 15cqw; }
+.h-col .ms-dot em { top: -1.2cqw; left: calc(50% + 2.2cqw); }
+.h-col .ms-dot em i { font-size: 2.3cqw; }
+.h-col .ms-dot .b-goal { min-width: 3cqw; height: 3cqw; }
+.h-col .ms-dot .b-yel, .h-col .ms-dot .b-red { width: 2cqw; height: 2.8cqw; }
+.h-col .ms-off { font-size: 11px; margin-top: 4px; line-height: 1.35; }
+/* the bar: possession, or the odds before kickoff */
+.ms-bar { display: flex; gap: 2px; }
+.ms-bar i { display: block; }
+.ms-bar-l { display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; font-weight: 700; color: var(--dim); }
+/* the timeline: the chart's box, goals above (home) and below (away) the line */
+.ms-tl { position: relative; height: 120px; border: 1px solid var(--line); border-radius: 10px; background: rgba(0, 0, 0, .28); overflow: hidden; margin-bottom: 10px; }
+.ms-tl::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px dashed rgba(255, 255, 255, .25); }
+.ms-tl-now { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255, 255, 255, .04); border-right: 1px solid rgba(255, 255, 255, .15); }
+.ms-tl-half { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(255, 255, 255, .12); }
+.ms-tm { position: absolute; width: 14px; height: 14px; border-radius: 50%; transform: translate(-50%, -50%); background: var(--c); box-shadow: 0 0 0 2px #fff; }
+.ms-tm.up { top: 30%; }
+.ms-tm.down { top: 70%; }
+.ms-tm.red { width: 9px; height: 13px; border-radius: 2px; background: #e5383b; box-shadow: none; }
+.ms-tl small { position: absolute; font-size: 10px; font-weight: 800; color: var(--dim); }
+.ms-tl-l { left: 6px; top: 4px; }
+.ms-tl-r { left: 6px; bottom: 4px; }
+.ms-tl-0 { left: 6px; top: calc(50% - 7px); display: none; }
+.ms-tl-45 { bottom: 4px; transform: translateX(-50%); }
+.ms-tl-90 { right: 6px; bottom: 4px; }
+/* top players: a shirt number in the headshot's place */
+.ms-num { display: grid; place-items: center; background: var(--c); color: var(--t); font-weight: 900; font-size: 14px; }
+/* wide pages only: the narrow layouts' own column rules still apply below this */
+/* Two columns: the pitch as big as the card's usual height allows (about 330px tall), then the top players. */
+@container page (min-width: 1181px) { .h-body.ms-body { grid-template-columns: minmax(150px, .5fr) minmax(0, 1.65fr) minmax(0, 1fr); gap: 22px; } }
+/* Lean timeline column: goals (scorer, assist), own goals, bookings, red cards; a name opens its card on the pitch. */
+.ms-evs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; max-height: 350px; overflow-y: auto; scrollbar-width: thin; }
+.ms-evs li { display: grid; grid-template-columns: 38px 12px minmax(0, 1fr); align-items: center; gap: 6px; padding: 3px 6px 3px 7px;
+  border-left: 3px solid var(--tc); border-radius: 4px; background: rgba(255, 255, 255, .03); font-size: 12px; }
+.ms-evs li.goal, .ms-evs li.pen, .ms-evs li.og { background: rgba(255, 255, 255, .07); }
+.ms-evs li.ms-ht { display: block; border: 0; background: none; padding: 2px 0; text-align: center; font-size: 10px; font-weight: 900; letter-spacing: .08em; color: var(--dim); }
+.ms-ev-min { font-size: 11px; font-weight: 800; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ms-ev-who { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.ms-ev-who b, .ms-ev-who small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: default; }
+.ms-ev-who b { font-weight: 800; }
+.ms-ev-who small { font-size: 10.5px; color: var(--dim); }
+.ms-ev-who small::before { content: "assist "; opacity: .7; }
+.ms-ev-who [data-pid]:hover { color: var(--yellow); }
+.ms-evs i { display: block; justify-self: center; }
+.ev-goal { width: 10px; height: 10px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 2px #111; }
+.ev-goal.og { background: #e5383b; }
+.ev-yel, .ev-red { width: 8px; height: 11px; border-radius: 2px; background: #ffd60a; }
+.ev-red { background: #e5383b; }
+/* A Top players row or timeline name lights its dot on the pitch. */
+.ms-body .lrow[data-pid] { cursor: default; }
+.ms-dot.ghost { display: none; }
+.ms-dot.ghost.hot { display: flex; }
+.ms-dot.ghost > b { opacity: .55; outline: 2px dashed rgba(255, 255, 255, .8); outline-offset: 1px; }
+.ms-dot.hot { z-index: 6; }
+.ms-dot.hot > b { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--c); }
+.ms-dot.hot .ms-card { display: flex; }
+.h-col .ms-pitch-wrap { max-width: calc(330px * 105 / 68); margin: 0 auto; }
+.ms-subs-h { margin-top: 14px; }
+/* Numbers only on the pitch; the name and the rest show on hover (or focus). */
+.h-col .ms-dot b { width: 6cqw; font-size: 2.9cqw; }
+.h-col .ms-dot > span { display: none; }
+.ms-pitch { overflow: visible; }
+.ms-pitch svg { border-radius: 10px; }
+.ms-dot { cursor: default; outline: none; }
+.ms-dot:hover, .ms-dot:focus-visible { z-index: 5; }
+.ms-dot:hover > b, .ms-dot:focus-visible > b { box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--c); }
+.ms-card { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); display: none; align-items: center; gap: 10px;
+  padding: 8px 12px 8px 8px; min-width: 200px; border-radius: 10px; background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--c);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .55); pointer-events: none; white-space: nowrap; font-size: 12px; color: var(--text); text-shadow: none; }
+.ms-dot:hover .ms-card, .ms-dot:focus-visible .ms-card { display: flex; }
+.ms-card.low { bottom: auto; top: calc(100% + 8px); }
+.ms-card.lft { left: -6px; transform: none; }
+.ms-card.rgt { left: auto; right: -6px; transform: none; }
+.ms-face { position: relative; width: 44px; height: 44px; flex: none; border-radius: 50%; overflow: hidden; display: grid; place-items: center;
+  background: var(--c); color: var(--t); font-size: 17px; font-weight: 900; }
+.ms-face img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: var(--panel-2, #1c1c22); }
+.ms-card > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.h-col .ms-dot .ms-card b, .ms-dot .ms-card b { display: block; width: auto; aspect-ratio: auto; border-radius: 0; background: none; color: var(--text); box-shadow: none; font-size: 14px; font-weight: 900; }
+.ms-card small { font-size: 11px; color: var(--dim); }
+.ms-dot .ms-card > i { margin-left: auto; padding-left: 10px; font-style: normal; font-size: 22px; font-weight: 900; color: var(--yellow); }

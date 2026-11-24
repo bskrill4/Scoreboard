@@ -292,6 +292,23 @@ less than a point. The decided-game drop is small because the "alive" fade alrea
 of the NFL's excess over the NBA is stars and small bonuses, and it now sits with the NHL. Raw snapshots kept in the
 test browser (`localStorage['tmp.idx']` before, `['tmp.idx2']` after) to re-score further changes against.
 
+### I02: Crunch time in overtime (Nov 24)
+**Basis.** Nov 23: Phoenix led 120-117 with 25 seconds left in overtime at New Orleans and rated 41; a 4-point NFL
+game with 10 minutes left (53) held the top spot. Crunch time only ran in regulation.
+**Procedure.** Crunch time counts down to the end of the overtime period too (`otSec`: NBA and college basketball 300,
+NFL 600; hockey and college football overtimes are sudden death, scored apart). Re-scored the overtime from the replay.
+**Result.** OT 1:47, up 6: 35 → 50. OT 0:25, up 3: 41 → 61. Decided moments stay low (OT 0:43, up 5 at 98%: 29).
+**Status.** **Adopted.**
+
+### I03: Soccer pre-match index (Nov 24)
+**Basis.** The first Champions League day rated matches on each club's record in the competition (4 games): Napoli at
+Man City 25, PSV at Real Madrid 26, Betis at Benfica 13.
+**Procedure.** Evenness from the betting odds (home / draw / away, margin removed); quality from each club's domestic
+league table (points a game, shrunk, times a league weight), the competition record as the fallback.
+**Result.** Today's nine now 15-38, ordered by how even and how good: Porto at Feyenoord 38 (29/26/45), Dortmund at
+Arsenal 38 (66/20/14, Big match), Villa at Galatasaray 35; Napoli at City 22 (75/15/11), PSV at Real 26 (84/10/6).
+**Status.** **Adopted.** Re-check after a few European nights: does the board's order match the matches worth watching?
+
 ## Re-run queue
 
 | # | Re-run when | What would change our mind |

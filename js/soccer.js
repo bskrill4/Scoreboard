@@ -2,7 +2,7 @@
 // Score-only, straight from ESPN's public scoreboard feed (no play-by-play, no
 // engine), and separate from BONES and MOUSSA: nothing here reads or writes them.
 // Since Nov 23 there's no Soccer tab: matches are on the Scores board with every
-// other sport (boardModels, boardTileHTML / boardHeroHTML; EPL and UCL are sport
+// other sport (boardModels, boardTileHTML; the top card is ui.js soccerHeroHTML; EPL and UCL are sport
 // toggles in settings), and league tables are on Standings (tableHTML). The tab's
 // own page code below still works if a #soccer section is ever added back.
 //
@@ -69,6 +69,63 @@
 
   // ---------- model ----------
   // ESPN soccer records are "W-D-L".
+  // ---------- club strength (since Nov 24) ----------
+  // A European night pairs clubs whose record in the competition is a handful of
+  // games (Napoli 1-0-3 made Napoli at Man City a 25 before kickoff), so a club's
+  // strength comes from its domestic league table: points a game, pulled toward
+  // 1.4 by 4 games, over 3, times the league's strength (LEAGUE_W, roughly
+  // UEFA's league coefficients). The record in this competition is the fallback.
+  // Tables load once a day (localStorage), one ESPN standings call per league.
+  const LEAGUE_W = {
+    'eng.1': 1, 'esp.1': 0.95, 'ita.1': 0.9, 'ger.1': 0.9, 'fra.1': 0.85, 'por.1': 0.78, 'ned.1': 0.75, 'bel.1': 0.7,
+    'tur.1': 0.7, 'cze.1': 0.65, 'gre.1': 0.65, 'aut.1': 0.65, 'sco.1': 0.6, 'sui.1': 0.6, 'nor.1': 0.6, 'den.1': 0.6, 'ukr.1': 0.6,
+  };
+  const CLUBS_KEY = 'sb.soccerClubs';
+  let clubs = null; // team id -> strength
+  let clubsLoading = false;
+  try {
+    const c = JSON.parse(localStorage.getItem(CLUBS_KEY) || 'null');
+    if (c && c.day === SB.days.today() && c.map) clubs = new Map(Object.entries(c.map));
+  } catch (e) {}
+  async function loadClubs() {
+    if (clubs || clubsLoading) return;
+    clubsLoading = true;
+    const map = new Map();
+    await Promise.all(
+      Object.entries(LEAGUE_W).map(async ([id, w]) => {
+        try {
+          const json = await getJSON(`https://site.api.espn.com/apis/v2/sports/soccer/${id}/standings`);
+          for (const e of ((json.children || [json])[0] || {}).standings?.entries || []) {
+            const st = Object.fromEntries((e.stats || []).map((x) => [x.name, Number(x.value ?? x.displayValue) || 0]));
+            const ppg = ((st.points || 0) + 1.4 * 4) / ((st.gamesPlayed || 0) + 4);
+            if (e.team?.id) map.set(String(e.team.id), +((w * ppg) / 3).toFixed(3));
+          }
+        } catch (err) {} // a league that won't load leaves its clubs on their records
+      })
+    );
+    clubsLoading = false;
+    if (!map.size) return;
+    clubs = map;
+    try {
+      localStorage.setItem(CLUBS_KEY, JSON.stringify({ day: SB.days.today(), map: Object.fromEntries(map) }));
+    } catch (e) {}
+    for (const v of data.values()) for (const g of v.games || []) rate(g); // re-rate what's already loaded
+    if (visible()) render();
+    if (onUpdate) onUpdate();
+  }
+  const clubStrength = (t) => (clubs && clubs.has(t.id) ? clubs.get(t.id) : strength(t.record));
+  // The moneyline (home, draw, away) as each outcome's chance, the bookmaker's margin taken out.
+  function oddsOf(c) {
+    const ml = c.odds?.[0]?.moneyline;
+    const n = (x) => Number(String(x?.close?.odds ?? x?.open?.odds ?? '').replace('+', ''));
+    const p = (a) => (a > 0 ? 100 / (a + 100) : -a / (-a + 100));
+    const [h, d, a] = [n(ml?.home), n(ml?.draw), n(ml?.away)];
+    if (![h, d, a].every(Number.isFinite)) return null;
+    const [ph, pd, pa] = [p(h), p(d), p(a)];
+    const sum = ph + pd + pa;
+    return { home: ph / sum, draw: pd / sum, away: pa / sum };
+  }
+
   function strength(rec) {
     const m = /^(\d+)-(\d+)-(\d+)/.exec(rec || '');
     if (!m) return 0.5;
@@ -117,6 +174,7 @@
       away: side('away'),
       venue: c.venue?.fullName || '',
       tv: (c.broadcasts || []).flatMap((b) => b.names || []).join(', '),
+      odds: oddsOf(c),
       note: (c.notes || []).map((n) => n.headline).filter(Boolean).join(' · '),
       link: (ev.links || []).find((l) => (l.rel || []).includes('summary'))?.href || ev.links?.[0]?.href || '',
       events: (c.details || []).map((d) => ({
@@ -126,6 +184,8 @@
         own: !!d.ownGoal,
         pen: !!d.penaltyKick,
         red: !!d.redCard,
+        yel: !!d.yellowCard && !d.redCard,
+        pid: String(d.athletesInvolved?.[0]?.id || ''),
         shootout: !!d.shootout,
         who: (d.athletesInvolved || []).map((a) => a.shortName || a.displayName).join(', '),
       })),
@@ -137,15 +197,17 @@
   function rate(g) {
     const W = WATCH;
     const reasons = [];
-    const qa = strength(g.away.record);
-    const qh = strength(g.home.record);
+    if (!clubs) loadClubs();
+    const qa = clubStrength(g.away);
+    const qh = clubStrength(g.home);
     const quality = Math.max(0, Math.min(1, (0.6 * Math.min(qa, qh) + 0.4 * Math.max(qa, qh) - 0.3) / 0.4));
     const margin = Math.abs(g.home.score - g.away.score);
     const reds = g.events.filter((e) => e.red && !e.shootout).length;
     const goals = g.home.score + g.away.score;
     let index;
     if (g.state === 'pre' || g.postponed) {
-      const even = 1 - Math.min(1, Math.abs(qa - qh) / 0.35);
+      // How even: the betting odds when there are any (since Nov 24), else the two strengths.
+      const even = g.odds ? 1 - Math.abs(g.odds.home - g.odds.away) / (g.odds.home + g.odds.away) : 1 - Math.min(1, Math.abs(qa - qh) / 0.35);
       index = 100 * (W.preTension * even + W.quality * quality * 1.4);
       if (quality >= 0.7) reasons.push({ text: 'Big match', tone: 'info' });
       if (g.postponed) reasons.push({ text: 'Postponed', tone: 'cold' });
@@ -526,6 +588,252 @@
     onRoute();
   }
 
+  // ---------- the pitch (top card; since Nov 24) ----------
+  // Both XIs as dots in their formations, home in the left half attacking right,
+  // away mirrored. From the match summary: each team's formation ("4-2-3-1"), each
+  // starter's spot (formationPlace 1-11) and position code, who came on for whom
+  // and when (subbedInFor, plays), and match stats (G, A, YC, RC, SV). There's no
+  // tracking data, so a dot sits at its formation spot, not where the player is.
+  // Lines: outfield players sorted by how deep their role is (DEPTH; ESPN's codes
+  // name a 4-2-3-1's holding pair "LM"/"RM", so the code alone can't say which
+  // line), cut into the formation's line sizes; each line ordered left to right
+  // by the code's side (-L / L…, centre, -R / R…). A substitute takes the spot of
+  // the man he replaced; the replaced go to the "Off" strip with the minute.
+  const lineups = new Map(); // match id -> { at, data, p }
+  const LINEUP_FRESH = { live: 60e3, pre: 5 * 60e3, final: 60 * 60e3 };
+  function ensureLineup(g) {
+    const raw = String(g.id).replace(/^s/, '');
+    const cur = lineups.get(raw);
+    const fresh = LINEUP_FRESH[g.state] || 60e3;
+    if (cur && (cur.p || Date.now() - cur.at < fresh)) return cur.data;
+    const path = byId.get(g.comp || g.league)?.path;
+    if (!path) return null;
+    const p = getJSON(`${SITE}/${path}/summary?event=${raw}`)
+      .then((s) => lineups.set(raw, { at: Date.now(), data: parseLineup(s) }))
+      .catch(() => lineups.set(raw, { at: Date.now(), data: cur?.data || null }))
+      .finally(() => {
+        if (onUpdate) onUpdate();
+      });
+    lineups.set(raw, { at: cur?.at || 0, data: cur?.data || null, p });
+    p.then(() => {
+      const c = lineups.get(raw);
+      if (c) delete c.p;
+    });
+    return cur?.data || null;
+  }
+  const statOf = (pl, k) => Number((pl.stats || []).find((x) => x.abbreviation === k)?.value) || 0;
+  const minuteText = (pl) => (pl.plays || []).find((x) => x.substitution)?.clock?.displayValue || '';
+  const minuteNum = (t) => {
+    const m = /(\d+)'(?:\+(\d+))?/.exec(t || '');
+    return m ? +m[1] + (+m[2] || 0) / 100 : 999;
+  };
+  function parseLineup(s) {
+    const teams = [];
+    for (const r of s.rosters || []) {
+      const roster = r.roster || [];
+      const starters = roster.filter((p) => p.starter && +p.formationPlace > 0);
+      if (starters.length < 11) continue;
+      const card = (p) => ({
+        id: String(p.athlete?.id || ''),
+        name: p.athlete?.lastName || p.athlete?.shortName || p.athlete?.displayName || '',
+        full: p.athlete?.displayName || '',
+        // ESPN's headshot when the summary carries one, else its usual path (hidden if missing).
+        head: p.athlete?.headshot?.href || (p.athlete?.id ? `https://a.espncdn.com/i/headshots/soccer/players/full/${p.athlete.id}.png` : ''),
+        jersey: p.jersey || '',
+        pos: p.position?.abbreviation || '',
+        place: +p.formationPlace || 0,
+        g: statOf(p, 'G'),
+        a: statOf(p, 'A'),
+        yc: statOf(p, 'YC'),
+        rc: statOf(p, 'RC'),
+        sv: statOf(p, 'SV'),
+        og: statOf(p, 'OG'),
+        sog: statOf(p, 'SOG'),
+        shots: statOf(p, 'SHOT'),
+      });
+      // Everyone who got on the pitch, for the top players column.
+      const played = roster.filter((p) => p.starter || p.subbedIn).map(card);
+      const slots = starters.map((p) => ({ ...card(p), off: null }));
+      const bySlot = new Map(slots.map((sl) => [sl.id, sl]));
+      const offList = [];
+      // Substitutions in order, so a sub of a sub lands in the right spot.
+      const subs = roster
+        .filter((p) => p.subbedIn && p.subbedInFor?.athlete?.id)
+        .map((p) => ({ p, out: String(p.subbedInFor.athlete.id), min: minuteText(p) }))
+        .sort((a, b) => minuteNum(a.min) - minuteNum(b.min));
+      for (const { p, out, min } of subs) {
+        const slot = bySlot.get(out);
+        if (!slot) continue;
+        offList.push({ name: slot.name, jersey: slot.jersey, min, by: p.athlete?.lastName || p.athlete?.displayName || '' });
+        const next = { ...card(p), pos: slot.pos, place: slot.place, on: min, prev: [...(slot.prev || []), { ...slot, prev: undefined, offAt: min }] };
+        bySlot.delete(out);
+        bySlot.set(next.id, next);
+        slots[slots.indexOf(slot)] = next;
+      }
+      const box = (s.boxscore?.teams || []).find((t) => String(t.team?.id) === String(r.team?.id));
+      const tstat = (k) => Number((box?.statistics || []).find((x) => x.name === k)?.displayValue);
+      teams.push({
+        played,
+        possession: tstat('possessionPct'),
+        shots: tstat('totalShots'),
+        onTarget: tstat('shotsOnTarget'),
+        side: r.homeAway,
+        name: r.team?.shortDisplayName || r.team?.displayName || '',
+        formation: r.formation || '',
+        color: r.uniform?.color ? `#${r.uniform.color}` : r.team?.color ? `#${r.team.color}` : '#888',
+        alt: r.uniform?.alternateColor ? `#${r.uniform.alternateColor}` : '#fff',
+        slots,
+        off: offList,
+      });
+    }
+    const last = (s.keyEvents || []).filter((k) => k.text).slice(-1)[0];
+    // The timeline column: goals (scorer, then the assist), own goals, bookings and red cards.
+    const kindOf = (k) => {
+      const t = k.type?.text || '';
+      if (k.shootout) return '';
+      if (/own goal/i.test(t)) return 'og';
+      if (/penalty - missed|penalty - saved/i.test(t)) return '';
+      if (k.scoringPlay || /^goal|penalty - scored/i.test(t)) return /penalty/i.test(t) ? 'pen' : 'goal';
+      if (/red card|second yellow/i.test(t)) return 'red';
+      if (/yellow/i.test(t)) return 'yel';
+      return '';
+    };
+    const keys = (s.keyEvents || [])
+      .map((k) => {
+        const kind = kindOf(k);
+        const [p, q] = (k.participants || []).map((x) => ({ id: String(x.athlete?.id || ''), name: x.athlete?.lastName || x.athlete?.shortName || x.athlete?.displayName || '' }));
+        return kind && p ? { kind, min: k.clock?.displayValue || '', team: String(k.team?.id || ''), p, ast: kind === 'goal' || kind === 'pen' ? q : null } : null;
+      })
+      .filter(Boolean);
+    return teams.length === 2 ? { teams, keys, last: last ? `${last.clock?.displayValue || ''} ${last.text}`.trim() : '' } : null;
+  }
+  // How deep a role sits (lower is nearer its own goal), and its side (0 left .. 1 right, the team's own view).
+  function depthOf(pos) {
+    if (pos === 'G') return 0;
+    if (/^CD|^D$|^LB$|^RB$|^SW/.test(pos)) return 1;
+    if (/^DM/.test(pos)) return 2;
+    if (/^CM/.test(pos)) return 2.5;
+    if (/^(LM|RM|LWB|RWB|M)$/.test(pos)) return 2.6;
+    if (/^AM/.test(pos)) return 3;
+    if (/^CF-|^SS/.test(pos)) return 3.5;
+    if (/^(F|CF|ST|LF|RF|LW|RW)/.test(pos)) return 4;
+    return 2.5;
+  }
+  const sideOf = (pos) => (/-L$|^L/.test(pos) ? 0 : /-R$|^R/.test(pos) ? 1 : 0.5);
+  // Each slot's spot on a 0..1 pitch from its own goal (x) and its left touchline (y).
+  function layout(team) {
+    const gk = team.slots.find((s) => s.pos === 'G' || s.place === 1) || team.slots[0];
+    const out = team.slots.filter((s) => s !== gk).sort((a, b) => depthOf(a.pos) - depthOf(b.pos) || a.place - b.place);
+    let lines = team.formation.split('-').map(Number).filter((n) => n > 0);
+    if (lines.reduce((a, b) => a + b, 0) !== out.length) lines = [out.length];
+    const spots = new Map([[gk, { x: 0.05, y: 0.5 }]]);
+    let i = 0;
+    lines.forEach((n, k) => {
+      const line = out.slice(i, i + n).sort((a, b) => sideOf(a.pos) - sideOf(b.pos) || a.place - b.place);
+      i += n;
+      const x = 0.17 + (k / Math.max(1, lines.length - 1)) * 0.27;
+      line.forEach((s, j) => spots.set(s, { x: lines.length === 1 ? 0.3 : x, y: 0.1 + ((j + 1) / (n + 1)) * 0.8 }));
+    });
+    return spots;
+  }
+  const lum = (hex) => {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if (!m) return 0.5;
+    const n = parseInt(m[1], 16);
+    return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  };
+  const near = (a, b) => {
+    const p = (h) => [1, 3, 5].map((i) => parseInt(String(h).replace('#', '').slice(i - 1, i + 1), 16) || 0);
+    const [x, y] = [p(a), p(b)];
+    return Math.hypot(x[0] - y[0], x[1] - y[1], x[2] - y[2]) < 90;
+  };
+  // opts.off: false leaves out the "off" strips (the top card shows them in the next column: subsHTML).
+  // ESPN has headshots for only some players (about a third of one Premier League
+  // match's XIs); a missing one falls back to the shirt number and isn't asked for again.
+  const NO_HEAD = new Set();
+  // Hovering a player in the timeline or Top players opens his card on the pitch
+  // (a subbed-off player shows faded in the spot he left). Kept here so a redraw keeps it.
+  let hot = '';
+  const setHot = (id, root) => {
+    hot = id;
+    root?.querySelectorAll('.ms-dot.hot').forEach((d) => d.classList.remove('hot'));
+    if (id) root?.querySelectorAll(`.ms-dot[data-pid="${CSS.escape(id)}"]`).forEach((d) => d.classList.add('hot'));
+  };
+  if (typeof document !== 'undefined') {
+    document.addEventListener('mouseover', (e) => {
+      const el = e.target.closest?.('.ms-body [data-pid]:not(.ms-dot)');
+      if (el) return setHot(el.dataset.pid, el.closest('.ms-body'));
+      if (hot) setHot('', document);
+    });
+  }
+  const noHead = (img) => {
+    NO_HEAD.add(img.getAttribute('src'));
+    img.remove();
+  };
+  function pitchHTML(g, opts = {}) {
+    const L = ensureLineup(g);
+    if (!L) {
+      if (g.state === 'pre') return `<p class="ms-pitch-note">Lineups appear about an hour before kickoff.</p>`;
+      return '';
+    }
+    const [home, away] = ['home', 'away'].map((s) => L.teams.find((t) => t.side === s));
+    if (!home || !away) return '';
+    // The away side wears its other color if the two kits are too alike.
+    const awayColor = near(home.color, away.color) ? away.alt : away.color;
+    const dots = (team, color, mirror) => {
+      const spots = layout(team);
+      return team.slots
+        .map((s) => {
+          const p = spots.get(s);
+          const x = (mirror ? 1 - p.x : p.x) * 100;
+          const y = (mirror ? 1 - p.y : p.y) * 100;
+          const badges = [
+            s.g ? `<i class="b-goal" title="${s.g} goal${s.g > 1 ? 's' : ''}">${s.g > 1 ? s.g : ''}</i>` : '',
+            s.a ? `<i class="b-ast" title="${s.a} assist${s.a > 1 ? 's' : ''}">A${s.a > 1 ? s.a : ''}</i>` : '',
+            s.rc ? '<i class="b-red" title="Sent off"></i>' : s.yc ? '<i class="b-yel" title="Booked"></i>' : '',
+            s.on ? `<i class="b-on" title="On ${esc(s.on)}">${esc(s.on)}</i>` : '',
+          ].join('');
+          // Hover card: headshot, full name, role and the game's tally (the Top players score).
+          const v = scoreOf(s);
+          const where = `${y < 38 ? ' low' : ''}${x < 18 ? ' lft' : x > 82 ? ' rgt' : ''}`;
+          const card = `<div class="ms-card${where}" style="--c:${color}"><div class="ms-face" style="--t:${lum(color) > 0.6 ? '#111' : '#fff'}">${esc(s.jersey)}${s.head && !NO_HEAD.has(s.head) ? `<img src="${esc(s.head)}" alt="" loading="lazy" onerror="SB.soccer.noHead(this)">` : ''}</div><div><b>${esc(s.full || s.name)}</b><small>${esc(team.name)}${s.pos && s.pos !== 'SUB' ? ` · ${esc(s.pos)}` : ''}${s.on ? ` · on ${esc(s.on)}` : ''}</small><small>${esc(statLine(s) || 'No stats yet')}</small></div><i>${v % 1 ? v.toFixed(1) : v}</i></div>`;
+          const ghosts = (s.prev || [])
+            .map((o) => {
+              const ov = scoreOf(o);
+              const oc = `<div class="ms-card${where}" style="--c:${color}"><div class="ms-face" style="--t:${lum(color) > 0.6 ? '#111' : '#fff'}">${esc(o.jersey)}${o.head && !NO_HEAD.has(o.head) ? `<img src="${esc(o.head)}" alt="" loading="lazy" onerror="SB.soccer.noHead(this)">` : ''}</div><div><b>${esc(o.full || o.name)}</b><small>${esc(team.name)}${o.pos && o.pos !== 'SUB' ? ` · ${esc(o.pos)}` : ''} · off ${esc(o.offAt)}</small><small>${esc(statLine(o) || 'No stats')}</small></div><i>${ov % 1 ? ov.toFixed(1) : ov}</i></div>`;
+              return `<div class="ms-dot ghost${o.id === hot ? ' hot' : ''}" data-pid="${esc(o.id)}" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--c:${color};--t:${lum(color) > 0.6 ? '#111' : '#fff'}"><b>${esc(o.jersey)}</b>${oc}</div>`;
+            })
+            .join('');
+          return `${ghosts}<div class="ms-dot${s.rc ? ' off' : ''}${s.id === hot ? ' hot' : ''}" data-pid="${esc(s.id)}" tabindex="0" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--c:${color};--t:${lum(color) > 0.6 ? '#111' : '#fff'}" aria-label="${esc(`${s.full}, score ${v}`)}"><b>${esc(s.jersey)}</b><span>${esc(s.name)}</span>${badges ? `<em>${badges}</em>` : ''}${card}</div>`;
+        })
+        .join('');
+    };
+    const offHTML = (t) => (t.off.length ? `<p class="ms-off"><b>${esc(t.name)} off:</b> ${t.off.map((o) => `${esc(o.name)} <small>${esc(o.min)}${o.by ? ` · ${esc(o.by)} on` : ''}</small>`).join(', ')}</p>` : '');
+    return `<div class="ms-pitch-wrap">
+        <div class="ms-pitch-head"><span>${esc(home.name)} <b>${esc(home.formation)}</b></span><span><b>${esc(away.formation)}</b> ${esc(away.name)}</span></div>
+        <div class="ms-pitch" role="img" aria-label="${esc(`Lineups: ${home.name} ${home.formation}, ${away.name} ${away.formation}`)}">
+          <svg viewBox="0 0 105 68" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width=".35">
+            <rect x=".5" y=".5" width="104" height="67"/><line x1="52.5" y1=".5" x2="52.5" y2="67.5"/><circle cx="52.5" cy="34" r="9.15"/>
+            <rect x=".5" y="13.85" width="16.5" height="40.3"/><rect x="88" y="13.85" width="16.5" height="40.3"/>
+            <rect x=".5" y="24.85" width="5.5" height="18.3"/><rect x="99" y="24.85" width="5.5" height="18.3"/></g></svg>
+          ${dots(home, home.color, false)}${dots(away, awayColor, true)}
+        </div>
+        ${opts.off === false ? '' : `${offHTML(home)}${offHTML(away)}`}
+      </div>`;
+  }
+  // Who came off, both teams: for the top card's right column, under the top players.
+  function subsHTML(g) {
+    const L = ensureLineup(g);
+    if (!L) return '';
+    const rows = L.teams
+      .slice()
+      .sort((a, b) => (a.side === 'home' ? -1 : 1))
+      .filter((t) => t.off.length)
+      .map((t) => `<p class="ms-off"><b>${esc(t.name)}:</b> ${t.off.map((o) => `${esc(o.name)} <small>${esc(o.min)}${o.by ? ` · ${esc(o.by)} on` : ''}</small>`).join(', ')}</p>`)
+      .join('');
+    return rows ? `<h3 class="ms-subs-h">Substitutions</h3>${rows}` : '';
+  }
+
   // ---------- on the Scores board (since Nov 23) ----------
   let onUpdate = null; // main.js: redraw when new scores or a table arrive
   const FRESH = (games, d) => (games?.some((g) => g.state === 'live') || d === SB.days.today() ? POLL - 1000 : 10 * 60000);
@@ -573,10 +881,125 @@
         <span class="widx" title="Watch index (soccer's own: closeness and the minute, then team quality)">${g.index}</span>
       </div>
       <div class="ms-teams${hero ? ' ms-hero' : ''}">${teamHTML(g, 'home')}${teamHTML(g, 'away')}</div>
-      ${hero ? goalsHTML(g).replace('<details class="ms-goals">', '<details class="ms-goals" open>') : goalsHTML(g)}
+      ${hero ? pitchHTML(g) : ''}
+      ${goalsHTML(g)}
       ${hero ? `<div class="ms-foot">${[lg?.name, g.note, g.tv, g.venue].filter(Boolean).map(esc).join(' · ')}${g.link ? ` <a href="${esc(g.link)}" target="_blank" rel="noopener">Match page<span class="sr-only"> (opens ESPN in a new tab)</span></a>` : ''}</div>` : ''}`;
   }
   const boardTileHTML = (g) => `<div class="ms-board">${boardInner(g, false)}</div>`;
+
+  // ---------- the top card's parts (since Nov 24; laid out by js/ui.js like every other sport's) ----------
+  // The bar under the score: possession once the match is on, the odds (home / draw / away) before.
+  function barHTML(g) {
+    const L = ensureLineup(g);
+    const t = (s) => L?.teams.find((x) => x.side === s);
+    const [h, a] = [t('home'), t('away')];
+    if (g.state !== 'pre' && h && a && Number.isFinite(h.possession) && Number.isFinite(a.possession)) {
+      return `<div class="wpbar ms-bar" title="Possession: ${esc(g.home.short)} ${h.possession}%, ${esc(g.away.short)} ${a.possession}%"><i style="width:${h.possession}%;background:${g.home.css}"></i><i style="width:${a.possession}%;background:${g.away.css}"></i></div>
+        <div class="ms-bar-l"><span>${h.possession}% possession · ${h.shots ?? '–'} shots, ${h.onTarget ?? '–'} on target</span><span>${a.shots ?? '–'} shots, ${a.onTarget ?? '–'} on target · ${a.possession}%</span></div>`;
+    }
+    if (g.odds) {
+      const o = g.odds;
+      return `<div class="wpbar ms-bar" title="The betting odds: ${esc(g.home.short)} ${Math.round(o.home * 100)}%, draw ${Math.round(o.draw * 100)}%, ${esc(g.away.short)} ${Math.round(o.away * 100)}%"><i style="width:${(o.home * 100).toFixed(1)}%;background:${g.home.css}"></i><i style="width:${(o.draw * 100).toFixed(1)}%;background:var(--line)"></i><i style="width:${(o.away * 100).toFixed(1)}%;background:${g.away.css}"></i></div>
+        <div class="ms-bar-l"><span>${Math.round(o.home * 100)}% to win</span><span>draw ${Math.round(o.draw * 100)}%</span><span>${Math.round(o.away * 100)}% to win</span></div>`;
+    }
+    return `<div class="wpbar empty"><i style="width:50%"></i><i style="width:50%"></i></div>`;
+  }
+  // The line under the clock: the latest event once there is one.
+  function lastHTML(g) {
+    const L = ensureLineup(g);
+    if (g.state === 'pre') return esc(g.tv || g.venue || '');
+    return esc(L?.last || g.note || '');
+  }
+  // Left column: goals and cards along the 90 minutes (home above the line, away
+  // below), then the goals and red cards listed, newest first.
+  function timelineHTML(g) {
+    const evs = g.events.filter((e) => (e.goal || e.red) && !e.shootout);
+    const mins = (e) => {
+      const m = /(\d+)'(?:\+(\d+))?/.exec(e.min || '');
+      return m ? Math.min(120, +m[1] + (+m[2] || 0) * 0.2) : 0;
+    };
+    const end = Math.max(90, g.minute || 0, ...evs.map(mins));
+    const now = g.state === 'live' ? Math.min(end, g.minute || 0) : g.state === 'final' ? end : 0;
+    const mark = (e) => {
+      const home = e.team === g.home.id;
+      const t = home ? g.home : g.away;
+      return `<i class="ms-tm ${e.red ? 'red' : 'goal'} ${home ? 'up' : 'down'}" style="left:${((mins(e) / end) * 100).toFixed(1)}%;--c:${t.css}" title="${esc(`${e.min} ${t.short}: ${e.who}${e.red ? ' (red card)' : e.own ? ' (own goal)' : e.pen ? ' (penalty)' : ''}`)}"></i>`;
+    };
+    const list = evs
+      .slice()
+      .reverse()
+      .slice(0, 4)
+      .map((e) => {
+        const t = e.team === g.home.id ? g.home : g.away;
+        const what = e.red ? 'Red card' : e.own ? 'Own goal' : e.pen ? 'Penalty' : 'Goal';
+        return `<div class="swing" style="--tc:${t.css}"><b>${esc(t.abbr)} ${what}</b><span>${esc(e.min)} · ${esc(e.who)}</span></div>`;
+      })
+      .join('');
+    if (g.state === 'pre') {
+      const form = (t) => `<div class="swing" style="--tc:${t.css}"><b>${esc(t.abbr)}</b><span>${esc(t.record)}${t.form ? ` · last five <span class="ms-form">${esc(t.form)}</span>` : ''}</span></div>`;
+      return `<div class="swings">${form(g.home)}${form(g.away)}</div><p class="empty-note">Goals and cards appear here along the 90 minutes once it kicks off.</p>`;
+    }
+    return `<div class="ms-tl" aria-hidden="true">
+        <span class="ms-tl-half" style="left:${((45 / end) * 100).toFixed(1)}%"></span>
+        <span class="ms-tl-now" style="width:${((now / end) * 100).toFixed(1)}%"></span>
+        ${evs.map(mark).join('')}
+        <small class="ms-tl-l">${esc(g.home.abbr)}</small><small class="ms-tl-r">${esc(g.away.abbr)}</small>
+        <small class="ms-tl-0">0'</small><small class="ms-tl-45" style="left:${((45 / end) * 100).toFixed(1)}%">45'</small><small class="ms-tl-90">${end > 90 ? `${Math.round(end)}'` : "90'"}</small>
+      </div>
+      ${list ? `<div class="swings">${list}</div>` : `<p class="empty-note">${g.state === 'pre' ? `${esc(g.home.short)} ${esc(g.home.form ? `form ${g.home.form}` : g.home.record)} · ${esc(g.away.short)} ${esc(g.away.form ? `form ${g.away.form}` : g.away.record)}` : 'No goals yet.'}</p>`}`;
+  }
+  // Lean left column: goals (scorer, assist), own goals, bookings and red cards in
+  // match order, from the match summary (the scoreboard's list, without assists,
+  // until it loads); a row's player opens his card on the pitch.
+  function eventsHTML(g) {
+    const L = ensureLineup(g);
+    const evs = L?.keys
+      ? L.keys
+      : g.events
+          .filter((e) => !e.shootout && (e.goal || e.red || e.yel))
+          .map((e) => ({ kind: e.own ? 'og' : e.goal ? (e.pen ? 'pen' : 'goal') : e.red ? 'red' : 'yel', min: e.min, team: e.team, p: { id: e.pid || '', name: e.who }, ast: null }));
+    if (!evs.length) return `<p class="empty-note">${g.state === 'pre' ? 'Goals and cards show here once the match starts.' : 'No goals or cards yet.'}</p>`;
+    const icon = { goal: '<i class="ev-goal"></i>', pen: '<i class="ev-goal"></i>', og: '<i class="ev-goal og"></i>', yel: '<i class="ev-yel"></i>', red: '<i class="ev-red"></i>' };
+    const word = { goal: '', pen: ' (pen)', og: ' (OG)', yel: '', red: '' };
+    let ht = false;
+    return `<ol class="ms-evs">${evs
+      .map((e) => {
+        const t = e.team === g.home.id ? g.home : g.away;
+        const m = minuteNum(e.min);
+        const div = m > 45.99 && m < 999 && !ht ? ((ht = true), '<li class="ms-ht">HT</li>') : '';
+        return `${div}<li class="${e.kind}" style="--tc:${t.css}"><span class="ms-ev-min">${esc(e.min)}</span>${icon[e.kind]}<span class="ms-ev-who"><b data-pid="${esc(e.p.id)}">${esc(e.p.name)}${word[e.kind]}</b>${e.ast ? `<small data-pid="${esc(e.ast.id)}">${esc(e.ast.name)}</small>` : ''}</span></li>`;
+      })
+      .join('')}</ol>`;
+  }
+  // Right column: the top players so far, by a simple tally until there's a real
+  // soccer rating: goal 3, assist 2, shot on target 0.5, save 0.5, own goal −2,
+  // red card −2 (the rows say the stats themselves).
+  const scoreOf = (p) => 3 * p.g + 2 * p.a + 0.5 * (p.sog || 0) + 0.5 * p.sv - 2 * p.og - 2 * p.rc;
+  const statLine = (p) =>
+    [p.g && `${p.g} G`, p.a && `${p.a} A`, p.sog && `${p.sog} on target`, p.sv && `${p.sv} saves`, p.yc && 'booked', p.rc && 'sent off'].filter(Boolean).join(' · ');
+  function leadersHTML(g) {
+    const L = ensureLineup(g);
+    if (!L) return `<div class="empty-note">${g.state === 'pre' ? 'Lineups appear about an hour before kickoff' : 'Loading the lineups…'}</div>`;
+    const rows = L.teams
+      .flatMap((t) => t.played.map((p) => ({ p, t, team: t.side === 'home' ? g.home : g.away })))
+      .map((x) => ({ ...x, v: scoreOf(x.p) }))
+      .filter((x) => x.v > 0)
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 5);
+    if (!rows.length) return `<div class="empty-note">${g.state === 'pre' ? 'Lineups are in: no stats until kickoff' : 'Nobody on the scoresheet yet'}</div>`;
+    const max = Math.max(...rows.map((x) => x.v));
+    const line = statLine;
+    return rows
+      .map(
+        ({ p, team, v }) => `<div class="lrow" data-pid="${esc(p.id)}" style="--tc:${team.css}">
+          <span class="shot ms-num" style="--c:${team.css};--t:${lum(team.css) > 0.6 ? '#111' : '#fff'}">${esc(p.jersey)}</span>
+          <span class="who"><b>${esc(p.full || p.name)}</b><small>${esc(team.abbr)} · ${esc(line(p))}</small></span>
+          <span class="wpa pos">${v % 1 ? v.toFixed(1) : v}</span>
+          <span class="meter"><i class="pos" style="width:${((v / max) * 100).toFixed(0)}%"></i></span>
+        </div>`
+      )
+      .join('');
+  }
   const boardHeroHTML = (g) => `<div class="ms-board ms-board-hero">${boardInner(g, true)}</div>`;
 
   // A league table for the Standings page (js/standings.js): the table without
@@ -604,6 +1027,14 @@
     boardModels,
     boardTileHTML,
     boardHeroHTML,
+    barHTML,
+    lastHTML,
+    timelineHTML,
+    leadersHTML,
+    pitchHTML,
+    eventsHTML,
+    noHead,
+    subsHTML,
     matches,
     tableHTML,
     sortTable,

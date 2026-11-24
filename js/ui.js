@@ -847,10 +847,10 @@
   }
 
   function heroHTML(g, opts) {
-    if (g.soccer) return SB.soccer.boardHeroHTML(g);
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
       : `<span class="pin">Top game</span>`;
+    if (g.soccer) return soccerHeroHTML(g, pin);
     const hide = g.state !== 'pre' && blurred.has(g.id);
     const mid =
       g.state === 'pre'
@@ -903,6 +903,42 @@
           ${partsHTML(g)}
         </section>
         ${middle}
+      </div>`;
+  }
+
+  // Soccer's top card (since Nov 24): the same frame as every other sport's (the
+  // top row, the big score, the bar), with soccer inside: two columns, the pitch
+  // (wide, where the win probability and field go) and the top players with the
+  // substitutions under them (js/soccer.js). Home on the left, as soccer writes it
+  // and as the pitch draws it. (A match timeline column was tried and dropped for
+  // the bigger pitch; SB.soccer.timelineHTML still exists.)
+  function soccerHeroHTML(g, pin) {
+    const S = SB.soccer;
+    const comp = (S.LEAGUES.find((l) => l.id === g.comp) || {}).short || 'Soccer';
+    const team = (t) => ({ ...t, name: t.short || t.name, record: `${t.record}${t.form ? ` · form ${t.form}` : ''}` });
+    // The left slot is styled as the "away" side and the right as "home": home goes in the left one.
+    const view = { ...g, league: comp, away: team(g.home), home: team(g.away), wp: null };
+    const mid =
+      g.state === 'pre'
+        ? `<b>${esc(new Date(g.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</b><small>${S.lastHTML(g)}</small>`
+        : `<b>${esc(g.statusText)}</b><small class="lastplay">${S.lastHTML(g)}</small>`;
+    return `
+      <div class="g-top">
+        ${statusPill(view)}
+        ${pin}
+        <span class="chips">${chips(g.reasons)}</span>
+        <span class="widx" title="Watch index (soccer's own: closeness and the minute, then team quality)"><small>Watch index</small>${g.index}</span>
+      </div>
+      <div class="h-score">
+        ${heroTeam(view, 'away', false)}
+        <div class="h-mid">${mid}</div>
+        ${heroTeam(view, 'home', false)}
+      </div>
+      <div class="g-wp">${S.barHTML(g)}</div>
+      <div class="h-body ms-body">
+        <section class="h-col ms-evcol"><h3>Timeline</h3>${S.eventsHTML(g)}</section>
+        <section class="h-col"><h3>Lineups</h3>${S.pitchHTML(g, { off: false }) || '<div class="empty-note">Lineups appear about an hour before kickoff</div>'}</section>
+        <section class="h-col"><h3>Top players <small>goals, assists, shots on target, saves</small></h3><div class="leaders">${S.leadersHTML(g)}</div>${S.subsHTML(g)}</section>
       </div>`;
   }
 
@@ -1032,6 +1068,21 @@
     );
   }
 
+  // A view transition that can't capture the new page (a tab in the background,
+  // or throttled) never finishes, and the board waits on it: every later update
+  // queued behind it and the board froze (Nov 24, after the drawer reflow). The
+  // longest one runs well under a second, so skip any still going after 2.5s;
+  // skipping still applies the update, it just drops the animation.
+  function guard(t) {
+    const timer = setTimeout(() => {
+      try {
+        t.skipTransition();
+      } catch (e) {}
+    }, 2500);
+    t.finished.catch(() => {}).then(() => clearTimeout(timer));
+    return t;
+  }
+
   function morph(models, opts) {
     morphing = true;
     // The two cards trading the top spot get their own choreography in the CSS.
@@ -1040,10 +1091,10 @@
     const roles = out === inc ? [] : [[out, 'hero-out'], [inc, 'hero-in']].filter(([el]) => el);
     for (const [el, name] of roles) el.style.viewTransitionName = name;
 
-    const t = document.startViewTransition(() => {
+    const t = guard(document.startViewTransition(() => {
       paint(models, opts, false);
       if (opts.toTop) window.scrollTo(0, 0);
-    });
+    }));
     t.ready.catch(() => {}); // a cancelled transition (tab hidden, resize) is fine
     t.finished.catch(() => {}).then(() => {
       for (const [el] of roles) el.style.viewTransitionName = `g${el.dataset.id}`;
@@ -1070,7 +1121,7 @@
     morphing = true;
     const root = document.documentElement;
     root.classList.add('vt-reflow');
-    const t = document.startViewTransition(fn);
+    const t = guard(document.startViewTransition(fn));
     t.ready.catch(() => {});
     return t.finished
       .catch(() => {})

@@ -198,6 +198,30 @@ goal fests) and drawn with soccer's card (`boardTileHTML`, `boardHeroHTML`: the 
 **EPL** and **UCL** are sport toggles in settings like the others; the board filter matches team and competition names
 and "soccer"; the Plan counts a match as about 115 minutes. Not in replays (no play-by-play to replay). The Premier
 League table is on **Standings** (the NBA / Premier League switch; soccer's sortable table with its zones).
+Since Nov 24 the soccer **top card** is laid out like every other sport's (`soccerHeroHTML` in `js/ui.js`, from the
+same top row, big score and bar, then three columns; home on the left): the bar is possession (with shots and shots on
+target under it) once the match is on, the odds (home / draw / away) before; the line under the clock is the latest
+key event; the columns are a lean **timeline** (`eventsHTML`: goals with the scorer and assist, own goals, bookings
+and red cards in match order with an HT divider, from the summary's key events, or the scoreboard's list until that
+loads), **the pitch** (about 330px tall, so the card stays the usual height) and **top players** (goal 3, assist 2, shot on target 0.5, save 0.5, own goal and red card −2, until
+there's a real soccer rating; `scoreOf`) with the substitutions under them. **The pitch** (`pitchHTML`): both XIs as dots in their formations (home left
+attacking right, away mirrored; the away kit's other color when the two clash), shirt numbers only, badges for
+goals, assists, cards and the minute a substitute came on. Hovering (or focusing) a dot shows a card: headshot, full
+name, team, position, stats and the same game score as Top players. ESPN has headshots for only some players (about a
+third of one Premier League match), so a missing one falls back to the shirt number and isn't asked for again (each
+miss still logs one 404 in the console). Hovering a name in the timeline or a Top players row opens that player's card
+on the pitch (`data-pid`, one delegated listener); a player who was subbed off shows faded, dashed, in the spot he
+left, with the minute he went off. From the match summary
+(fetched for the top card, refreshed every minute while live): `formation`, each starter's `formationPlace` and
+position code, `subbedInFor` and the substitution minute. No tracking data, so a dot sits at its formation spot.
+Lines come from sorting outfielders by how deep their role is (ESPN codes a 4-2-3-1's holding pair "LM"/"RM", so the
+code alone can't say the line) and cutting by the formation's line sizes; each line runs left to right by the code's
+side. A substitute takes his man's spot. Before lineups are out (about an hour before kickoff) it says so. **Pre-match
+index:** how even a match is now comes from the betting odds (home / draw / away, the margin taken out) when the
+scoreboard has them, and team quality from each club's domestic league (points a game pulled toward 1.4 by 4 games,
+times a league weight, `LEAGUE_W`; 17 tables, loaded once a day), not the handful of games in a European competition
+(Napoli at Man City was 25 on Napoli's 1-0-3). The board's view transitions skip themselves after 2.5s (`guard` in
+`js/ui.js`): one that couldn't capture a background tab never finished, and the board froze behind it.
 
 **Standings** (`#standings`, `js/standings.js`, since Nov 22; NBA for now): ESPN's standings by **division,
 conference or league** (records, seeds with tiebreakers, last ten, streak; a line under the 6 seed and a dashed one under
