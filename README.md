@@ -190,8 +190,9 @@ position over the last **3 weeks** (2+ games in the window, 2+ before it), rated
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
 every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
 
-**Soccer** (`js/soccer.js`; Premier League and Champions League): score-only, from ESPN's scoreboard feed, with no
-play-by-play, so it stays outside BONES, MOUSSA, Rankings, banners and alerts. Since Nov 23 there's no Soccer tab: its
+**Soccer** (`js/soccer.js`; Premier League and Champions League): from ESPN's scoreboard feed and, for the top card,
+the match summary's commentary; it stays outside the basketball BONES and MOUSSA (its own BONES and xBONES since Nov 25,
+on the top card and Rankings; banners and alerts since Nov 25; both below). Since Nov 23 there's no Soccer tab: its
 matches are on the **Scores board** with every other sport (`SB.soccer.boardModels`, ids prefixed `s`), ranked by
 soccer's own watch index (closeness and the minute, then team quality, bonuses for late drama, comebacks, red cards and
 goal fests; a finished match since Nov 25 by how long it stayed close, late minutes counting more, plus a late
@@ -223,6 +224,54 @@ scoreboard has them, and team quality from each club's domestic league (points a
 times a league weight, `LEAGUE_W`; 17 tables, loaded once a day), not the handful of games in a European competition
 (Napoli at Man City was 25 on Napoli's 1-0-3). The board's view transitions skip themselves after 2.5s (`guard` in
 `js/ui.js`): one that couldn't capture a background tab never finished, and the board froze behind it.
+
+**Soccer win probability** (`js/soccerwp.js`, since Nov 25; TESTS.md S01–S03): home / draw / away at every moment of
+a match, like the other sports' win probability. Before kickoff each side's expected goals come from the betting odds
+(the three results and the total-goals line, the margin taken out) fit as two Poisson scoring rates; with no odds,
+from the clubs' league strengths. In the match, the goals still to come are Poisson over the time left (second halves
+score 13% above the average, first halves 13% below; about 2.5 and 5.5 added minutes), a side down a man scores 0.8×
+and its opponent 1.3×, and a trailing side's rate is up 10% and a leading side's down 10%. It reads only the score,
+the clock and red cards, which the scoreboard has for every match, so **every live tile** gets a bar with the three
+chances. Backtest on 620 finished matches (six leagues, Aug 10 – Nov 24, read at kickoff, 15', 30', HT, 60', 70',
+80', 85', 90'): log-loss −0.644, against −0.6465 for the score and the clock alone; calibrated to within about 2
+points in every band (draws 22.4% predicted, 21.8% happened). **Expected goals** (`xgOf`): every shot in the
+commentary has a spot (`fieldPositionX/Y`), so each gets an xG from its distance and angle, header or foot, a cross,
+a through ball, a fast break, a corner or set piece, or a direct free kick (logistic fit on 17,751 shots; penalties
+0.75). xG is shown, not used: 24 ways of letting the chances so far move the scoring rates all made the win chances
+worse (S02). On the **top card**: the bar is the live chances (the odds before kickoff) with possession, shots and xG
+under it; the left column is the **win probability chart** (home's band from the bottom, the draw, away's from the
+top; goals and red cards marked with how many points they swung) over a **pressure strip** (each side's xG every
+five minutes) and the timeline, where each goal and red card shows its swing; the pitch column switches between the
+**Lineups** and a **shot map** (each shot at its spot, sized by xG, goals filled, on target ringed; remembered in
+`sb.soccer`); Top players adds each player's xG. A goal the scoreboard counts before it lists it counts at the
+current minute. Extra time is modelled when a match goes there (a draw after it is a coin flip on penalties); a
+two-legged tie's aggregate isn't. **Banners and alerts** (`SB.soccer.alerts`, under the Clutch time and Big nights
+switches): level or one goal in it from 80' ("Level late", "Late drama"), an equalizer or go-ahead goal from 75'
+("Late equalizer", "Late goal", which replaces the late-drama banner, with the swing), extra time, penalties and
+hat-tricks; never for the top game, quiet on first load and a day change. The watch index is unchanged.
+
+**Soccer BONES and xBONES** (`SB.soccerWP.credit` in `js/soccerwp.js`, since Nov 25; TESTS.md S04): soccer's own
+BONES, on the same idea as the other sports': each action's swing in the soccer win chances (a side's chance to win
+plus half its chance of a draw), credited only to the players responsible and divided by the square root of its
+leverage (how much a goal could move the chances right then, against a goal at 0-0 at kickoff between even sides;
+0.05–8, as `js/engine.js` caps it). **BONES** is what happened: a goal's swing goes 75% to the scorer and 25% to the
+assist (all of it unassisted); a miss costs nothing, since the score-only chances don't move on one. **xBONES** is
+the chances: every shot is worth its xG times the swing a goal would have made right then, shooter 75%, the pass that
+set it up 25% ("Assisted by" in the commentary, on chances as well as goals). In both: keepers answer only for shots
+on target, against how often a shot on target like it goes in (`onTarget`: 0.06 xG on target scores 26%), so a save
+earns that chance × the swing, a goal costs the rest, and an average keeper nets about zero (+2.5 a match over 629
+matches); a penalty is worth 0.75 of a goal's swing to the player who won it and costs the player who conceded it the
+same, then BONES gives the taker the other 0.25 if he scores and takes 0.75 if he misses (a save earns the keeper
+that); a red card (or second yellow) costs the player its swing; an own goal costs the whole swing. Tackles and
+interceptions aren't in ESPN's feed. Over 629 matches a match hands out about +40 BONES (median); the best single
+games are around +50–70 (Sinayoko's 2 goals and 2 assists in a 4-3, +64; nine-save shutouts, +65–69). The **switch**
+(BONES / xBONES, remembered in `sb.soccer`) is in the top card's Top players heading and on Rankings; the top card
+shows the top five on it (and the lowest when it's below zero), and the pitch's hover cards show the same number.
+**Rankings** lists soccer players with everyone else (`SB.soccer.playersOf`: `imp` is the soccer metric that's on,
+whichever of BONES and MOUSSA is on for the other sports), under a Soccer sport chip; their rows say the competition
+and the metric, show the shirt number under a headshot (ESPN has one for about a third), and don't open the player
+drawer (it has no soccer). While Rankings is open, every live or finished match's summary loads (once a minute while
+live, hourly once final), not just the top game's.
 
 **Standings** (`#standings`, `js/standings.js`, since Nov 22; NBA for now): ESPN's standings by **division,
 conference or league** (records, seeds with tiebreakers, last ten, streak; a line under the 6 seed and a dashed one under

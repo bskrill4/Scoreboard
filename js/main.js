@@ -607,7 +607,8 @@
     const built = new Map(evs.map((ev) => [ev.id, buildModel(ev, T)]));
     // Soccer matches join the board as they are (their own card and watch index).
     // Not in replays: the soccer feed has no play-by-play to replay.
-    if (SB.soccer && !replay) for (const m of SB.soccer.boardModels(loadedDay, (id) => !hiddenLeagues.has(id))) built.set(m.id, m);
+    // On Rankings, every live or finished match's summary loads too (soccer BONES and xBONES).
+    if (SB.soccer && !replay) for (const m of SB.soccer.boardModels(loadedDay, (id) => !hiddenLeagues.has(id), { summaries: view() === 'players' })) built.set(m.id, m);
     const evById = new Map(evs.map((ev) => [ev.id, ev]));
     const models = arrange([...built.values()], terms.length ? (m) => (m.soccer ? SB.soccer.matches(terms, m) : SB.filter.matches(terms, evById.get(m.id), m)) : null);
     shownTop = models[0]?.id || null;
@@ -626,12 +627,16 @@
     // In focus mode (js/focus.js) they stay quiet: what happens meanwhile is
     // noted, not announced, and waiting banners stay hidden until it's left.
     const focusing = SB.focus.isOn();
-    // Banners and alerts read play-by-play detail soccer doesn't have.
-    SB.banners.update({ day: loadedDay, board: view() === 'board' && !focusing, topId: shownTop, games: [...built.values()].filter((m) => !m.soccer) });
+    // Soccer's banners come from its own moments (js/soccer.js alerts: late drama,
+    // late goals, extra time, penalties, hat-tricks); clutch and big nights read
+    // play-by-play detail soccer doesn't have.
+    SB.banners.update({ day: loadedDay, board: view() === 'board' && !focusing, topId: shownTop, games: [...built.values()].map((m) => (m.soccer ? SB.soccer.bannerGame(m) : m)) });
     const mineHidden = [...built.values()].filter((m) => m.mine?.length && !models.includes(m));
-    const watched = (mineHidden.length ? [...models, ...mineHidden] : models).filter((m) => !m.soccer);
+    const all = mineHidden.length ? [...models, ...mineHidden] : models;
+    const watched = all.filter((m) => !m.soccer);
     SB.clutch.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
     SB.bigNight.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
+    if (SB.soccer && !replay) SB.soccer.alerts(all.filter((m) => m.soccer), { day: loadedDay, topId: shownTop, mute: focusing });
     SB.recap.update({ day: loadedDay, board: view() === 'board', replay: !!replay });
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });

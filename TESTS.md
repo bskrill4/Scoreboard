@@ -53,6 +53,10 @@ range for the change; when it includes 0, the change is within noise.
 | T28 | Nov 25 | Best-bet rules: cap the edge, or pull toward the market (earlier nights only) | Cap at 50% better in 90%, within noise; BONES has no edge over the market | **Adopted** (cap at $50, tracked); **Re-run** |
 | T29 | Nov 25 | Recency weighting (older games count less) | No half-life helps; the recent slump gets worse | Rejected |
 | T30 | Nov 25 | Day-to-day guess, and minutes averaged over games played | Played-only better for both, within noise; day-to-day needs forward data | **Adopted** (played-only, both); injury log started; **Re-run** |
+| S01 | Nov 25 | Soccer expected goals from the commentary's shot spots | Log-loss −0.281 out of sample vs −0.329 flat; sums to the real goal total | **Adopted** (shown) |
+| S02 | Nov 25 | Soccer live win chances: what moves the scoring rates | Red cards and trailing-side push help on both halves; xG so far hurts in all 24 versions | **Adopted** (reds, trailing push); xG rejected; **Re-run** |
+| S03 | Nov 25 | Soccer win chances: calibration and gain over score + clock | Within ~2 points in every band; better in 92% of resamples, within noise | **Adopted** |
+| S04 | Nov 25 | Soccer BONES and xBONES: keeper credit and the shape of the numbers | Charging keepers for every shot's missing xG made them −60 for 3 conceded; on-target rate fixes it (net +2.5 a match) | **Adopted** (on probation; no backtest yet) |
 
 ## The tests
 
@@ -532,6 +536,67 @@ last minute (a first draft dropped them: Bodø's winner read as 0-0). Live and p
 **Status.** **Adopted.** Re-check the live soccer index against the others the same way once a few weekends of
 live readings can be compared.
 
+## Soccer
+
+The soccer tests use 629 finished matches (Premier League, Champions League, La Liga, Serie A, Bundesliga, Ligue 1;
+Aug 10 to Nov 24): ESPN's match summaries (commentary with shot spots, the pick center's DraftKings closing odds,
+620 with odds). Each match is read at kickoff, 15', 30', 45', 60', 70', 80', 85' and 90' (everything before that
+minute counts) and graded on the result after 90 minutes; log-loss is the three-way result's, averaged over the nine
+readings. Odd and even match ids are the two halves. Run with `js/soccerwp.js` (it loads in a plain JavaScript shell).
+
+### S01: Expected goals from the commentary (Nov 25)
+**Basis.** The live win chances needed a measure of chances made; ESPN's commentary gives every shot a spot
+(`fieldPositionX/Y`, toward the goal attacked) and words for how it came.
+**Procedure.** Logistic regression on 17,751 non-penalty shots: distance (per 10 m) and the angle the goal mouth fills,
+header, header × distance, cross, through ball, fast break, corner, set piece, direct free kick. Fit on even match ids,
+graded on odd; then refit on all. Penalties 0.75 (131 of 175 scored).
+**Result.** Out of sample −0.281 against −0.329 for one flat rate. All shots' xG adds to 1,894.8 against 1,894 goals.
+Goal rates by phrase as a check: six-yard box or very close range (foot) 19–48%, centre of the box 18% (headers 7%),
+side of the box 6%, outside the box 4%. Goals by quarter-hour: 239, 261, 298 (with first-half stoppage), 335, 317,
+445 (with second-half stoppage): 42% first half, 58% second.
+**Status.** **Adopted** for display (`xgOf`): the shot map, xG totals, the pressure strip, each player's xG.
+
+### S02: What moves the live scoring rates (Nov 25)
+**Basis.** From the kickoff rates (the odds), what else in the match should change the goals still to come?
+**Procedure.** Score and clock alone, then one piece at a time: red cards (the side down a man 0.6–1×, its opponent
+1–1.5×), a trailing side pushing (5–30%), a Dixon-Coles low-score tie adjustment, the halves' scoring shares, expected
+stoppage, and the chances so far: each side's xG against what its rate said by now, shrunk by 1–20 goals of prior,
+softened (square root) or not, with half-lives of 0, 10, 20 and 30 minutes (24 versions).
+**Result.** Score and clock −0.6461. Red cards 0.8× / 1.3×: better on both halves (−0.6423 / −0.6482 against −0.6437
+/ −0.6485). Trailing push 10%: better on both (−0.6431 / −0.6469). Together −0.6440. Halves at 0.87 / 1.13 better than
+even (−0.6457); stoppage 2.5 / 5.5 about best. Dixon-Coles: none best. The chances so far: every one of the 24
+versions worse overall, the best (half-life 10, prior 10, softened) level at −0.6461; they help a little at 85' and 90'
+(−0.2593 → −0.2548) and hurt from 15' to 60'.
+**Status.** **Adopted:** red cards, trailing push, halves, stoppage. **Rejected:** xG in the win chances (kept off,
+`W.xg`; the settings stay for a re-run). **Re-run** with a full season of matches, and try late-match xG only.
+
+### S03: Calibration and gain (Nov 25)
+**Procedure.** The adopted model's readings after kickoff (4,960 readings, 14,880 chances) in ten bands; a bootstrap of
+the per-match gain over score and clock (2,000 resamples).
+**Result.** Predicted against happened: 2.8/2.6, 15.0/14.0, 24.9/24.9, 34.3/33.8, 44.7/46.3, 54.8/55.8, 65.2/63.0,
+74.9/77.1, 85.0/87.3, 97.1/97.1. Draws 22.4% predicted, 21.8% happened (the odds' kickoff draw 23.8%, the fit 22.0%).
+Gain +0.0021 a reading [−0.0003, +0.0046], better in 92% of resamples: within noise.
+**Status.** **Adopted.**
+
+### S04: Soccer BONES and xBONES (Nov 25)
+**Basis.** Soccer players on Rankings and the top card, on the same idea as BONES: each action's win-probability
+swing, credited to the players responsible, divided by the square root of its leverage.
+**Procedure.** `SB.soccerWP.credit` over the 629 matches' commentary (the S01 set, kickoff rates from each match's
+odds). Looked at the spread per match and per player, the best and worst single games and season totals, and the
+keepers' net.
+**Result.** First version: a keeper lost (1 − xG) × the swing for every goal, and nothing when the goal came before
+his first named save (his name only came from saves). Keepers came out at −60 for three conceded, below a two-goal
+scorer's +57, and still +56 a season at the median. Fixes: keepers answer only for shots on target, against how often
+a shot on target with that xG goes in (logistic on 5,757 non-penalty shots on target: logit p = 1.45 + 1.02 · logit
+xG; 0–3% xG on target scores 7%, 6–10% scores 26%, 20–35% scores 62%), and each side's keeper is known from the
+start (the lineup's place 1, or the first save against that side). Now the keepers' net is +2.5 a match (saves +25.4,
+goals conceded −22.9); per match +40 BONES and +43 xBONES (medians); a player-game's 90th percentile +11.8 BONES and
++6.8 xBONES, the 99th +28 and +22. Best single games: Sinayoko 2 G 2 A in Paris FC 4-3 Rennes +64.3 BONES (+37.3
+xBONES); Zhegrova's two goals from 0.22 xG +49.4 BONES, +7.0 xBONES; nine-save 1-0 shutouts +65–69. Season leaders:
+BONES Zabiri, Haaland, Sinayoko, Malen, Mbappé; xBONES Mbappé, then keepers (Valles, Mandas, Karius), Højlund.
+**Status.** **Adopted** on probation. Not yet backtested: the soccer equivalent of the game backtest (does a team's
+players' BONES or xBONES predict its next results beyond the odds?) needs more matches per club.
+
 ## Re-run queue
 
 | # | Re-run when | What would change our mind |
@@ -546,4 +611,6 @@ live readings can be compared.
 | T30 | Early December (two weeks of injury logs) | Day-to-day players lose a share of their minutes far from 30%: set `OUT_SHARE` from the log. Mid-December: played-only minutes still ahead of counting zeros |
 | T28 | 15 more nights (from Nov 26) | The 50% cap keeps beating the uncapped best bet on new nights only |
 | T26 | Mid-December, with T24 | The measured recovery rate (uniform or by cell) beats the flat 27% on log-loss beyond noise |
+| S04 | Mid-season (15+ matches a club) | Players' xBONES (or BONES) per 90 predicting their teams' next results beyond the odds; keeper net drifting from zero |
+| S02 | A full season of soccer (or 1,500+ matches) | xG so far (late in matches only) improving the win chances beyond noise |
 | T24 | Mid-December | A miss charge on one side of 1 (heavier ~1.1–1.25, or lighter ~0.7–0.8) beats the full charge on log-loss beyond noise |

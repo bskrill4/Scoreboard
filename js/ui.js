@@ -907,7 +907,9 @@
   }
 
   // Soccer's top card (since Nov 24): the same frame as every other sport's (the
-  // top row, the big score, the bar), with soccer inside: two columns, the pitch
+  // top row, the big score, the bar), with soccer inside. Since Nov 25 the bar is
+  // the live win chances and the left column is the win probability chart over
+  // the timeline (js/soccerwp.js); the pitch switches to a shot map. Before: the pitch
   // (wide, where the win probability and field go) and the top players with the
   // substitutions under them (js/soccer.js). Home on the left, as soccer writes it
   // and as the pitch draws it. (A match timeline column was tried and dropped for
@@ -936,9 +938,9 @@
       </div>
       <div class="g-wp">${S.barHTML(g)}</div>
       <div class="h-body ms-body">
-        <section class="h-col ms-evcol"><h3>Timeline</h3>${S.eventsHTML(g)}</section>
-        <section class="h-col"><h3>Lineups</h3>${S.pitchHTML(g, { off: false }) || '<div class="empty-note">Lineups appear about an hour before kickoff</div>'}</section>
-        <section class="h-col"><h3>Top players <small>goals, assists, shots on target, saves</small></h3><div class="leaders">${S.leadersHTML(g)}</div>${S.subsHTML(g)}</section>
+        <section class="h-col ms-evcol"><h3 class="wp-h">Win probability <small class="wp-key">home · draw · away</small></h3>${S.wpChartHTML(g)}${S.eventsHTML(g)}</section>
+        <section class="h-col ms-pitchcol">${S.pitchColHTML(g)}</section>
+        <section class="h-col">${S.leadersHeadHTML()}<div class="leaders">${S.leadersHTML(g)}</div>${S.subsHTML(g)}</section>
       </div>`;
   }
 
@@ -1410,19 +1412,28 @@
           )}</div></div>`
         : '';
     const relCol = playersRank === 'rel' ? ' class="sorted"' : '';
+    // Soccer rows (js/soccer.js playersOf) name the competition and the soccer metric, and don't open the drawer (it has no soccer).
+    const lgName = (g) => (g.soccer ? `${(SB.soccer.LEAGUES.find((l) => l.id === g.comp) || {}).short || 'Soccer'} · ${SB.soccer.METRIC_NAME[SB.soccer.metricOn()]}` : SB.league.name(g.league));
+    const attrs = (g, p, team) => (g.soccer ? `data-spid="${esc(p.id)}"` : playerAttrs(g, p, team));
+    // Soccer: the shirt number, with the headshot over it when ESPN has one (about a third of players).
+    const face = (p, team, cls = '') =>
+      p.soccer
+        ? `<span class="shot ${cls} ms-num ms-face-r" style="--c:${team.css};--t:${p.ink || '#fff'}">${esc(p.jersey)}${p.headshot ? `<img src="${esc(p.headshot)}" alt="" loading="lazy" onerror="SB.soccer.noHead(this)">` : ''}</span>`
+        : headshot(p, cls);
+    const soccerSw = SB.soccer && rows.some((r) => r.g.soccer) ? `<div class="ss-controls ms-rank-sw"><span>Soccer</span>${SB.soccer.metricSwitchHTML()}</div>` : '';
     const top = rows.slice(0, 60);
     const crown = top[0];
     const crownHTML = crown
-      ? `<div class="potd" style="--tc:${crown.team.css}" ${playerAttrs(crown.g, crown.p, crown.team)}>
+      ? `<div class="potd" style="--tc:${crown.team.css}" ${attrs(crown.g, crown.p, crown.team)}>
           <span class="potd-k">Player of the Day${soFar}</span>
-          ${headshot(crown.p)}
-          <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${SB.league.name(crown.g.league)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
+          ${face(crown.p, crown.team)}
+          <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${lgName(crown.g)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
           <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metricShort()}${playersRank === 'rel' ? ' · sport-adjusted' : ''}</small></div>
         </div>`
       : '';
-    const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
+    const rowHTML = ({ p, g, team }, i) => `<tr ${attrs(g, p, team)}>
           <td class="rk">${i + 1}</td>
-          <td class="pl">${headshot(p, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${SB.league.name(g.league)} · ${esc(team.abbr)}</small></span></td>
+          <td class="pl">${face(p, team, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${lgName(g)} · ${esc(team.abbr)}</small></span></td>
           <td class="gm">${gameLabel(g)}</td>
           <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
           <td${relCol}><span class="${rel({ p, g }) >= 0 ? 'pos' : 'neg'}">${fmtWPA(rel({ p, g }))}</span></td>
@@ -1439,7 +1450,7 @@
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
-    return `${filters}${crownHTML}${
+    return `${filters}${soccerSw}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
             <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
