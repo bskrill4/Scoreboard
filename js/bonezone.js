@@ -320,7 +320,14 @@
   const profit = (ml) => (ml > 0 ? ml / 100 : 100 / -ml);
   const implied = (ml) => (ml > 0 ? 100 / (ml + 100) : -ml / (-ml + 100));
   const fmtML = (ml) => (ml > 0 ? `+${ml}` : `${ml}`);
-  function bestBet(games, v) {
+  // Since Nov 25 (TESTS.md T28) the best bet skips edges above EDGE_CAP per $100:
+  // graded at the closing price, the biggest edges lost for both metrics (MOUSSA
+  // −15%, BONES −38%), and capping at $50 did better on nights predicted only from
+  // earlier ones (MOUSSA +11.2 units over 20 nights against +1.8), within noise.
+  // The uncapped pick is still worked out, shown when it differs, and both are
+  // tracked from Nov 25 so the cap is judged on new nights only.
+  const EDGE_CAP = 50;
+  function bestBet(games, v, cap = EDGE_CAP) {
     const priced = games.filter((g) => g.ml && g.calls[v]);
     if (!priced.length) return null;
     const night = priced.map((g) => SB.days.dayOf(g.t)).sort()[0];
@@ -330,23 +337,90 @@
         const c = g.calls[v];
         const p = side === c.pick ? c.conf : 1 - c.conf;
         const ev = (p * profit(g.ml[side]) - (1 - p)) * 100;
-        if (!best || ev > best.ev) best = { g, side, p, ev, ml: g.ml[side], implied: implied(g.ml[side]) };
+        if (ev > cap) continue;
+        if (!best || ev > best.ev) best = { g, side, p, ev, ml: g.ml[side], implied: implied(g.ml[side]), night };
       }
     return best;
+  }
+
+  // ---------- best-bet tracker (since Nov 25) ----------
+  // Each night's best bet per metric, capped and uncapped, kept in this browser
+  // ('sb.bestBets'): updated each time the forecast is read until its game tips,
+  // then frozen and settled at the final. Key: night|metric|c (capped) or u.
+  // { id, side, ml, p, ev, t, abbr, won? }
+  const BETS_KEY = 'sb.bestBets';
+  let tracked = {};
+  try {
+    tracked = JSON.parse(localStorage.getItem(BETS_KEY) || '{}') || {};
+  } catch (e) {}
+  const saveTracked = () => {
+    try {
+      localStorage.setItem(BETS_KEY, JSON.stringify(tracked));
+    } catch (e) {}
+  };
+  function trackBets(games) {
+    const now = Date.now();
+    for (const v of [1, 2])
+      for (const [tag, cap] of [['c', EDGE_CAP], ['u', Infinity]]) {
+        const b = bestBet(games, v, cap);
+        if (!b || !(b.ev > 0)) continue;
+        const key = `${b.night}|${v}|${tag}`;
+        const cur = tracked[key];
+        if (cur && cur.t <= now) continue; // its game has tipped: frozen
+        if (b.g.t <= now) continue;
+        tracked[key] = { id: b.g.id, side: b.side, ml: b.ml, p: +b.p.toFixed(3), ev: Math.round(b.ev), t: b.g.t, abbr: b.g[b.side].abbr };
+      }
+    saveTracked();
+  }
+  async function settleBets() {
+    const open = Object.values(tracked).filter((b) => b.won == null && b.t < Date.now() - 4 * 36e5);
+    const days = [...new Set(open.map((b) => SB.days.dayOf(b.t)))];
+    const boards = await Promise.all(days.map((d) => SB.api.scoreboard(d, 'nba').catch(() => null)));
+    const winners = new Map();
+    for (const bd of boards)
+      for (const e of bd?.events || []) {
+        if (!e.status?.type?.completed) continue;
+        const cs = e.competitions[0].competitors;
+        const w = cs.find((c) => c.winner) || cs.slice().sort((a, b) => Number(b.score) - Number(a.score))[0];
+        if (w) winners.set(String(e.id), w.homeAway);
+      }
+    for (const b of open) if (winners.has(String(b.id))) b.won = winners.get(String(b.id)) === b.side;
+    saveTracked();
+  }
+  // "3–2, +1.4 units" for one metric's capped or uncapped bets.
+  function betRecord(v, tag) {
+    const done = Object.entries(tracked).filter(([k, b]) => k.split('|')[1] === String(v) && k.split('|')[2] === tag && b.won != null);
+    if (!done.length) return '';
+    const w = done.filter(([, b]) => b.won).length;
+    const units = done.reduce((s, [, b]) => s + (b.won ? profit(b.ml) : -1), 0);
+    return `${w}–${done.length - w}, ${units >= 0 ? '+' : ''}${units.toFixed(1)} units`;
   }
   function betsHTML(games) {
     const card = (v, tok) => {
       const b = bestBet(games, v);
-      if (!b) return `<div class="bz-bet"><em>${tok}</em><span>No lines posted yet.</span></div>`;
+      const big = bestBet(games, v, Infinity);
+      if (!b && !big) return `<div class="bz-bet"><em>${tok}</em><span>No lines posted yet.</span></div>`;
+      // The edge left out by the cap, when it's a different bet.
+      const left = big && big.ev > EDGE_CAP && (!b || big.g.id !== b.g.id || big.side !== b.side) ? big : null;
+      const leftNote = left
+        ? `<span class="bz-bet-left">Left out: ${esc(left.g[left.side].abbr)} ${fmtML(left.ml)}, +$${left.ev.toFixed(0)} on paper. Edges over $${EDGE_CAP} have lost money all season: the price usually knows something the model doesn't.</span>`
+        : '';
+      // BONES has no measured edge over the closing line (T28): its log-loss trails the
+      // market's beyond noise, and the market + BONES mix earlier nights choose is all market.
+      const note = v === 1 ? `<span class="bz-bet-left">${KB} hasn't beaten the closing line this season; read its bet as a curiosity.</span>` : '';
+      const rec = [['c', 'capped'], ['u', 'uncapped']].map(([tag, w]) => (betRecord(v, tag) ? `${w} ${betRecord(v, tag)}` : '')).filter(Boolean).join(' · ');
+      const recNote = rec ? `<span class="bz-bet-rec">Tracked since Nov 25: ${rec}</span>` : '';
+      if (!b) return `<div class="bz-bet none"><em>${tok}</em><span>No bet at or under a $${EDGE_CAP} edge tonight.</span>${leftNote}${note}${recNote}</div>`;
       const t = b.g[b.side];
       const opp = b.g[b.side === 'home' ? 'away' : 'home'];
       return `<div class="bz-bet${b.ev > 0 ? '' : ' none'}"><em>${tok}</em>
           <span class="bz-bet-pick"><img src="${esc(t.logo || '')}" alt="">${esc(t.abbr)} <b>${fmtML(b.ml)}</b> <small>${b.side === 'home' ? 'vs' : 'at'} ${esc(opp.abbr)}</small></span>
           <span class="bz-bet-why">${pct(b.p)} to win, the price says ${pct(b.implied)} · ${b.ev > 0 ? `<b>+$${b.ev.toFixed(0)}</b> expected per $100` : `no edge (${b.ev.toFixed(0)} per $100)`}</span>
+          ${leftNote}${note}${recNote}
         </div>`;
     };
     const book = games.find((g) => g.book)?.book;
-    return `<div class="bz-bets"><h3>Best bets <small>tonight's highest expected return for each, on the moneyline${book ? ` (${esc(book)})` : ''}</small></h3>${card(1, KB)}${card(2, KM)}</div>`;
+    return `<div class="bz-bets"><h3>Best bets <small>tonight's highest expected return for each, up to a $${EDGE_CAP} edge, on the moneyline${book ? ` (${esc(book)})` : ''}</small></h3>${card(1, KB)}${card(2, KM)}</div>`;
   }
 
   function predictScript(model, games) {
@@ -736,6 +810,8 @@
         await SB.bones.picks.settleOld().catch(() => {}); // finals the board didn't see
         const models = await SB.bones.models();
         future = { games: await predict(models), models };
+        trackBets(future.games);
+        await settleBets().catch(() => {});
       } catch (e) {
         future = { failed: true };
       }

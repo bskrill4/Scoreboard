@@ -49,6 +49,10 @@ range for the change; when it includes 0, the change is within noise.
 | T24 | Nov 24 | MOUSSA's charge for a missed shot (BONES charges about half) | BONES-sized charge worse beyond noise; heavier within noise | Kept as is; **Re-run** |
 | T25 | Nov 24 | Is getting your misses back a shooter's own trait? | No (r .03); it's shot type and teammates (team r .34) | Shooter rate rejected; shot-type price proposed |
 | T26 | Nov 24 | Price each miss by its shot type's recovery rate | Neutral to slightly worse, all within noise | Rejected; **Re-run** |
+| T27 | Nov 25 | Both metrics against the betting market, and best bets by size of edge | MOUSSA level with the market; the biggest edges lose | Informational; led to proposals |
+| T28 | Nov 25 | Best-bet rules: cap the edge, or pull toward the market (earlier nights only) | Cap at 50% better in 90%, within noise; BONES has no edge over the market | **Adopted** (cap at $50, tracked); **Re-run** |
+| T29 | Nov 25 | Recency weighting (older games count less) | No half-life helps; the recent slump gets worse | Rejected |
+| T30 | Nov 25 | Day-to-day guess, and minutes averaged over games played | Played-only better for both, within noise; day-to-day needs forward data | **Adopted** (played-only, both); injury log started; **Re-run** |
 
 ## The tests
 
@@ -356,6 +360,116 @@ better in the second half (Tatum 11.0 → 12.5).
 for the rebound side). **Re-run** with T24 in mid-December; the second half leaning toward the measured 32.8% is
 worth watching.
 
+### T27: The metrics against the betting market (Nov 25)
+**Basis.** MOUSSA went 0-3 on Nov 24 and both best bets (Washington +351) lost. Is MOUSSA worse than the market,
+and are its best bets (the biggest gaps from the price) where it's right or where it's blind?
+**Procedure.** DraftKings' closing moneylines from each game's ESPN summary (`pickcenter`), margin removed, for the
+183 games the backtest grades. Compared on winners and log-loss; a market + model blend fit on the first half and
+tested on the second; and every bet the model priced positive (each side of each game), grouped by its expected
+return, plus each night's single best bet, graded at the real prices.
+**Result.** Market 127/183 (69.4%), log-loss −0.5842. MOUSSA 131/183, −0.5882 (level with it); BONES 116/183,
+−0.6339. Second half alone: MOUSSA −0.6038, market −0.6380. Blending overfit: fit on the first half (market weight
+1.45, MOUSSA 0.25) it scored −0.6848 on the second, worse than either alone; over the whole season the best blend
+was about equal weights (−0.5722, in-sample). Bets by expected return:
+
+| Expected return | MOUSSA | BONES |
+|---|---|---|
+| 0–20% | 74 bets, 42 won, −6% | 72 bets, 34 won, −12% |
+| 20–50% | 47 bets, 26 won, **+37%** | 52 bets, 25 won, +29% |
+| 50%+ | 34 bets, 10 won, **−15%** | 49 bets, 7 won, **−38%** |
+| Nightly best bet | 25 nights, 9 won, +0.8 units | 25 nights, 4 won, −10.8 units |
+
+The best bet is usually a 50%+ edge, the bucket that loses for both. Caveats: the backtest knows who sat (the market
+does too at close), its slope is fit on the whole season, and these are small samples (MOUSSA's 34 big-edge bets).
+Nov 24 itself: the market had Orlando 58% and Denver 71%, the same sides as MOUSSA; both lost by 18–19.
+**Status.** Informational. Proposals: grade picks against the closing line, and test a best bet chosen after
+pulling the model toward the market, or capped at a 50% edge (fit only on earlier nights).
+
+### T28: Best-bet rules, out of sample (Nov 25)
+**Basis.** T27: the nightly best bet is usually an edge of 50%+, the bucket that lost for both metrics.
+**Procedure.** Each night predicted only from earlier nights (30+ graded games first, so 20 nights and 140 games):
+the slope refit on earlier games, and a market + model blend weight chosen on earlier games. Rules for the
+night's best bet, each graded at DraftKings' closing price: **now** (the biggest positive edge); **cap** at 50%,
+30% or 20% (the biggest edge at or under it); **blend half** (the model pulled halfway to the market, in log-odds);
+**blend rolling** (the weight earlier nights chose). 90% ranges by bootstrapping nights (profit) or games
+(log-loss), 4,000 resamples.
+**Result.**
+
+| Rule | MOUSSA best bets | MOUSSA all positive bets | BONES best bets | BONES all positive bets |
+|---|---|---|---|---|
+| **Now** | 8/20, +1.8 units | 122, +9% | 3/20, −8.1 units | 131, +1% |
+| Cap 50% | 13/20, **+11.2** | 97, +18% | 8/20, **+5.1** | 94, +16% |
+| Cap 30% | 9/20, −4.8 | 81, +2% | 7/19, −1.0 | 69, +5% |
+| Cap 20% | 14/20, +2.7 | 63, +9% | 10/18, +3.0 | 49, +6% |
+| Blend half | 8/20, +1.8 | 101, +15% | 3/20, −8.1 | 123, −1% |
+| Blend rolling | 7/18, +2.0 | 69, +10% | no bets | no bets |
+
+Cap 50% against now, per night: MOUSSA +0.47 units [−0.10, +1.13] (better in 90% of resamples), BONES +0.66
+[−0.11, +1.42] (92%). Within noise, and not monotone (30% is worse than both 50% and 20%). The 50% line also came from
+T27 on these same games, so it hasn't been tested on games that weren't used to pick it. Blending doesn't change which
+bet is biggest, so it picks the same best bet. As a probability it helps: log-loss per game against the model alone,
+MOUSSA blend half +0.013 [−0.007, +0.033] (85%, within noise), BONES +0.038 [+0.017, +0.058] (beyond noise). The market
+alone matches MOUSSA (0.000) and beats BONES (+0.051 [+0.011, +0.091]); earlier nights now give BONES a blend weight
+of 0. In other words, BONES has shown no edge over the closing line.
+**Status.** **Adopted** by the user's call (Nov 25), on probation: the Bone Zone's best bet skips edges over $50
+(`EDGE_CAP` in js/bonezone.js), names the bigger edge it left out, and notes on BONES's card that it hasn't beaten the
+closing line. Both the capped and the uncapped bet are tracked per metric from Nov 25 (`sb.bestBets`, in the
+browser that opens the skull's forecast before tip-off). **Re-run** after 15 tracked nights: undo the cap if the
+uncapped bets have done better on those nights.
+
+### T29: Recency weighting (Nov 25)
+**Basis.** MOUSSA went 18 of 33 against about 23 expected over Nov 21–24. Are teams and players changing faster than
+a season-long rating follows?
+**Procedure.** `opts.halfLife` (days, off by default) in the game backtest: before each game, every player's BONES
+and minutes, and the league's, are scaled by 0.5^(days since the last game / half-life). Half-lives 90, 60, 40, 30,
+21, 14 and 7 days, both metrics; log-loss for the season, the second half, the last third and the 56 games since Nov
+17; 90% ranges by bootstrapping games.
+**Result.** Nothing helps beyond noise, and the recent stretch gets worse the more weight recent games get:
+
+| Half-life | MOUSSA log-loss | MOUSSA since Nov 17 | BONES log-loss | BONES since Nov 17 |
+|---|---|---|---|---|
+| **Off** | −0.5882 | −0.6372 | −0.6339 | −0.6735 |
+| 60 days | −0.5877 | −0.6431 | −0.6334 | −0.6772 |
+| 30 days | −0.5879 | −0.6490 | −0.6334 | −0.6804 |
+| 14 days | −0.5901 | −0.6652 | −0.6346 | −0.6897 |
+| 7 days | −0.5968 | −0.6919 | −0.6390 | −0.7027 |
+
+Per game against off: 60 days +0.0005 [−0.0028, +0.0036], 7 days −0.0086 [−0.0306, +0.0141] (MOUSSA). The slump
+isn't teams changing; recent form predicts worse than the whole season.
+**Status.** Rejected. (`opts.halfLife` stays as a test setting.)
+
+### T30: Day-to-day players and how minutes are averaged (Nov 25)
+**Basis.** The model counts a day-to-day player as 30% likely out (`OUT_SHARE`). Tonight that's Wembanyama and Fox:
+does the guess cut stars too much? The game backtest knows who sat, so it can't judge the guess itself.
+**Procedure.** (1) Past injury reports: game summaries fetched after the fact carry today's list, not the pregame
+one (players listed Out there played 32% of those games), and ESPN's per-player injury history came back empty, so
+there's no record of past pregame statuses to grade. (2) Tonight's SA @ POR under each guess. (3) A second cut found
+along the way, which the backtest can judge: a player's minutes are his average over the team's last 10 games,
+counting a game he missed as a zero. `playedOnly` (off by default) averages over only the games he played, when he
+played at least that share of them (0 = any).
+**Result.** (2) Wembanyama's last 10 (26, 24, 25, 32, 21, 35, 34, 33, 32, 0) average 26 minutes with the missed game
+as a zero, before the day-to-day cut. Portland's chance tonight: both playing MOUSSA 56% / BONES 67%; as listed
+(30% each) 62% / 71%; both out 76% / 78%. The market says 43%.
+(3)
+
+| Minutes average | MOUSSA winners | MOUSSA log-loss | 2nd half | BONES winners | BONES log-loss | 2nd half |
+|---|---|---|---|---|---|---|
+| **Zeros counted (now)** | 131/183 | −0.5882 | −0.6038 | 116/183 | −0.6339 | −0.6453 |
+| Played only (any) | 127/183 | −0.5791 | −0.5889 | 119/183 | −0.6269 | −0.6362 |
+| Played only, 30%+ of games | 127/183 | −0.5853 | −0.5946 | 119/183 | −0.6316 | −0.6409 |
+| Played only, 50%+ | 125/183 | −0.5886 | −0.6041 | 118/183 | −0.6336 | −0.6471 |
+| Played only, 70%+ | 127/183 | −0.5919 | −0.6067 | 114/183 | −0.6358 | −0.6491 |
+
+Played only (any), per game against now: MOUSSA +0.0090 [−0.0015, +0.0195] (better in 92%), BONES +0.0070
+[−0.0012, +0.0145] (92%). Same direction for both metrics, in both halves, and steady across the thresholds (the
+looser, the better). Within noise. MOUSSA picks 4 fewer winners with better odds.
+**Status.** **Adopted** by the user's call (Nov 25), on probation like T20: minutes now average over games played
+(`PLAYED_ONLY_DEFAULT = 0`; `opts.playedOnly: null` runs the old way). Both metrics' backtests move to the new
+numbers (MOUSSA 127/183, −0.5791; BONES 119/183, −0.6269). Tonight Wembanyama is back to 29 usual minutes (Fox 27);
+MOUSSA has Portland 63%. Day-to-day guess: the injury log started (`SB.bones.injuryLog`, each pregame report as the
+picks lock); grade it with `SB.bones.injuryLog.grade(15)` (players who usually play 15+ minutes) in about two weeks.
+**Re-run** mid-December with T20: undo played-only if counting zeros pulls ahead.
+
 ## Watch index
 
 ### I01: The NFL against the NBA and NHL at equal game states (Nov 23)
@@ -408,5 +522,7 @@ Arsenal 38 (66/20/14, Big match), Villa at Galatasaray 35; Napoli at City 22 (75
 | T16 | When specialists log real minutes with 0–2 spacers | Their offensive-rebound rate drops sharply with fewer spacers |
 | T03 | A couple more weeks of games | A blend weight that holds steady from one stretch to the next |
 | T23 | Mid-season (shooters at 300+ shots) | Removing the non-skill part of shooting stops hurting the backtest |
+| T30 | Early December (two weeks of injury logs) | Day-to-day players lose a share of their minutes far from 30%: set `OUT_SHARE` from the log. Mid-December: played-only minutes still ahead of counting zeros |
+| T28 | 15 more nights (from Nov 26) | The 50% cap keeps beating the uncapped best bet on new nights only |
 | T26 | Mid-December, with T24 | The measured recovery rate (uniform or by cell) beats the flat 27% on log-loss beyond noise |
 | T24 | Mid-December | A miss charge on one side of 1 (heavier ~1.1–1.25, or lighter ~0.7–0.8) beats the full charge on log-loss beyond noise |

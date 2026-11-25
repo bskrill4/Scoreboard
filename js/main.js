@@ -963,6 +963,8 @@
                 fav: favoriteOf(ev) || undefined,
               });
           }
+        // The report the picks locked with, for grading the day-to-day guess (T30).
+        if (!replay && bonesModels && inj) SB.bones.injuryLog.record(ev.id, g.start, inj, bonesModels[2], [g.home.id, g.away.id]);
         if (pr) {
           info.bones = {
             pHome: pr.pHome,

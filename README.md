@@ -256,6 +256,12 @@ night: among the first day with games left to tip, the moneyline side with the h
 the metric's own win chance (chance × profit if it wins − (1 − chance) × 100), against the first sportsbook in the game
 summary's pick center. The card shows the price, the metric's chance and the chance the price implies; a game holding a
 best bet is tagged in the list; the skull reads out the checked metric's. With no positive return anywhere it says so.
+Since Nov 25 the best bet skips edges over $50 per $100 (`EDGE_CAP`, TESTS.md T27–T28): graded at DraftKings' closing
+price, the biggest edges lost money for both metrics, and the cap did better on nights predicted only from earlier
+ones (within noise). The card names the bigger edge it left out, and BONES's card notes that BONES hasn't beaten the
+closing line this season. Each night's capped and uncapped bets per metric are tracked in this browser
+(`sb.bestBets`): saved each time the skull's forecast is read, frozen when the game tips, settled at the final, with
+the record under each card. A night counts only if the forecast was opened before its tip-off.
 This is the one place the app shows odds. Max expected return leans toward long shots wherever a metric is
 under-confident in favorites (BONES's first one was Utah at +554), so it doubles as a calibration check. Below, "v1"
 is BONES and "v2" is MOUSSA.
@@ -523,7 +529,12 @@ differential's −0.616); no defense credit 67.7% / 65.4% / 70.3%. Better than m
 
 **Ask the skull** reads NBA games in the next 36 hours with BONES and nothing else. Team strength is each player's
 BONES a minute (shrunk toward league average over his first 150 minutes) times his average minutes over the team's last 10
-games. Players listed out or doubtful are removed, questionable players count at half and day-to-day at 30%. Their
+games, counting only the games he played (since Nov 25, TESTS.md T30: a game missed injured counted as a zero and
+under-projected him on his return; log-loss better for both metrics, within noise). Players listed out or doubtful are
+removed, questionable players count at half and day-to-day at 30%. Since Nov 25 each pregame report is logged as the
+picks lock (`SB.bones.injuryLog`, `sb.injuryLog`: status and usual minutes per listed player, until tip-off), and
+`SB.bones.injuryLog.grade(minUsual)` compares each status's guess with who played and how much, to set the
+day-to-day share from data once a couple of weeks are in. Their
 minutes go to whoever took them in the games they've already missed (each teammate's average without them minus with
 them; Nov 16: Jaylen Clark's minutes to Terrence Shannon Jr., projected 17, played 35), or evenly with fewer than two
 games each way; then everyone is scaled back up to 240 (42 at most). **Home court**: the NBA's long-run edge (2.5 points,

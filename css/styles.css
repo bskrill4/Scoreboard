@@ -2404,3 +2404,6 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .h-col .ms-dot .ms-card b, .ms-dot .ms-card b { display: block; width: auto; aspect-ratio: auto; border-radius: 0; background: none; color: var(--text); box-shadow: none; font-size: 14px; font-weight: 900; }
 .ms-card small { font-size: 11px; color: var(--dim); }
 .ms-dot .ms-card > i { margin-left: auto; padding-left: 10px; font-style: normal; font-size: 22px; font-weight: 900; color: var(--yellow); }
+/* Best bets: what the $50 cap left out, BONES's caveat, the tracked record (since Nov 25, TESTS.md T28). */
+.bz-bet-left, .bz-bet-rec { grid-column: 1 / -1; font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+.bz-bet-rec { color: var(--text); font-weight: 700; }
