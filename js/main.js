@@ -309,6 +309,7 @@
     return prevDayTeams.get(day);
   }
 
+  const viewErrors = new Set(); // games whose play-by-play the engine could not read (warned once)
   function buildModel(ev, T) {
     const comp = ev.competitions[0];
     const hc = comp.competitors.find((c) => c.homeAway === 'home');
@@ -372,8 +373,21 @@
     if (evState === 'pre' && PREGAME_LEAGUES.has(ev._league)) g.pre = pregameInfo(ev, g);
 
     const tape = tapes.get(ev.id);
+    // ESPN's box score can lag the play-by-play (e.g. a college game with no players
+    // listed yet while substitutions are already in the feed). The engine assumes
+    // every subbed player is in the box score, so one such game would otherwise
+    // throw and stop the whole board. Show that game from the scoreboard alone
+    // until the box score catches up.
+    let v = null;
     if (tape && tape.plays.length) {
-      const v = sport.engine.viewAt(tape, T, evState === 'post');
+      try {
+        v = sport.engine.viewAt(tape, T, evState === 'post');
+      } catch (e) {
+        if (!viewErrors.has(ev.id)) console.warn(`Skipping play-by-play for ${ev.shortName || ev.id}:`, e.message);
+        viewErrors.add(ev.id);
+      }
+    }
+    if (v) {
       if (v.state === 'pre') {
         g.away.score = g.home.score = 0;
       } else {
@@ -414,7 +428,7 @@
     } else if (evState !== 'pre') {
       // No plays to replay: either the play-by-play hasn't loaded yet, or ESPN
       // doesn't cover this game play by play (it came back empty).
-      g.noPbp = !!tape;
+      g.noPbp = !!tape && !tape.plays.length;
       // At Live, the scoreboard as it is now; with a stream delay, as it was
       // `delay` seconds ago (from our own record of past polls).
       const snap = T === Infinity ? null : scoreboardAt(ev.id, T);
