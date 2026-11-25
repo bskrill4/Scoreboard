@@ -38,6 +38,12 @@
     lateDrama: { minute: 80, bonus: 6 }, // level or one goal, 80'+
     thriller: 6, // within a goal with 3+ scored
     goalless: { live: 0.85, final: 0.5 }, // 0-0 counts for less
+    // A finished match (since Nov 25, TESTS.md I04): closeness over the whole match
+    // (finalClose), weighted to put soccer finals on the other sports' scale.
+    // Fit so 307 finished matches (Premier League, Champions League, La Liga, Serie A,
+    // Bundesliga; Oct 1 to Nov 24) match the NBA, NHL and NFL finals' spread
+    // (25th/50th/75th/90th/97th percentiles 27/35/46/56/65); before, soccer ran 13+ higher.
+    final: { tension: 0.36, quality: 0.26, late: { minute: 80, bonus: 10 } },
   };
 
   const POLL = 30000;
@@ -194,6 +200,37 @@
     return g;
   }
 
+  // A finished match's closeness over its whole length: each minute's margin
+  // score (W.margin), weighted by (minute / full time)^2 so late minutes count
+  // more, and the minute of the last goal that changed the result (an equalizer
+  // or a go-ahead goal).
+  function finalClose(g) {
+    const mins = (m) => {
+      const x = /(\d+)'(?:\+(\d+))?/.exec(m || '');
+      return x ? +x[1] + (+x[2] || 0) * 0.5 : 0;
+    };
+    const goals = g.events
+      .filter((e) => e.goal && !e.shootout)
+      .map((e) => ({ t: Math.min(120, mins(e.min)), home: e.team === g.home.id }))
+      .sort((a, b) => a.t - b.t);
+    const end = g.period > 2 ? 120 : 90;
+    // Stoppage time counts as the last minute (a 90'+2' winner is still a goal).
+    for (const x of goals) x.t = Math.min(x.t, end - 0.5);
+    let h = 0, a = 0, i = 0, num = 0, den = 0, lastChange = 0;
+    for (let t = 1; t <= end; t++) {
+      while (i < goals.length && goals[i].t < t) {
+        const before = Math.sign(h - a);
+        goals[i].home ? h++ : a++;
+        if (Math.sign(h - a) !== before) lastChange = goals[i].t;
+        i++;
+      }
+      const w = (t / end) ** 2;
+      num += w * (WATCH.margin[Math.abs(h - a)] ?? 0.06);
+      den += w;
+    }
+    return { close: num / den, lastChange };
+  }
+
   function rate(g) {
     const W = WATCH;
     const reasons = [];
@@ -218,6 +255,14 @@
       const pens = g.period >= 5 || /PEN|Penalt/i.test(g.statusText) || g.events.some((e) => e.shootout);
       const late = g.state === 'final' ? 1 : extra || pens ? W.extraTime : 0.35 + 0.65 * Math.pow(Math.min(1, g.minute / 90), W.lateExp);
       index = 100 * (W.tension * close * late + W.quality * quality);
+      // Finished (since Nov 25): how long it stayed close, late minutes counting
+      // more, instead of the final score alone (see W.final).
+      if (g.state === 'final' && !g.postponed) {
+        const f = finalClose(g);
+        index = 100 * (W.final.tension * f.close * (goals === 0 ? W.goalless.final : 1) + W.final.quality * quality);
+        if (margin <= 1 && f.lastChange >= W.final.late.minute) index += W.final.late.bonus;
+        g.decidedAt = f.lastChange;
+      }
       // Comeback: replay the goals; a side that trailed by 2+ is now level or ahead.
       let h = 0, a = 0, worstH = 0, worstA = 0;
       for (const e of g.events) {

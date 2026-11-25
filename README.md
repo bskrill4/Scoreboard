@@ -194,7 +194,8 @@ every box-score athlete (so a defender's games played are right): ~6 KB a game, 
 play-by-play, so it stays outside BONES, MOUSSA, Rankings, banners and alerts. Since Nov 23 there's no Soccer tab: its
 matches are on the **Scores board** with every other sport (`SB.soccer.boardModels`, ids prefixed `s`), ranked by
 soccer's own watch index (closeness and the minute, then team quality, bonuses for late drama, comebacks, red cards and
-goal fests) and drawn with soccer's card (`boardTileHTML`, `boardHeroHTML`: the top spot opens the goals and red cards).
+goal fests; a finished match since Nov 25 by how long it stayed close, late minutes counting more, plus a late
+equalizer or winner, scaled to sit with the other sports' finals: TESTS.md I04) and drawn with soccer's card (`boardTileHTML`, `boardHeroHTML`: the top spot opens the goals and red cards).
 **EPL** and **UCL** are sport toggles in settings like the others; the board filter matches team and competition names
 and "soccer"; the Plan counts a match as about 115 minutes. Not in replays (no play-by-play to replay). The Premier
 League table is on **Standings** (the NBA / Premier League switch; soccer's sortable table with its zones).

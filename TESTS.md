@@ -512,6 +512,26 @@ league table (points a game, shrunk, times a league weight), the competition rec
 Arsenal 38 (66/20/14, Big match), Villa at Galatasaray 35; Napoli at City 22 (75/15/11), PSV at Real 26 (84/10/6).
 **Status.** **Adopted.** Re-check after a few European nights: does the board's order match the matches worth watching?
 
+### I04: Soccer finals against the other sports (Nov 25)
+**Basis.** The first Champions League nights' finished matches rated far above the rest of the board: on Nov 24
+Arsenal 1-1 Dortmund 81, City 2-2 Napoli 78 and four 1-0s at 54–60 all sat above every basketball and hockey game
+(a 5-point college game 49, Boston's 15-point win 45). A final's index came from the final score alone, so a 1-0
+settled in the 2nd minute rated the same as one won in stoppage time.
+**Procedure.** 307 finished matches (Premier League, Champions League, La Liga, Serie A, Bundesliga, Oct 1 to Nov
+24) against 78 NBA, NHL and NFL finals on five board days (Nov 15, 16, 22, 23, 24). New final closeness
+(`finalClose`): each minute's margin score, weighted by (minute / full time)², averaged over the match, plus the
+minute of the last goal that changed the result; a bonus when that came at 80'+ in a match ending level or by one.
+The weights (`WATCH.final`: tension, quality, late bonus) fit so soccer's 25th/50th/75th/90th/97th percentiles
+match the other sports'.
+**Result.** Before: soccer finals 23/47/62/70/78 (median 13 higher; draws median 70, one-goal games 59, two-goal
+25), against the others' 27/35/46/56/65. After (tension 0.36, quality 0.26, late bonus 10): 26/36/45/56/63.
+Nov 24 now: City 2-2 Napoli (equalizer 86') 62, Arsenal 1-1 Dortmund 59, Bodø 1-0 LASK (90+2') 55, then the
+college games at 49 and 48 and Boston-Washington and Vegas-Edmonton at 45, then Galatasaray 1-0 Villa (77') 44,
+Feyenoord 0-1 Porto (2') 44, Como 1-0 AEK 43, Real 5-1 PSV (1-1 until 50') 42. Stoppage-time goals count as the
+last minute (a first draft dropped them: Bodø's winner read as 0-0). Live and pre-match indexes are unchanged.
+**Status.** **Adopted.** Re-check the live soccer index against the others the same way once a few weekends of
+live readings can be compared.
+
 ## Re-run queue
 
 | # | Re-run when | What would change our mind |
@@ -522,6 +542,7 @@ Arsenal 38 (66/20/14, Big match), Villa at Galatasaray 35; Napoli at City 22 (75
 | T16 | When specialists log real minutes with 0–2 spacers | Their offensive-rebound rate drops sharply with fewer spacers |
 | T03 | A couple more weeks of games | A blend weight that holds steady from one stretch to the next |
 | T23 | Mid-season (shooters at 300+ shots) | Removing the non-skill part of shooting stops hurting the backtest |
+| I04 | A few soccer weekends | Live soccer readings run well above the other sports' live readings at equal stakes |
 | T30 | Early December (two weeks of injury logs) | Day-to-day players lose a share of their minutes far from 30%: set `OUT_SHARE` from the log. Mid-December: played-only minutes still ahead of counting zeros |
 | T28 | 15 more nights (from Nov 26) | The 50% cap keeps beating the uncapped best bet on new nights only |
 | T26 | Mid-December, with T24 | The measured recovery rate (uniform or by cell) beats the flat 27% on log-loss beyond noise |
