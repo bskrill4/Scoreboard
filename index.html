@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scoreboard</title>
+  <meta name="theme-color" content="#0a0a0c">
+  <!-- Added to the iPhone home screen: opens full screen, without Safari's bars. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Scoreboard">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="js/duo.js"></script>
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="./" aria-label="Scoreboard home">SCORE<span>BOARD</span></a>
+    <a class="bones-v2-badge" id="bonesV2Badge" href="#faq" hidden title="MOUSSA is on: plays are credited on a score-only win probability (settings). What's MOUSSA?">MOUSSA</a>
+
+    <nav class="views" id="views" aria-label="Views">
+      <a href="#" data-view="board">Scores</a>
+      <a href="#players" data-view="players">Rankings</a>
+      <a href="#standings" data-view="standings">Standings</a>
+      <a href="#plan" data-view="plan">Plan</a>
+      <a href="#bonezone" data-view="bonezone">Bone Zone</a>
+      <div class="settings">
+        <button type="button" class="cog" id="settingsBtn" aria-label="Settings" aria-haspopup="true" aria-expanded="false" aria-controls="settingsPanel" title="Settings">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4-2-1.6zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg>
+          <span class="delay-chip" id="delayChip" hidden title="Stream delay"></span>
+        </button>
+        <div class="settings-panel" id="settingsPanel" role="dialog" aria-label="Settings" hidden>
+          <section class="set">
+            <h4>Sports</h4>
+            <nav class="leagues" id="leagues" aria-label="Sports">
+              <button type="button" class="league on" data-league="nba" aria-pressed="true" title="Hide NBA games">NBA</button>
+              <button type="button" class="league on" data-league="nfl" aria-pressed="true" title="Hide NFL games">NFL</button>
+              <button type="button" class="league on" data-league="ncaam" aria-pressed="true" title="Hide NCAAM Top 25 games">NCAAM <small>Top 25</small></button>
+              <button type="button" class="league on" data-league="ncaaf" aria-pressed="true" title="Hide college football Top 25 games (CFP rankings once out, AP before)">NCAAF <small>Top 25</small></button>
+              <button type="button" class="league on" data-league="nhl" aria-pressed="true" title="Hide NHL games">NHL</button>
+              <button type="button" class="league on" data-league="eng.1" aria-pressed="true" title="Hide Premier League matches">EPL</button>
+              <button type="button" class="league on" data-league="uefa.champions" aria-pressed="true" title="Hide Champions League matches">UCL</button>
+              <span class="league soon" title="Coming soon">MLB</span>
+            </nav>
+          </section>
+
+          <section class="set">
+            <h4>My teams</h4>
+            <div class="mt-summary" id="myTeamsSummary"></div>
+            <button type="button" class="mt-open" id="myTeamsBtn">Set preferences</button>
+            <p class="set-note">Starred teams get a ♥ on their card and a small boost for the top spot while their game is close (never in a blowout). They get clutch alerts even when the filter hides them, and in the "at a break" modes they can take the top spot right away. College: their games show even when unranked. Saved on this device.</p>
+          </section>
+
+          <section class="set">
+            <div class="delay">
+              <div class="delay-head">
+                <label for="delay">Stream delay</label>
+                <span id="delayStatus" class="delay-status">Live</span>
+              </div>
+              <input id="delay" type="range" min="0" max="6" step="1" value="0" aria-describedby="delayStatus">
+              <div class="ticks" id="ticks" aria-hidden="true"></div>
+            </div>
+          </section>
+
+          <section class="set">
+            <h4>Top game switches</h4>
+            <div class="radios" role="radiogroup" aria-label="Top game switches">
+              <label><input type="radio" name="switchMode" value="best"><span><b>Whenever a better game is on</b><small>The top spot always goes to the most watchable game.</small></span></label>
+              <label><input type="radio" name="switchMode" value="breaks"><span><b>Only at a break</b><small>Waits for the top game's timeout, TV break, or end of a quarter, half or period.</small></span></label>
+              <label><input type="radio" name="switchMode" value="breaks10"><span><b>At a break, or for a much better game</b><small>As above, but a game 10+ watch-index points better takes over right away.</small></span></label>
+            </div>
+          </section>
+
+          <section class="set">
+            <h4>Sound</h4>
+            <button type="button" class="blur-switch" id="soundSwitch" role="switch" aria-checked="true"
+              title="Play a soft chime when a new game takes the top spot"><i></i>Top game chime</button>
+            <p class="set-note">A soft chime when a different game takes the top spot. Turning it on plays a preview.</p>
+            <button type="button" class="blur-switch" id="clutchSwitch" role="switch" aria-checked="true"
+              title="A banner and two soft taps when a game further down the board gets close late"><i></i>Clutch time alerts</button>
+            <p class="set-note">A banner above the top game and two soft taps when another game gets close late (last 5 minutes within one score, the NHL's last 10 within a goal) or goes to overtime.</p>
+            <button type="button" class="blur-switch" id="bigNightSwitch" role="switch" aria-checked="true"
+              title="A banner and a short chime when a player in another game has a big night"><i></i>Big-night alerts</button>
+            <p class="set-note">A banner and a short rising chime when a player in another game does something rare: a 40-point night (30 in college), a triple-double or one within reach, a hat trick, a shutout late, 400 passing or 150 rushing yards. Each banner goes once it's been on screen for 15 seconds, or tap "Go to game" to move that game to the top.</p>
+            <button type="button" class="blur-switch" id="alertSwitch" role="switch" aria-checked="false"
+              title="Show a browser notification when a new game takes the top spot"><i></i>Top game alerts</button>
+            <p class="set-note" id="alertNote">A notification with the new top game, its score and watch index, while you're in another tab or app.</p>
+          </section>
+
+          <section class="set">
+            <h4>Player value</h4>
+            <div class="seg value-toggle" id="valueToggle" role="radiogroup" aria-label="Player value">
+              <button type="button" data-bver="1" role="radio" aria-checked="true" title="Credit on ESPN's win probability">BONES</button>
+              <button type="button" data-bver="2" role="radio" aria-checked="false" title="Credit on a score-only win probability">MOUSSA</button>
+            </div>
+            <p class="set-note"><b>BONES</b>: each play's swing in ESPN's win probability, credited to the players responsible. ESPN opens every game with team strength priced in, so a favorite earns credit only for beating expectations. <b>MOUSSA</b>: the same idea on our own win probability from the score, the clock and who has the ball, 50% at tip for everyone (basketball; football and hockey use BONES). Pregame picks are locked for both. <a href="#faq">How they work</a></p>
+            <button type="button" class="blur-switch" id="floorSwitch" role="switch" aria-checked="true"
+              title="A one-sided game still credits the winner (BONES only)"><i></i>Game floor <small>BONES</small></button>
+            <p class="set-note">On: a finished game that stayed one-sided still credits the winning team, up to 75% of a typical game, by their share of its swings. Off: swing only. MOUSSA has no floor.</p>
+          </section>
+
+          <section class="set">
+            <a class="replay-link" id="replayLink" href="?replay">Replay last night</a>
+          </section>
+        </div>
+      </div>
+    </nav>
+
+    <nav class="days" id="days" aria-label="Day">
+      <button type="button" class="arrow" id="dayPrev" aria-label="Previous day">‹</button>
+      <button type="button" class="day-label" id="dayLabel"></button>
+      <button type="button" class="arrow" id="dayNext" aria-label="Next day">›</button>
+    </nav>
+    <button type="button" class="today-btn" id="todayBtn" hidden>Return to today</button>
+
+    <div class="filter" role="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
+      <input id="filter" type="text" placeholder="Filter: sport, team, player or upset" aria-label="Filter games by sport, team or player, or upset for BONES upset picks" autocomplete="off" spellcheck="false">
+      <span class="filter-count" id="filterCount" aria-live="polite"></span>
+      <button type="button" class="filter-clear" id="filterClear" hidden aria-label="Clear filter" title="Clear (Esc)">×</button>
+    </div>
+
+    <div class="slate" id="slate"></div>
+
+    <div class="replay" id="replay" hidden>
+      <span class="replay-tag">Replay</span>
+      <span id="replayClock"></span>
+      <span class="speeds" id="speeds"></span>
+      <button type="button" id="skip">+10 min</button>
+      <a href="./">Exit</a>
+    </div>
+  </header>
+
+  <section id="banners" class="banners" hidden role="status" aria-live="polite" aria-label="Alerts"></section>
+  <div class="notice" id="notice" hidden></div>
+  <section id="recap" class="recap" hidden aria-label="Last night's recap"></section>
+  <main id="board" class="board" aria-live="off"></main>
+  <section id="players" class="players" hidden aria-label="Rankings"></section>
+  <section id="plan" class="players plan" hidden aria-label="Viewing plan"></section>
+  <section id="season" class="players season" hidden aria-label="NBA season standings"></section>
+  <section id="nflseason" class="players season" hidden aria-label="NFL season standings"></section>
+  <section id="bonezone" class="bonezone" hidden aria-label="The Bone Zone: how reliable BONES is"></section>
+  <section id="standings" class="players standings" hidden aria-label="NBA standings"></section>
+  <section id="faq" class="faq" hidden aria-label="How BONES and MOUSSA work"></section>
+  <footer class="foot">
+    Scores, play-by-play and win probability from ESPN's public feed. BONES credits each play's swing in ESPN's win probability to the players responsible; MOUSSA does the same on our own score-only win probability (basketball). NHL win probability is our own model; ESPN doesn't publish one. <a href="#faq">How they work</a>.
+    Click any game to pin it to the top.
+  </footer>
+
+  <script src="js/api.js"></script>
+  <script src="js/prospects.js"></script>
+  <script src="js/xpts.js"></script>
+  <script src="js/engine.js"></script>
+  <script src="js/engine-nfl.js"></script>
+  <script src="js/engine-nhl.js"></script>
+  <script src="js/runs.js"></script>
+  <script src="js/watch.js"></script>
+  <script src="js/watchstyle.js"></script>
+  <script src="js/notes.js"></script>
+  <script src="js/chime.js"></script>
+  <script src="js/alerts.js"></script>
+  <script src="js/banners.js"></script>
+  <script src="js/clutch.js"></script>
+  <script src="js/bignight.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/focus.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/team.js"></script>
+  <script src="js/drawers.js"></script>
+  <script src="js/plan.js"></script>
+  <script src="js/season.js"></script>
+  <script src="js/bones.js"></script>
+  <script src="js/bonezone.js"></script>
+  <script src="js/recap.js"></script>
+  <script src="js/myteams.js"></script>
+  <script src="js/filter.js"></script>
+  <script src="js/faq.js"></script>
+  <script src="js/standings.js"></script>
+  <script src="js/soccerwp.js"></script>
+  <script src="js/soccer.js"></script>
+  <script src="js/main.js"></script>
+  <script src="js/a11y.js"></script>
+</body>
+</html>
