@@ -862,5 +862,8 @@
     else needsLoad = true;
   }
 
-  SB.boneZone = { render, refresh, favoredHome, UPSET_MIN };
+  // The best-bet tracker, read by the Models page (js/models.js): every tracked
+  // bet by its key (night|metric|c or u), and settling the ones whose games are over.
+  const bets = { all: () => ({ ...tracked }), settle: settleBets, profit, EDGE_CAP };
+  SB.boneZone = { render, refresh, favoredHome, UPSET_MIN, bets };
 })();

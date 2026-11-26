@@ -587,6 +587,19 @@ start; then they go by start time, with the index breaking ties among games star
 (`SOON_MIN` in `js/main.js`; Nov 15 the 7:20 PM PIT–CIN sat on top from 11:37 to noon with eight noon games about to start). Click a tile to pin it to the top. Per-sport tuning
 (margins, record weighting, what counts as a big night) lives in `SPORT` and the `performance` functions in `js/watch.js`.
 
+**Models** (`#models`, `js/models.js`, since Nov 26; `g then m`): BONES, MOUSSA and MOUSSA V2 graded side by side,
+one widget per question. **What we're tracking** (the three, and when this browser started locking each one's picks);
+**Log-loss** (the game backtest's right % and log-loss, season and second half, against point differential; the
+locked picks' record and log-loss; the record when a locked pick went against the market's favorite); **The race**
+(games above .500 through the season, from the backtest or the locked picks); **Calibration** (backtest picks grouped
+by confidence, said against won, and whether each model's 65%+ picks run timid or overconfident); **Tonight they
+disagree** (tonight's locked picks, splits first, or the latest night with picks when there are no NBA games; and each
+pair's record on the season's split games); **Players they disagree on** (the widest gaps between the models' ranks of
+the same 250+-minute players, all three or MOUSSA vs V2; a row opens the drawer); the **Best-bet ledger** (the Bone
+Zone's tracked bets, capped and uncapped, with units and the latest bets; tonight's bet stays in the zone); and the
+**Test schedule** (TESTS.md's re-run queue, fetched live, dated re-runs counting down and the rest waiting on data).
+All of it reads what the app already keeps (`SB.bones.models()`, the three pick stores, `SB.boneZone.bets`, TESTS.md);
+nothing new is saved.
 **The Bone Zone** (`#bonezone`, `js/bonezone.js`): is MOUSSA real yet (MOUSSA or MOUSSA V2; BONES until Nov 26)? A floating 3D skull (Three.js r128, loaded from cdnjs
 only when the page opens) reads out a reliability check on this NBA regular season in speech bubbles, from the same
 per-game cache as the season pages. Players with 8+ games and 15+ minutes a game; everything per 36 minutes.

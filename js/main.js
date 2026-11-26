@@ -659,6 +659,7 @@
     else if (view() === 'bonezone') SB.boneZone.render();
     else if (view() === 'faq') SB.faq.render();
     else if (view() === 'standings') SB.standings.render();
+    else if (view() === 'models') SB.models.render();
     else SB.ui.render(models, { heroId: shownTop, pinnedId, toTop });
     if (focusing) {
       // Leave focus if its game is gone (a day change, a filter) or another view opened.
@@ -1136,7 +1137,7 @@
   // ---------- views & player metric ----------
   // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab), the viewing plan (#plan)
   // and the Bone Zone (#bonezone, a check of how reliable BONES is).
-  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq', '#standings': 'standings' };
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq', '#standings': 'standings', '#models': 'models' };
   const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
@@ -1149,6 +1150,7 @@
     $('bonezone').hidden = v !== 'bonezone';
     $('faq').hidden = v !== 'faq';
     $('standings').hidden = v !== 'standings';
+    $('models').hidden = v !== 'models';
     document.body.classList.toggle('view-bonezone', v === 'bonezone');
     document.body.classList.toggle('view-faq', v === 'faq');
     const nav = v === 'season' || v === 'nflseason' ? 'players' : v; // both season tabs live under Rankings
