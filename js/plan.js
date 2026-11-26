@@ -13,7 +13,7 @@
 (function () {
   const SB = (window.SB = window.SB || {});
 
-  const LENGTH_MIN = { nba: 151, ncaam: 127, nhl: 164, nfl: 195, ncaaf: 210 }; // college football: ~3h30 estimate
+  const LENGTH_MIN = { nba: 151, ncaam: 127, nhl: 164, nfl: 195, ncaaf: 210, soccer: 115 }; // college football: ~3h30 estimate
   // The next game may start up to GRACE before the last one is expected to end:
   // the times include a pregame stretch, so you'd miss a minute or two at most.
   const GRACE_MIN = 10;
@@ -123,6 +123,8 @@
   // Full name on wide screens, the abbreviation on phones.
   const teamName = (t) => `<b><span class="full">${esc(t.name)}</span><span class="abbr">${esc(t.abbr)}</span></b>`;
   const logo = (t) => (t.logo ? `<img src="${esc(t.logo)}" alt="" loading="lazy">` : '');
+  // Logo and name together, opening the team's drawer (js/drawers.js).
+  const tm = (g, t) => `<span class="tlink"${SB.drawers ? SB.drawers.team(g.league, t, g.comp) : ''}>${logo(t)}${teamName(t)}</span>`;
 
   const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>';
   const checkBtn = (g, on, cls) =>
@@ -142,7 +144,7 @@
     const lockedHere = [...locks].filter((id) => ids.has(id)).length;
     const free = lockedHere ? plan(models, now).total : total; // the best plan with no checks
 
-    const leagues = ['nba', 'nhl', 'ncaam', 'nfl', 'ncaaf'].filter((l) => all.some((x) => x.g.league === l));
+    const leagues = ['nba', 'nhl', 'ncaam', 'nfl', 'ncaaf', 'soccer'].filter((l) => all.some((x) => x.g.league === l));
     const legend = leagues.map((l) => `<span class="lg-key lg-${l}">${SB.league.name(l)}</span>`).join('');
     const head = `
       <div class="players-head">
@@ -208,7 +210,7 @@
           ${checkBtn(g, p.locked, 'pp-check')}
           <div class="pp-time"><b>${time(p.s)}</b><small>${p.live ? 'live now' : 'start'} · to ~${time(p.e)}</small></div>
           <div class="pp-game">
-            <div class="pp-teams">${logo(g.away)}${teamName(g.away)}<span>@</span>${logo(g.home)}${teamName(g.home)}</div>
+            <div class="pp-teams">${tm(g, g.away)}<span>@</span>${tm(g, g.home)}</div>
             <small><span class="lg-tag">${SB.league.name(g.league)}</span>${g.broadcast ? ` ${esc(g.broadcast)} ·` : ''} ${dur(p.e - p.s)} ${chip(g)}</small>
             ${others.length ? `<small class="pp-alt">Also on: ${others.map((o) => `<a href="#" ${gameAttrs(o.g, day)}>${matchup(o.g)} ${o.g.index}</a>`).join(' · ')}</small>` : ''}
           </div>

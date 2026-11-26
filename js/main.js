@@ -49,12 +49,17 @@
   let shownTop = null; // the game in the top spot on the last tick
   let filterText = ''; // the board filter box
   let chimeFilter = '';
+  let userRerank = false; // set by SB.refresh: the next tick's top-game change was the person's doing
 
+  // Soccer competitions on the board (js/soccer.js: score-only, no play-by-play),
+  // switched on and off like any sport. Since Nov 23 they're here, not on a tab.
+  const SOCCER_IDS = (SB.soccer?.LEAGUES || []).map((l) => l.id);
+  const ALL_SPORTS = SB.api.leagues.length + SOCCER_IDS.length;
   // Sports switched off in the top bar (remembered per browser).
   let hiddenLeagues = new Set();
   try {
     const saved = JSON.parse(localStorage.getItem('sb.hidden') || '[]');
-    if (Array.isArray(saved)) hiddenLeagues = new Set(saved.filter((l) => SB.api.leagues.includes(l)));
+    if (Array.isArray(saved)) hiddenLeagues = new Set(saved.filter((l) => SB.api.leagues.includes(l) || SOCCER_IDS.includes(l)));
   } catch (e) {}
   const shown = (ev) => !hiddenLeagues.has(ev._league);
 
@@ -304,6 +309,7 @@
     return prevDayTeams.get(day);
   }
 
+  const viewErrors = new Set(); // games whose play-by-play the engine could not read (warned once)
   function buildModel(ev, T) {
     const comp = ev.competitions[0];
     const hc = comp.competitors.find((c) => c.homeAway === 'home');
@@ -367,8 +373,21 @@
     if (evState === 'pre' && PREGAME_LEAGUES.has(ev._league)) g.pre = pregameInfo(ev, g);
 
     const tape = tapes.get(ev.id);
+    // ESPN's box score can lag the play-by-play (e.g. a college game with no players
+    // listed yet while substitutions are already in the feed). The engine assumes
+    // every subbed player is in the box score, so one such game would otherwise
+    // throw and stop the whole board. Show that game from the scoreboard alone
+    // until the box score catches up.
+    let v = null;
     if (tape && tape.plays.length) {
-      const v = sport.engine.viewAt(tape, T, evState === 'post');
+      try {
+        v = sport.engine.viewAt(tape, T, evState === 'post');
+      } catch (e) {
+        if (!viewErrors.has(ev.id)) console.warn(`Skipping play-by-play for ${ev.shortName || ev.id}:`, e.message);
+        viewErrors.add(ev.id);
+      }
+    }
+    if (v) {
       if (v.state === 'pre') {
         g.away.score = g.home.score = 0;
       } else {
@@ -409,7 +428,7 @@
     } else if (evState !== 'pre') {
       // No plays to replay: either the play-by-play hasn't loaded yet, or ESPN
       // doesn't cover this game play by play (it came back empty).
-      g.noPbp = !!tape;
+      g.noPbp = !!tape && !tape.plays.length;
       // At Live, the scoreboard as it is now; with a stream delay, as it was
       // `delay` seconds ago (from our own record of past polls).
       const snap = T === Infinity ? null : scoreboardAt(ev.id, T);
@@ -600,12 +619,17 @@
     const evs = events.filter(shown);
     const terms = view() === 'board' ? SB.filter.parse(filterText) : [];
     const built = new Map(evs.map((ev) => [ev.id, buildModel(ev, T)]));
+    // Soccer matches join the board as they are (their own card and watch index).
+    // Not in replays: the soccer feed has no play-by-play to replay.
+    // On Rankings, every live or finished match's summary loads too (soccer BONES and xBONES).
+    if (SB.soccer && !replay) for (const m of SB.soccer.boardModels(loadedDay, (id) => !hiddenLeagues.has(id), { summaries: view() === 'players' })) built.set(m.id, m);
     const evById = new Map(evs.map((ev) => [ev.id, ev]));
-    const models = arrange([...built.values()], terms.length ? (m) => SB.filter.matches(terms, evById.get(m.id), m) : null);
+    const models = arrange([...built.values()], terms.length ? (m) => (m.soccer ? SB.soccer.matches(terms, m) : SB.filter.matches(terms, evById.get(m.id), m)) : null);
     shownTop = models[0]?.id || null;
     // Chime when a different game takes the top spot on its own: not on the
     // first paint, a day change, a pin, a filter change, or the old top game leaving the board.
-    const filterSame = filterText === chimeFilter;
+    const filterSame = filterText === chimeFilter && !userRerank; // a Watch style change isn't news either
+    userRerank = false;
     chimeFilter = filterText;
     if (prevHero && shownTop && shownTop !== prevHero && !pinnedId && !toTop && prevDay === chimeDay && filterSame && models.some((m) => m.id === prevHero) && !SB.focus.isOn()) {
       SB.chime.play();
@@ -617,11 +641,16 @@
     // In focus mode (js/focus.js) they stay quiet: what happens meanwhile is
     // noted, not announced, and waiting banners stay hidden until it's left.
     const focusing = SB.focus.isOn();
-    SB.banners.update({ day: loadedDay, board: view() === 'board' && !focusing, topId: shownTop, games: [...built.values()] });
+    // Soccer's banners come from its own moments (js/soccer.js alerts: late drama,
+    // late goals, extra time, penalties, hat-tricks); clutch and big nights read
+    // play-by-play detail soccer doesn't have.
+    SB.banners.update({ day: loadedDay, board: view() === 'board' && !focusing, topId: shownTop, games: [...built.values()].map((m) => (m.soccer ? SB.soccer.bannerGame(m) : m)) });
     const mineHidden = [...built.values()].filter((m) => m.mine?.length && !models.includes(m));
-    const watched = mineHidden.length ? [...models, ...mineHidden] : models;
+    const all = mineHidden.length ? [...models, ...mineHidden] : models;
+    const watched = all.filter((m) => !m.soccer);
     SB.clutch.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
     SB.bigNight.check(watched, { day: loadedDay, topId: shownTop, mute: focusing });
+    if (SB.soccer && !replay) SB.soccer.alerts(all.filter((m) => m.soccer), { day: loadedDay, topId: shownTop, mute: focusing });
     SB.recap.update({ day: loadedDay, board: view() === 'board', replay: !!replay });
     if (view() === 'players') SB.ui.renderPlayers(models, { dayLabel: dayName(loadedDay), tab: rankTab(), day: loadedDay });
     else if (view() === 'plan') SB.plan.render(models, { dayLabel: dayName(loadedDay), day: loadedDay, now: baseNow() });
@@ -629,6 +658,7 @@
     else if (view() === 'nflseason') SB.nflSeason.render();
     else if (view() === 'bonezone') SB.boneZone.render();
     else if (view() === 'faq') SB.faq.render();
+    else if (view() === 'standings') SB.standings.render();
     else SB.ui.render(models, { heroId: shownTop, pinnedId, toTop });
     if (focusing) {
       // Leave focus if its game is gone (a day change, a filter) or another view opened.
@@ -649,7 +679,7 @@
     } else if (!models.length) {
       const day = viewDay();
       const off = [...hiddenLeagues].map((l) => l.toUpperCase()).join(', ');
-      if (hiddenLeagues.size === SB.api.leagues.length) showNotice('Every sport is switched off. Tap a sport above to bring it back.');
+      if (hiddenLeagues.size === ALL_SPORTS) showNotice('Every sport is switched off. Tap a sport above to bring it back.');
       else {
         const msg =
           day === todayDay() && !replay
@@ -952,6 +982,8 @@
                 fav: favoriteOf(ev) || undefined,
               });
           }
+        // The report the picks locked with, for grading the day-to-day guess (T30).
+        if (!replay && bonesModels && inj) SB.bones.injuryLog.record(ev.id, g.start, inj, bonesModels[2], [g.home.id, g.away.id]);
         if (pr) {
           info.bones = {
             pHome: pr.pHome,
@@ -1104,7 +1136,7 @@
   // ---------- views & player metric ----------
   // Views: the board (#), Rankings (#players, #plays; #season is its NBA season tab), the viewing plan (#plan)
   // and the Bone Zone (#bonezone, a check of how reliable BONES is).
-  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq' };
+  const VIEWS = { '#players': 'players', '#plays': 'players', '#season': 'season', '#nfl-season': 'nflseason', '#plan': 'plan', '#bonezone': 'bonezone', '#faq': 'faq', '#standings': 'standings' };
   const view = () => VIEWS[location.hash] || 'board';
   const rankTab = () => (location.hash === '#plays' ? 'plays' : 'players');
   function applyView() {
@@ -1116,6 +1148,7 @@
     $('nflseason').hidden = v !== 'nflseason';
     $('bonezone').hidden = v !== 'bonezone';
     $('faq').hidden = v !== 'faq';
+    $('standings').hidden = v !== 'standings';
     document.body.classList.toggle('view-bonezone', v === 'bonezone');
     document.body.classList.toggle('view-faq', v === 'faq');
     const nav = v === 'season' || v === 'nflseason' ? 'players' : v; // both season tabs live under Rankings
@@ -1229,6 +1262,7 @@
   }
 
   function initControls() {
+    if (SB.soccer) SB.soccer.onUpdate = () => tick(); // soccer scores land on their own schedule
     SB.player.onGame = showGame;
     initSettings();
     initFilter();
@@ -1382,6 +1416,10 @@
       showGame(a.dataset.day || loadedDay, a.dataset.game, a.dataset.gleague);
     });
     applyView();
+    SB.refresh = () => {
+      userRerank = true; // re-rank now (js/watchstyle.js, after a weights change), without the new-top chime
+      tick();
+    };
     window.addEventListener('hashchange', () => {
       applyView();
       window.scrollTo(0, 0);
@@ -1398,6 +1436,8 @@
 
     $('board').addEventListener('click', (e) => {
       if (openPlayerFrom(e)) return;
+      const tm = e.target.closest('[data-tid]');
+      if (tm) return SB.player.openTeam({ id: tm.dataset.tid, color: tm.dataset.tcolor || undefined });
       let toTop = false;
       if (e.target.closest('[data-action="focus"]')) {
         SB.focus.toggle(e.target.closest('.game').dataset.id);

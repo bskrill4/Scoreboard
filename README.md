@@ -116,8 +116,36 @@ never opened). The game table shows **BONES and MOUSSA** side by side (basketbal
 one in bold, and sorts by Day, BONES or MOUSSA (click a header; again to flip) to find a player's best games.
 The drawer has the same BONES | MOUSSA switch as settings. **Compare**: click another player while a drawer is open
 and a second opens to its left; up to **three** side by side (the newest leftmost; with three open, the next click
-replaces the newest). They share the width when three full ones don't fit, and under 900px each new one covers the
-last. Closing one slides the rest together; Esc closes the newest.
+replaces the newest, its content fading over). Where there's room the page **makes way**: the drawers take the right
+side (body `--push`) and the board, menu and banners lay out in what's left (the width breakpoints are container
+queries on `body`, `container: page`, not media queries; the top card's vw-style sizes read `--pw`, 1% of the page,
+set by `js/player.js`). Each drawer is 440px, or narrower down to 330px so the board keeps 440px (three on a 14"
+MacBook Air: 343px each, with a compact drawer layout under 330px of content); without that room they cover the page as
+before (sharing the width, or under 900px each new one on top of the last). Opening and closing run as one view
+transition (`SB.ui.reflow`): the cards resize into the new space while the drawers slide, drawn live above them
+(`view-transition-class: drawer`), a new drawer slides out from under the ones already open and a closing one slides
+away beneath its neighbour (older drawers sit on top). Banners coming and going move the board the same way. Focus mode
+closes open drawers before it starts. Closing one slides the rest together; Esc closes the newest.
+**Team drawer** (`js/team.js`, NBA, since Nov 23): click a team on Standings, a team's logo or name on the top game's
+card, or the team badge in a player's drawer. It opens in the same stack as the player drawers (up to three in all, so a
+team can sit next to two of its players). It shows the record against the switch's **xW** (how many wins ahead or behind,
+"lucky" or "unlucky"), with xW, Diff, xNet and Shot luck each ranked in the NBA; who's **Out** (return date and BONES or
+MOUSSA per 36); the **roster** (every player whose latest game was for this team: GP, minutes a game, season BONES and
+MOUSSA as the player drawer counts them, sortable; a row opens that player's drawer beside it); and **games** (last 10 or
+the season: result, the game's gap under the switch's metric, this team's total minus the opponent's, with a dotted
+underline where the result and the metric disagree, and who led the team; a row opens the game on the board). Nothing
+new is fetched: it reads what Standings loads (`SB.standings.ensure()` / `team(id)`, loaded on first ask) and the
+season's player rows (`SB.bones.seasonGames`).
+**Every team and player on screen** (`js/drawers.js`, since Nov 25): a team's logo or name anywhere (board tiles, the top
+card, the court and ice headers, Plays, Plan, the soccer tables) and any soccer player (pitch, timeline, top players,
+Rankings) opens a drawer in the same stack. NBA teams open the team drawer above, and basketball, football and hockey
+players the player drawer. Every other team (NFL, NHL, college, soccer) gets a lighter drawer from ESPN's team schedule
+and roster: record and standing, the last five and the next game, the last 10 or season's results (a row opens the game
+on the board) and the roster (a row opens the player; soccer adds appearances, goals and assists). A soccer player's
+drawer has their season from ESPN and every match on the board they played in, with BONES and xBONES. These drawers keep
+what they fetch in memory for the page load only: nothing new goes into localStorage. They ride in the stack as its team
+kind (`js/team.js` hands them to `SB.drawers`), so `js/player.js` is unchanged. Banners aren't clickable: their saved
+copy of each game would need the team ids.
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by BONES or MOUSSA (whichever is on), with their
 counting stats and a Player of the Day, filtered by sport if you like, and either **sport-adjusted** (the default) or by
 the raw number. Impact isn't zero-sum and each sport has its own baseline and spread: basketball credits a make without
@@ -172,6 +200,114 @@ position over the last **3 weeks** (2+ games in the window, 2+ before it), rated
 sacks and interceptions name a player, so tackles and coverage don't count yet. Each game's cache entry also keeps
 every box-score athlete (so a defender's games played are right): ~6 KB a game, ~1.6 MB for a full NFL season.
 
+**Soccer** (`js/soccer.js`; Premier League and Champions League): from ESPN's scoreboard feed and, for the top card,
+the match summary's commentary; it stays outside the basketball BONES and MOUSSA (its own BONES and xBONES since Nov 25,
+on the top card and Rankings; banners and alerts since Nov 25; both below). Since Nov 23 there's no Soccer tab: its
+matches are on the **Scores board** with every other sport (`SB.soccer.boardModels`, ids prefixed `s`), ranked by
+soccer's own watch index (closeness and the minute, then team quality, bonuses for late drama, comebacks, red cards and
+goal fests; a finished match since Nov 25 by how long it stayed close, late minutes counting more, plus a late
+equalizer or winner, scaled to sit with the other sports' finals: TESTS.md I04) and drawn with soccer's card (`boardTileHTML`, `boardHeroHTML`: the top spot opens the goals and red cards).
+**EPL** and **UCL** are sport toggles in settings like the others; the board filter matches team and competition names
+and "soccer"; the Plan counts a match as about 115 minutes. Not in replays (no play-by-play to replay). The Premier
+League table is on **Standings** (the NBA / Premier League switch; soccer's sortable table with its zones).
+Since Nov 24 the soccer **top card** is laid out like every other sport's (`soccerHeroHTML` in `js/ui.js`, from the
+same top row, big score and bar, then three columns; home on the left): the bar is possession (with shots and shots on
+target under it) once the match is on, the odds (home / draw / away) before; the line under the clock is the latest
+key event; the columns are a lean **timeline** (`eventsHTML`: goals with the scorer and assist, own goals, bookings
+and red cards in match order with an HT divider, from the summary's key events, or the scoreboard's list until that
+loads), **the pitch** (about 330px tall, so the card stays the usual height) and **top players** (goal 3, assist 2, shot on target 0.5, save 0.5, own goal and red card −2, until
+there's a real soccer rating; `scoreOf`) with the substitutions under them. **The pitch** (`pitchHTML`): both XIs as dots in their formations (home left
+attacking right, away mirrored; the away kit's other color when the two clash), shirt numbers only, badges for
+goals, assists, cards and the minute a substitute came on. Hovering (or focusing) a dot shows a card: headshot, full
+name, team, position, stats and the same game score as Top players. ESPN has headshots for only some players (about a
+third of one Premier League match), so a missing one falls back to the shirt number and isn't asked for again (each
+miss still logs one 404 in the console). Hovering a name in the timeline or a Top players row opens that player's card
+on the pitch (`data-pid`, one delegated listener); a player who was subbed off shows faded, dashed, in the spot he
+left, with the minute he went off. From the match summary
+(fetched for the top card, refreshed every minute while live): `formation`, each starter's `formationPlace` and
+position code, `subbedInFor` and the substitution minute. No tracking data, so a dot sits at its formation spot.
+Lines come from sorting outfielders by how deep their role is (ESPN codes a 4-2-3-1's holding pair "LM"/"RM", so the
+code alone can't say the line) and cutting by the formation's line sizes; each line runs left to right by the code's
+side. A substitute takes his man's spot. Before lineups are out (about an hour before kickoff) it says so. **Pre-match
+index:** how even a match is now comes from the betting odds (home / draw / away, the margin taken out) when the
+scoreboard has them, and team quality from each club's domestic league (points a game pulled toward 1.4 by 4 games,
+times a league weight, `LEAGUE_W`; 17 tables, loaded once a day), not the handful of games in a European competition
+(Napoli at Man City was 25 on Napoli's 1-0-3). The board's view transitions skip themselves after 2.5s (`guard` in
+`js/ui.js`): one that couldn't capture a background tab never finished, and the board froze behind it.
+
+**Soccer win probability** (`js/soccerwp.js`, since Nov 25; TESTS.md S01–S03): home / draw / away at every moment of
+a match, like the other sports' win probability. Before kickoff each side's expected goals come from the betting odds
+(the three results and the total-goals line, the margin taken out) fit as two Poisson scoring rates; with no odds,
+from the clubs' league strengths. In the match, the goals still to come are Poisson over the time left (second halves
+score 13% above the average, first halves 13% below; about 2.5 and 5.5 added minutes), a side down a man scores 0.8×
+and its opponent 1.3×, and a trailing side's rate is up 10% and a leading side's down 10%. It reads only the score,
+the clock and red cards, which the scoreboard has for every match, so **every live tile** gets a bar with the three
+chances. Backtest on 620 finished matches (six leagues, Aug 10 – Nov 24, read at kickoff, 15', 30', HT, 60', 70',
+80', 85', 90'): log-loss −0.644, against −0.6465 for the score and the clock alone; calibrated to within about 2
+points in every band (draws 22.4% predicted, 21.8% happened). **Expected goals** (`xgOf`): every shot in the
+commentary has a spot (`fieldPositionX/Y`), so each gets an xG from its distance and angle, header or foot, a cross,
+a through ball, a fast break, a corner or set piece, or a direct free kick (logistic fit on 17,751 shots; penalties
+0.75). xG is shown, not used: 24 ways of letting the chances so far move the scoring rates all made the win chances
+worse (S02). On the **top card**: the bar is the live chances (the odds before kickoff) with possession, shots and xG
+under it; the left column is the **win probability chart** (home's band from the bottom, the draw, away's from the
+top; goals and red cards marked with how many points they swung) over a **pressure strip** (each side's xG every
+five minutes) and the timeline, where each goal and red card shows its swing; the pitch column switches between the
+**Lineups** and a **shot map** (each shot at its spot, sized by xG, goals filled, on target ringed; remembered in
+`sb.soccer`); Top players adds each player's xG. A goal the scoreboard counts before it lists it counts at the
+current minute. Extra time is modelled when a match goes there (a draw after it is a coin flip on penalties); a
+two-legged tie's aggregate isn't. **Banners and alerts** (`SB.soccer.alerts`, under the Clutch time and Big nights
+switches): level or one goal in it from 80' ("Level late", "Late drama"), an equalizer or go-ahead goal from 75'
+("Late equalizer", "Late goal", which replaces the late-drama banner, with the swing), extra time, penalties and
+hat-tricks; never for the top game, quiet on first load and a day change. The watch index is unchanged.
+
+**Soccer BONES and xBONES** (`SB.soccerWP.credit` in `js/soccerwp.js`, since Nov 25; TESTS.md S04): soccer's own
+BONES, on the same idea as the other sports': each action's swing in the soccer win chances (a side's chance to win
+plus half its chance of a draw), credited only to the players responsible and divided by the square root of its
+leverage (how much a goal could move the chances right then, against a goal at 0-0 at kickoff between even sides;
+0.05–8, as `js/engine.js` caps it). **BONES** is what happened: a goal's swing goes 75% to the scorer and 25% to the
+assist (all of it unassisted); a miss costs nothing, since the score-only chances don't move on one. **xBONES** is
+the chances: every shot is worth its xG times the swing a goal would have made right then, shooter 75%, the pass that
+set it up 25% ("Assisted by" in the commentary, on chances as well as goals). In both: keepers answer only for shots
+on target, against how often a shot on target like it goes in (`onTarget`: 0.06 xG on target scores 26%), so a save
+earns that chance × the swing, a goal costs the rest, and an average keeper nets about zero (+2.5 a match over 629
+matches); a penalty is worth 0.75 of a goal's swing to the player who won it and costs the player who conceded it the
+same, then BONES gives the taker the other 0.25 if he scores and takes 0.75 if he misses (a save earns the keeper
+that); a red card (or second yellow) costs the player its swing; an own goal costs the whole swing. Tackles and
+interceptions aren't in ESPN's feed. Over 629 matches a match hands out about +40 BONES (median); the best single
+games are around +50–70 (Sinayoko's 2 goals and 2 assists in a 4-3, +64; nine-save shutouts, +65–69). The **switch**
+(BONES / xBONES, remembered in `sb.soccer`) is in the top card's Top players heading and on Rankings; the top card
+shows the top five on it (and the lowest when it's below zero), and the pitch's hover cards show the same number.
+**Rankings** lists soccer players with everyone else (`SB.soccer.playersOf`: `imp` is the soccer metric that's on,
+whichever of BONES and MOUSSA is on for the other sports), under a Soccer sport chip; their rows say the competition
+and the metric, show the shirt number under a headshot (ESPN has one for about a third), and don't open the player
+drawer (it has no soccer). While Rankings is open, every live or finished match's summary loads (once a minute while
+live, hourly once final), not just the top game's.
+
+**Standings** (`#standings`, `js/standings.js`, since Nov 22; NBA for now): ESPN's standings by **division,
+conference or league** (records, seeds with tiebreakers, last ten, streak; a line under the 6 seed and a dashed one under
+the 10th) and its injury report, refetched every 10 minutes, plus the team numbers behind the picks: **Diff** (point
+differential a game), **MOUSSA/g** or **BONES/g** (since Nov 26, the toggle's metric: the team's metric a game minus
+its opponents', the metric's own differential; TESTS.md T31; every column sorts: click a header, again to flip, # for
+the table's own order), **xW MOUSSA / xW BONES** (each game's metric gap between the teams, through one logistic fit of
+results on that gap, summed into expected wins; BONES swing-only, since its game floor goes to the winner), **xPts /
+xPts allowed** (expected points of the shots taken or allowed, `js/xpts.js`, plus free throws made), **xNet**, **Shot
+luck** (points a game from making, and opponents missing, more than expected; T17 says mostly luck so far) and **Top
+injury out** (the best player listed Out by the toggle's metric per 36, 100+ minutes). Below: **the bracket if the
+playoffs started tonight**: ESPN's seeds, the play-in (7 v 8, 9 v 10, then the 7-8 loser v the 9-10 winner) and
+every series projected by the toggle's pick model (higher seed home in 1, 2, 5, 7; players listed Out left out),
+favorites advancing. Each game's team shooting is cached as `_teams` (`SB.bones.teamShots`; `CACHE_VERSION` 32: it is
+deliberately not keyed by team id, because every row reader takes a key with an entry at `[3]` for a player, and team 3
+is New Orleans).
+**Proj** (since Nov 25): the projected record. Every regular-season game left (ESPN's monthly scoreboards) gets the
+toggle's pick model's home win chance (`SB.bones.predict`, the bracket's model); a player listed Out sits until his
+return date (two weeks without one); the NBA Cup's knockout games, listed against "TBD" until the groups finish, are
+played at the team's average chance. The season is played out 1,000 times from this morning's records (games finished
+before today; today's slate is simulated), with random draws seeded by the date, and a team's Proj is its average
+(hover: the 10th-90th percentile wins, and the odds of finishing top 6 and top 10 in the conference, ties broken at
+random). It runs in memory once per page load and day; nothing is saved. The bracket switches between **Current
+records** (ESPN's seeds) and **Projected records** (seeded by projected wins in each conference, projected records
+shown); the switch isn't remembered across reloads.
+
 **MOUSSA** (since Nov 21; until then "BONES v2"): **M**argin-**O**nly **U**ncertainty **S**wings, **S**plit by **A**ction,
 named for our second patron saint, Moussa Diabaté. It's no longer framed as a version of BONES but as its own metric beside
 it. Settings › Player value is a **BONES | MOUSSA** toggle (BONES by default, `sb.bonesV`, `SB.impact.name()`), with the
@@ -186,7 +322,20 @@ the games where they split and who was right. **The Bone Zone** has its own **BO
 chosen metric (rows read under it with `SB.impact.withVersion`; its team-vs-margin check uses MOUSSA's own rows, which
 have no floor). Asking about upcoming games lists **both** metrics' calls for every game, the checked one brighter, and
 marks a **Split** (blue) wherever they pick different winners; the skull names the splits ("whichever is right there is
-the one that's learning something"). Below, "v1" is BONES and "v2" is MOUSSA.
+the one that's learning something"). **Best bets** (since Nov 23, NBA): above the list, each metric's one bet for the
+night: among the first day with games left to tip, the moneyline side with the highest expected return per $100 from
+the metric's own win chance (chance × profit if it wins − (1 − chance) × 100), against the first sportsbook in the game
+summary's pick center. The card shows the price, the metric's chance and the chance the price implies; a game holding a
+best bet is tagged in the list; the skull reads out the checked metric's. With no positive return anywhere it says so.
+Since Nov 25 the best bet skips edges over $50 per $100 (`EDGE_CAP`, TESTS.md T27–T28): graded at DraftKings' closing
+price, the biggest edges lost money for both metrics, and the cap did better on nights predicted only from earlier
+ones (within noise). The card names the bigger edge it left out, and BONES's card notes that BONES hasn't beaten the
+closing line this season. Each night's capped and uncapped bets per metric are tracked in this browser
+(`sb.bestBets`): saved each time the skull's forecast is read, frozen when the game tips, settled at the final, with
+the record under each card. A night counts only if the forecast was opened before its tip-off.
+This is the one place the app shows odds. Max expected return leans toward long shots wherever a metric is
+under-confident in favorites (BONES's first one was Utah at +554), so it doubles as a calibration check. Below, "v1"
+is BONES and "v2" is MOUSSA.
 
 **BONES v2** (beta, basketball; settings › **BONES v2**, off by default, `sb.bonesV`): the same play credits, but on a
 **score-only win probability** instead of ESPN's. ESPN's opens every game with team strength priced in (San Antonio
@@ -222,7 +371,10 @@ Nov 17: v1 had Brunson first (46.4) and Towns at 28.6, because ESPN's probabilit
 misses cost him +0.4 in v1; the value lands on the defensive rebound) or an offensive rebound (Towns's 6 were worth 0.6).
 v2: Towns 51.0 (7 of 9, offensive rebounds +18.3, assists +9.1) and Brunson 27.7 (makes +42.4, misses −32.4). Backtest after:
 74.3% of winners, log-loss −0.567 (best yet; second half 73.0%, −0.555).
-**Test settings** (`SB.impact.tune`, defaults 1 = unchanged): `orebShare` and `missShare`, the share of an offensive
+**Test settings** (`SB.impact.tune`, defaults 1 = unchanged): `missCost` (since Nov 24, TESTS.md T24), the share of a
+missed field goal's v2 charge its shooter takes, the rest dropped; BONES's lighter charge (about 0.55) tested worse
+beyond noise, so it stays at 1. `missRecovery` (null = off; T26), how often a miss comes back by its shot type, which sets
+the loose ball's value in place of the flat `OREB`; no version beat the flat 27%. `orebShare` and `missShare`, the share of an offensive
 rebound's and of a missed shot's v2 credit the player keeps, the rest going to his teammates on the floor (the theory:
 v2 over-credits efficient rebounding bigs and over-charges creators whose misses are the cost of running an offense).
 Grid-tested Nov 20 (148 games): every sharing setting made the game backtest's log-loss worse (misses at 75% −0.574, 50%
@@ -268,6 +420,38 @@ offense gets back, by spacers on the floor: 1: 31.7%, 2: 32.6%, 3: 32.7%, 4: 33.
 offensive rebound 1.24, 1.31, 1.22, 1.20, 1.26. The specialists (Diabaté, Kessler, Sabonis, Clingan) play nearly
 all their minutes with 3-4 spacers, so their own rates can't be split by it. Net of all five hypotheses (Nov 21, 15
 games a team): v2's offensive-rebound credit stands; revisit with a bigger sample.
+Defense beyond shot quality (Nov 22, after MEM at MIN: MOUSSA had MIN 16%, MIN won 104-95; 241 games, 42,552 shots):
+on-court defense credits the expected points of the shots allowed, not whether they fell. Minnesota holds opponents
+furthest below expected of any team, −0.086 points a shot (about 7 a game), while the quality of shots it allows ranks
+19th, so MOUSSA rates its defense as middling. Is that a skill? Split-half repeatability is weak: team defense r .08
+(odd/even games) and .17 (first/second half); a defender's on-court figure net of his team's .01 and .12 (shooters' own
+shot-making, a known skill, .08 and .19 at this sample). Gobert on the floor −0.098 a shot, but Minnesota without him is
+nearly as good (−0.026 relative, #52 of 172). Charging or crediting the five defenders part of each shot's result
+beyond its expected points (`tune.defMake`, 0 = off) brings team totals closer to point differential (MOUSSA r .843 →
+.865, .879, .887 at 25%, 50%, 100%: partly by construction) but predicts games worse: log-loss −0.578 → −0.586, −0.595,
+−0.613 (90% range of the change at 25%: −.014 to −.002), lineup test flat (.0651 → .0653, .0649, .0629). BONES the same
+direction. Not adopted: so far, opponents' shot-making against a team is mostly luck, as the design assumed.
+A team factor (hypothesis 2, Nov 22, 163 graded games): each team's running margin above or below what its MOUSSA edge
+predicted, shrunk by K games, added to the pick model at weight w. The residual doesn't repeat: first half vs second
+half r −0.31 (it reverses), odd vs even games −0.07 (BONES −0.14, +0.11). Minnesota +6.1 a game, Memphis −0.7. Every
+setting made MOUSSA worse (log-loss −0.578 → −0.580 at w .02 K8, −0.596 at w .1 K8, −0.619 at w .1 K3; second half the
+same). BONES gained a little at small weights (−0.629 → −0.624 at w .05 K8, within noise), fitting BONES's known blind
+spot for team strength. Not adopted: MOUSSA's ratings already carry what persists about a team.
+Depth (hypotheses 3-5, Nov 22; backtest options `shrinkTo`, `actualMinutes`, test-only). (3) Who a player with few minutes
+is pulled toward: in the second half of the season, players with under 100 prior minutes produced 8.8 MOUSSA per 36 and
+100-200 minutes 10.2, against a league average of 11.4, so the average is too generous. Shrinking toward 70% of it:
+MOUSSA log-loss −0.5776 → −0.5764, second half −0.5917 → −0.5881, lineup r .0651 → .0660; 50%: −0.5762; BONES the same
+direction (−0.6286 → −0.6261). Every move is the right way, but all inside noise (90% range at 70%: −.003 to +.006).
+(4) The minutes guess isn't the problem: with the minutes really played, −0.5776 → −0.5792. (5) Confidence by absences:
+with no team missing more than one rotation player MOUSSA is underconfident (68% average confidence, 78% right, 106
+games); with a team missing 3+ it's overconfident (78%, 64%, 11 games). But scales fit on the first half of the season
+made the second half no better (−0.5917 → −0.5937 to −0.6102), so the pattern isn't steady enough to act on yet.
+**Adopted (Nov 22): test 3**, for both metrics: `SHRINK_TO = 0.7` in `js/bones.js` (a player with few minutes, or none,
+starts at 70% of the league average). Every test so far, with its basis, procedure, result and re-run queue, is
+logged in **[TESTS.md](TESTS.md)**. T22 (Nov 22, `tune.offMake`, test-only): taking shooting luck away from shooters
+predicts worse at every share, so offense keeps its makes in full and defense stays on shot quality. T23 (Nov 22,
+`tune.shooterSkill`, `tune.skillDefense`, test-only): a shooter-aware expected value keeps skill with the shooter,
+but removing the rest still predicts worse; re-run mid-season.
 
 **Game floor** (on everywhere by default; settings › **Game floor** off = swing only): Impact pays for swings, so a
 game that stayed one-sided hands out little credit and the winner's dominance never shows (GSW–SA, Nov 13: 37 in total
@@ -374,8 +558,9 @@ receiving leaders at smaller weights than the NFL's, plus a **ranked team's own 
 .6 each for a top-10 team, .4 for 11–25; ESPN's team leaders before kickoff, the game's top passer, rusher and receiver
 once it starts, past 75 passing or 40 rushing/receiving yards; kept per game, never added to the shared star list), since the FBS lists are mostly Group of Five volume (Nov 15: #19 Ole Miss at Oklahoma had none; at the
 half it went from 33 to 41). Plan length is an estimated 3h30.
-NFL big nights are tiered to be as rare as the NBA's: 400 passing yards or 200 from scrimmage 1, 4 TD passes .8,
-150 from scrimmage or 3 TDs .7, 350 passing .6, 125 from scrimmage .5, 300 passing .35, 100 from scrimmage .3.
+NFL big nights are tiered to be as rare as the NBA's (recalibrated Nov 23, TESTS.md I01): 400 passing yards, 5 TD
+passes or 200 from scrimmage 1; 4 TD passes, 175 from scrimmage or a back's or receiver's 3 TDs .7; 150 from scrimmage or
+350 passing .45; a passer's 3 total TDs .4; 125 from scrimmage .3; 300 passing .2; 100 from scrimmage .15.
 Live games rank first, then upcoming, then finals. Upcoming games go by index until one is within 45 minutes of its
 start; then they go by start time, with the index breaking ties among games starting within 10 minutes of each other
 (`SOON_MIN` in `js/main.js`; Nov 15 the 7:20 PM PIT–CIN sat on top from 11:37 to noon with eight noon games about to start). Click a tile to pin it to the top. Per-sport tuning
@@ -415,7 +600,12 @@ differential's −0.616); no defense credit 67.7% / 65.4% / 70.3%. Better than m
 
 **Ask the skull** reads NBA games in the next 36 hours with BONES and nothing else. Team strength is each player's
 BONES a minute (shrunk toward league average over his first 150 minutes) times his average minutes over the team's last 10
-games. Players listed out or doubtful are removed, questionable players count at half and day-to-day at 30%. Their
+games, counting only the games he played (since Nov 25, TESTS.md T30: a game missed injured counted as a zero and
+under-projected him on his return; log-loss better for both metrics, within noise). Players listed out or doubtful are
+removed, questionable players count at half and day-to-day at 30%. Since Nov 25 each pregame report is logged as the
+picks lock (`SB.bones.injuryLog`, `sb.injuryLog`: status and usual minutes per listed player, until tip-off), and
+`SB.bones.injuryLog.grade(minUsual)` compares each status's guess with who played and how much, to set the
+day-to-day share from data once a couple of weeks are in. Their
 minutes go to whoever took them in the games they've already missed (each teammate's average without them minus with
 them; Nov 16: Jaylen Clark's minutes to Terrence Shannon Jr., projected 17, played 35), or evenly with fewer than two
 games each way; then everyone is scaled back up to 240 (42 at most). **Home court**: the NBA's long-run edge (2.5 points,

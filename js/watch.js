@@ -15,10 +15,10 @@
   const SPORT = {
     // periods: regulation periods (anything past them is overtime). lineups: the feed says who is on the floor.
     // Basketball crunch time is the NBA's own "clutch": the last 5 minutes within 5 points.
-    nba: { periods: 4, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
-    nfl: { periods: 4, marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
+    nba: { periods: 4, otSec: 300, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3 },
+    nfl: { periods: 4, otSec: 600, marginScale: 9, recordPrior: 2, clutchMargin: 8, oneScore: 8, oneScoreLabel: 'One-score game', blowout: 21, wire: 3 },
     // College: shorter game, bigger talent gaps; rankings beat early-season records.
-    ncaam: { periods: 2, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
+    ncaam: { periods: 2, otSec: 300, crunchSec: 300, crunchMargin: 5, lineups: true, marginScale: 7, recordPrior: 4, clutchMargin: 5, oneScore: 3, oneScoreLabel: 'One-possession game', blowout: 20, wire: 3, useRank: true },
     // Hockey: a goal is a big deal. One goal is close, three is about decided, four a blowout.
     // suddenDeath: overtime ends on the next goal, so it scores as "anything can happen
     // any second" (full volatility) even when nobody has scored for minutes.
@@ -131,11 +131,17 @@
     // favorite is 85% to hold on, and more so the closer the horn.
     const doubt = doubtOf(g);
     const win = cfg.crunchSec || CRUNCH.sec;
-    const left = g.reg - g.elapsed;
+    // Overtime (since Nov 24): crunch time counts down to the end of the overtime
+    // period too. Until then it only ran in regulation, so a 3-point game with 25
+    // seconds left in overtime (PHX at NO, Nov 23) rated 41 and lost the top spot
+    // to a 4-point NFL game with 10 minutes left. Sudden-death overtimes (hockey,
+    // college football) are scored apart (suddenDeath) and have no otSec.
+    const inOT = g.period > cfg.periods && cfg.otSec;
+    const left = inOT ? cfg.otSec - ((g.elapsed - g.reg) % cfg.otSec) : g.reg - g.elapsed;
     const cm = cfg.crunchMargin ?? cfg.oneScore;
     const near = margin <= cm ? 1 : clamp01(1 - (margin - cm) / (cm * CRUNCH.fade));
     const crunch =
-      g.period <= cfg.periods && left <= win && near > 0
+      (g.period <= cfg.periods || inOT) && left <= win && near > 0
         ? (CRUNCH.floor + (CRUNCH.top - CRUNCH.floor) * (1 - left / win)) * doubt * near
         : 0;
     return clamp01(Math.max(close * late, crunch));
@@ -384,19 +390,25 @@
     for (const p of g.players) {
       const offense = p.rushYd + p.recYd;
       const tds = p.passTd + p.rushTd + p.recTd;
-      // Tiers as rare as the NBA's: a 100-yard day or a 300-yard passer happens in
-      // most NFL games, so they score less than a 30-point night (Nov 15: NFL
-      // performance averaged .27 against the NBA's .08).
+      const runCatchTd = p.rushTd + p.recTd;
+      // Tiers as rare as the NBA's (TESTS.md, I01; Nov 23). Until then 3 total TDs
+      // or 150 scrimmage yards scored 0.7, about an NBA 40-point night (0.8), and
+      // happened in most games: 21% of NFL snapshots carried 0.7+ (NBA 1%), which
+      // kept decided NFL games rated 17 to the NBA's 12. A passer's third TD is
+      // routine; a back's or receiver's third is not.
       const options = [
         [p.passYd >= 400, 1, `${p.last} ${p.passYd} YDS`],
-        [p.passTd >= 4, 0.8, `${p.last} ${p.passTd} TD`],
-        [p.passYd >= 350, 0.6, `${p.last} ${p.passYd} YDS`],
-        [p.passYd >= 300, 0.35, `${p.last} ${p.passYd} YDS`],
+        [p.passTd >= 5, 1, `${p.last} ${p.passTd} TD`],
+        [p.passTd >= 4, 0.7, `${p.last} ${p.passTd} TD`],
+        [p.passYd >= 350, 0.45, `${p.last} ${p.passYd} YDS`],
+        [p.passYd >= 300, 0.2, `${p.last} ${p.passYd} YDS`],
         [offense >= 200, 1, `${p.last} ${offense} YDS`],
-        [offense >= 150, 0.7, `${p.last} ${offense} YDS`],
-        [p.passTd < 4 && tds >= 3, 0.7, `${p.last} ${tds} TD`],
-        [offense >= 125, 0.5, `${p.last} ${offense} YDS`],
-        [offense >= 100, 0.3, `${p.last} ${offense} YDS`],
+        [offense >= 175, 0.7, `${p.last} ${offense} YDS`],
+        [runCatchTd >= 3, 0.7, `${p.last} ${runCatchTd} TD`],
+        [offense >= 150, 0.45, `${p.last} ${offense} YDS`],
+        [p.passTd < 4 && tds >= 3, 0.4, `${p.last} ${tds} TD`],
+        [offense >= 125, 0.3, `${p.last} ${offense} YDS`],
+        [offense >= 100, 0.15, `${p.last} ${offense} YDS`],
       ];
       for (const [hit, score, label] of options) {
         if (hit && score > best.score) best = { score, label };

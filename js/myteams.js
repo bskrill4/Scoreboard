@@ -75,12 +75,12 @@
         <h2>My teams</h2>
         <button type="button" class="mt-x" aria-label="Close">×</button>
       </div>
-      <nav class="mt-tabs" role="tablist" aria-label="Sport"></nav>
+      <nav class="mt-tabs" role="group" aria-label="Sport"></nav>
       <div class="mt-search">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m15.5 15.5 5 5"/></svg>
         <input type="search" autocomplete="off" spellcheck="false" aria-label="Search teams">
       </div>
-      <div class="mt-list" role="list"></div>
+      <div class="mt-list" role="group" aria-label="Teams"></div>
       <div class="mt-foot"><span class="mt-count"></span><button type="button" class="mt-done">Done</button></div>
     </div>`;
     document.body.appendChild(dlg);
@@ -94,13 +94,18 @@
     });
     dlg.querySelector('.mt-tabs').addEventListener('click', (e) => {
       const b = e.target.closest('[data-league]');
-      if (b) show(b.dataset.league);
+      if (!b) return;
+      show(b.dataset.league);
+      dlg.querySelector(`.mt-tabs [data-league="${b.dataset.league}"]`)?.focus();
     });
     dlg.querySelector('.mt-list').addEventListener('click', (e) => {
       const b = e.target.closest('[data-team]');
       if (!b) return;
       const t = teams.find((x) => x.id === b.dataset.team);
-      if (t) toggle(league, t);
+      if (!t) return;
+      toggle(league, t);
+      // The list is redrawn: put keyboard focus back on the same team.
+      dlg.querySelector(`.mt-list [data-team="${CSS.escape(t.id)}"]`)?.focus();
     });
   }
 
@@ -108,7 +113,7 @@
     dlg.querySelector('.mt-tabs').innerHTML = SB.api.leagues
       .map((l) => {
         const n = count(l);
-        return `<button type="button" role="tab" data-league="${l}" aria-selected="${l === league}" class="${l === league ? 'on' : ''}">${esc(SB.league.name(l))}${n ? `<small>${n}</small>` : ''}</button>`;
+        return `<button type="button" data-league="${l}" aria-pressed="${l === league}" class="${l === league ? 'on' : ''}">${esc(SB.league.name(l))}${n ? `<small>${n}</small>` : ''}</button>`;
       })
       .join('');
     const total = all().length;
@@ -117,7 +122,7 @@
 
   function row(t) {
     const on = has(league, t.id);
-    return `<button type="button" role="listitem" class="mt-team${on ? ' on' : ''}" data-team="${esc(t.id)}" aria-pressed="${on}">
+    return `<button type="button" class="mt-team${on ? ' on' : ''}" data-team="${esc(t.id)}" aria-pressed="${on}">
       <img src="${esc(t.logo)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
       <span><b>${esc(t.name)}</b><small>${esc(t.abbr)}</small></span>
       <i aria-hidden="true">${on ? '★' : '☆'}</i>

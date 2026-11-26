@@ -78,7 +78,7 @@
     nhl: { name: 'NHL', engine: 'nhl' },
   };
   SB.league = {
-    name: (l) => INFO[l]?.name || String(l).toUpperCase(),
+    name: (l) => INFO[l]?.name || (l === 'soccer' ? 'Soccer' : String(l).toUpperCase()),
     football: (l) => !!INFO[l]?.football,
     engine: (l) => SB[INFO[l].engine],
   };

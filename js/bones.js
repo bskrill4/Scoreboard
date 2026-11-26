@@ -14,7 +14,15 @@
   const SB = (window.SB = window.SB || {});
 
   const RECENT = 10; // a team's last N games set each player's minutes
-  const SHRINK_MIN = 150; // a player's rate is pulled toward average until he has minutes
+  const SHRINK_MIN = 150; // a player's rate is pulled toward SHRINK_TO until he has minutes
+  // ...toward 70% of the league average, not all of it (since Nov 22): players with
+  // few minutes really are below average (second half of the season: under 100 prior
+  // minutes 8.8 MOUSSA per 36, 100-200 minutes 10.2, league 11.4), so a thin bench
+  // was rated like a normal one (MEM at MIN, Nov 21). Backtest: MOUSSA log-loss
+  // −0.5776 → −0.5764, lineup r .0651 → .0660; BONES −0.6286 → −0.6261 (within noise,
+  // every measure the same way; see TESTS.md, T20). A player with no minutes at all
+  // starts there too.
+  const SHRINK_TO = 0.7;
   const CAL_MIN_GAMES = 5; // both teams need this many games before a game counts in the backtest
   const CONCURRENCY = 3;
   // Home court: the NBA's long-run edge (about 2.5 points, home teams winning
@@ -172,7 +180,8 @@
       }
     }
     const avgRate = leagueMin ? leagueImp / leagueMin : 0;
-    for (const p of players.values()) p.rate = (p.imp + avgRate * SHRINK_MIN) / (p.min + SHRINK_MIN);
+    const target = avgRate * SHRINK_TO;
+    for (const p of players.values()) p.rate = (p.imp + target * SHRINK_MIN) / (p.min + SHRINK_MIN);
 
     // The logistic slope that best fits this season's games (a coarse search is plenty).
     let k = 0.05;
@@ -187,7 +196,7 @@
     }
     const called = cal.filter((c) => c.diff !== 0);
     const right = called.filter((c) => (c.diff > 0) === (c.win === 1)).length;
-    return { players, teamGames, k, avgRate, record: { right, n: called.length }, games: games.length };
+    return { players, teamGames, k, avgRate, target, record: { right, n: called.length }, games: games.length };
   }
 
   // Projected minutes tonight. history: the team's games this season, oldest
@@ -200,14 +209,26 @@
   // the starters). With fewer than 2 games each way, they're spread evenly as
   // before. Then everyone is scaled to 240, capped at 42 a man.
   // replacement: false spreads an injured player's minutes evenly (for comparisons).
+  // Minutes are a player's average over only the recent games he played (since
+  // Nov 25, TESTS.md T30), so a game missed injured doesn't count as a zero on his
+  // return: log-loss better for both metrics, in both halves (within noise).
+  // PLAYED_ONLY is the share of the recent games he must have played for that
+  // average to be used (0: any); null counts missed games as zeros (the old way,
+  // backtest opts.playedOnly: null).
+  const PLAYED_ONLY_DEFAULT = 0;
+  let PLAYED_ONLY = PLAYED_ONLY_DEFAULT;
   function projectMinutes(history, ids, out, replacement = true, recentN = RECENT) {
     const recent = history.slice(-recentN);
     if (!recent.length) return null;
     const mean = (games, id) => (games.length ? games.reduce((s, g) => s + (g.get(id) || 0), 0) / games.length : 0);
+    const meanPlayed = (games, id) => {
+      const on = games.filter((g) => (g.get(id) || 0) > 0);
+      return on.length && on.length >= PLAYED_ONLY * games.length ? on.reduce((s, g) => s + g.get(id), 0) / on.length : mean(games, id);
+    };
     const proj = new Map();
     const lost = [];
     for (const id of ids) {
-      const avg = mean(recent, id);
+      const avg = PLAYED_ONLY != null ? meanPlayed(recent, id) : mean(recent, id);
       if (avg <= 0) continue;
       const share = out.get(id) || 0;
       proj.set(id, avg * (1 - share));
@@ -246,10 +267,15 @@
     );
     if (!proj) return null;
     const recent = games.slice(-RECENT);
+    // His usual minutes, over the recent games he played (as projectMinutes counts them).
+    const usual = (id) => {
+      const on = recent.filter((g) => (g.min.get(id) || 0) > 0);
+      return PLAYED_ONLY != null && on.length ? on.reduce((s, g) => s + g.min.get(id), 0) / on.length : recent.reduce((s, g) => s + (g.min.get(id) || 0), 0) / recent.length;
+    };
     return [...proj].map(([id, min]) => ({
       id,
       p: m.players.get(id),
-      avg: recent.reduce((s, g) => s + (g.min.get(id) || 0), 0) / recent.length,
+      avg: usual(id),
       min,
     }));
   }
@@ -307,7 +333,7 @@
 
   // ---------- the honest backtest ----------
   // Every game this season, predicted from what was known before it: each
-  // player's BONES a minute to that date (pulled toward the league average, as
+  // player's BONES a minute to that date (pulled toward 70% of the league average, as
   // in buildModel), times his minutes over his team's previous RECENT games.
   // Who sat that night is taken as known (players who logged no minutes are
   // left out), standing in for the injury report the live picks read.
@@ -323,6 +349,14 @@
   // (ROTATION_MIN+ minutes a game lately) each side was missing.
   const ROTATION_MIN = 15;
   function backtest(games, opts = {}) {
+    PLAYED_ONLY = 'playedOnly' in opts ? opts.playedOnly : PLAYED_ONLY_DEFAULT;
+    try {
+      return backtestRun(games, opts);
+    } finally {
+      PLAYED_ONLY = PLAYED_ONLY_DEFAULT;
+    }
+  }
+  function backtestRun(games, opts = {}) {
     const SHRINK = opts.shrink ?? SHRINK_MIN;
     const RECENT_N = opts.recent ?? RECENT;
     const players = new Map(); // id -> { imp, min, team }
@@ -333,19 +367,40 @@
     const rows = []; // { hl (home edge to date), b, p, win } home side
     const homeRec = { w: 0, n: 0 }; // the season's home record so far
     const stintRows = []; // { edge, dur (min), pd }
+    let decayedAt = null;
+    const teamTot = { sum: 0, n: 0 }; // every team's game total so far (opts.teamDefense)
     for (const g of games) {
+      // Test setting (opts.halfLife, days; off by default): older games count less,
+      // each player's BONES and minutes (and the league's) halving every halfLife
+      // days, so a rating leans on recent form (TESTS.md T29).
+      if (opts.halfLife && decayedAt != null && g.t > decayedAt) {
+        const f = Math.pow(0.5, (g.t - decayedAt) / 864e5 / opts.halfLife);
+        for (const p of players.values()) {
+          p.imp *= f;
+          p.min *= f;
+        }
+        leagueImp *= f;
+        leagueMin *= f;
+      }
+      decayedAt = g.t;
       const ids = g.home && g.away ? [g.home, g.away] : Object.keys(g.score);
       const [home, away] = ids;
       const avg = leagueMin ? leagueImp / leagueMin : 0;
+      // What a player with few minutes is pulled toward: SHRINK_TO of the league
+      // average (opts.shrinkTo(avg) overrides it, for tests).
+      const target = opts.shrinkTo ? opts.shrinkTo(avg) : avg * SHRINK_TO;
       const rate = (id) => {
         const p = players.get(id);
-        return p ? (p.imp + avg * SHRINK) / (p.min + SHRINK) : avg;
+        return p ? (p.imp + target * SHRINK) / (p.min + SHRINK) : target;
       };
       const played = new Set();
       for (const [pid, r] of Object.entries(g.rows)) if (r[3] && r[3][1] > 0) played.add(pid);
       const strength = (team) => {
         const history = teamGames.get(team) || [];
         if (history.length < CAL_MIN_GAMES) return null;
+        // Testing: opts.actualMinutes weights each player by the minutes he really
+        // played that night (the most a perfect minutes guess could do).
+        if (opts.actualMinutes) return Object.entries(g.rows).reduce((s, [pid, r]) => s + (r[3] && String(r[3][0]) === team ? rate(pid) * (r[3][1] || 0) : 0), 0);
         const ids = [...players].filter(([, p]) => p.team === team).map(([id]) => id);
         const out = new Map(ids.filter((id) => !played.has(id)).map((id) => [id, 1])); // who sat: as if on the injury report
         const proj = projectMinutes(history, ids, out, opts.replacement !== false, RECENT_N);
@@ -379,12 +434,39 @@
         for (const [h, a, dur, d] of L.st) stintRows.push({ edge: h.reduce((s, i) => s + per36(i), 0) - a.reduce((s, i) => s + per36(i), 0), dur: dur / 60, pd: d });
       }
       // Now let the game count.
+      // Test setting (opts.teamDefense, a share; off by default, TESTS.md T32): each
+      // team's players also get that share of how far the opponents' total fell
+      // below the league's average team total so far, split by minutes, so a
+      // defense that keeps opponents' credit down (Boston) shows in its players.
+      const teamDef = new Map();
+      if (opts.teamDefense && ids.length === 2) {
+        const tot = new Map(ids.map((id) => [id, 0]));
+        const tmin = new Map(ids.map((id) => [id, 0]));
+        for (const r of Object.values(g.rows)) {
+          if (!r || !r[3]) continue;
+          const tid = String(r[3][0]);
+          if (!tot.has(tid)) continue;
+          tot.set(tid, tot.get(tid) + SB.impact.rowImpact(r) * 100);
+          tmin.set(tid, tmin.get(tid) + (r[3][1] || 0));
+        }
+        if (teamTot.n) {
+          const avg = teamTot.sum / teamTot.n;
+          for (const id of ids) {
+            const opp = ids.find((x) => x !== id);
+            if (tmin.get(id) > 0) teamDef.set(id, (opts.teamDefense * (avg - tot.get(opp))) / tmin.get(id));
+          }
+        }
+        for (const id of ids) {
+          teamTot.sum += tot.get(id);
+          teamTot.n++;
+        }
+      }
       const mins = new Map(ids.map((id) => [id, new Map()]));
       for (const [pid, r] of Object.entries(g.rows)) {
         if (!r[3]) continue;
         const tid = String(r[3][0]);
-        const imp = SB.impact.rowImpact(r) * 100;
         const min = r[3][1] || 0;
+        const imp = SB.impact.rowImpact(r) * 100 + (teamDef.get(tid) || 0) * min;
         const p = players.get(pid) || { imp: 0, min: 0, team: tid };
         p.imp += imp;
         p.min += min;
@@ -582,16 +664,43 @@
     return { ids, st };
   }
 
+  // A tape's team shooting, compact for the per-game cache (Standings, js/standings.js):
+  // { ids: [home, away], s: [[fga, xp (expected points of those shots, js/xpts.js),
+  // fgPts, fta, ftPts, tov, oreb] for each] }. Not keyed by team id: cache readers
+  // take any key with an entry at [3] for a player row, and team 3 exists (New
+  // Orleans). A shot without court coordinates counts at the league's average shot.
+  function teamShots(tape) {
+    const out = { [tape.homeId]: [0, 0, 0, 0, 0, 0, 0], [tape.awayId]: [0, 0, 0, 0, 0, 0, 0] };
+    const avg = SB.xpts?.has('nba') ? SB.xpts.avg('nba') : 1.05;
+    for (const p of tape.plays) {
+      const tid = (p.p0 && tape.roster.get(p.p0)?.teamId) || p.teamId;
+      const t = out[tid];
+      if (!t || p.isSub) continue;
+      const text = `${p.type} ${p.text}`;
+      if (p.fga) {
+        t[0]++;
+        t[1] += p.shot && SB.xpts?.has('nba') ? SB.xpts.xp(p.shot, 'nba') : avg;
+        if (p.scoring) t[2] += p.pts || 0;
+      } else if (/free throw/i.test(p.text) && /\b(makes|misses)\b/.test(p.text)) {
+        t[3]++;
+        if (p.scoring) t[4] += p.pts || 1;
+      } else if (/turnover/i.test(text)) t[5]++;
+      else if (p.isRebound && /offensive/i.test(text)) t[6]++;
+    }
+    for (const t of Object.values(out)) t[1] = +t[1].toFixed(2);
+    return { ids: [tape.homeId, tape.awayId], s: [out[tape.homeId], out[tape.awayId]] };
+  }
+
   // ---------- lineup edge ----------
   // Two fives on the floor, each player's season BONES per 36 added up (a
-  // player with no season yet counts at the league average). edge > 0: home's five.
+  // player with no season yet counts at 70% of the league average). edge > 0: home's five.
   // per48: the edge as the points per 48 minutes it has been worth, from the
   // backtest's fit of every stint this season against the score while those
   // fives were on the floor (Nov 18: 0.83 points per 48 for each point of edge,
   // so a 10-point edge is about +8 per 48, under 2 points over 10 minutes).
   const PER48_FALLBACK = 0.8;
   function lineupEdge(m, homeIds, awayIds) {
-    const per36 = (id) => (m.players.get(String(id))?.rate ?? m.avgRate) * 36;
+    const per36 = (id) => (m.players.get(String(id))?.rate ?? m.target ?? m.avgRate) * 36;
     const sum = (ids) => ids.reduce((s, id) => s + per36(id), 0);
     const home = sum(homeIds);
     const away = sum(awayIds);
@@ -661,6 +770,67 @@
     return store;
   }
   const stores = { 1: makeStore(PICKS_KEYS[1]), 2: makeStore(PICKS_KEYS[2]) };
+
+  // ---------- the injury-report log (since Nov 25, TESTS.md T30) ----------
+  // The pregame report as the picks lock: each listed player's status and his usual
+  // minutes, updated until tip-off, kept in this browser ('sb.injuryLog') so the
+  // day-to-day guess (OUT_SHARE) can be graded against who played. Past reports
+  // can't be recovered (summaries fetched later carry the current list).
+  // { [eventId]: { t, players: { [id]: { name, team, status, usual } } } }
+  const INJ_KEY = 'sb.injuryLog';
+  let injLog = {};
+  try {
+    injLog = JSON.parse(localStorage.getItem(INJ_KEY) || '{}') || {};
+  } catch (e) {}
+  let injTimer = null;
+  const injuryLog = {
+    record(eventId, t, inj, m, teamIds) {
+      if (!inj || !(t > Date.now())) return;
+      const players = {};
+      for (const team of teamIds) {
+        const rot = m ? rotation(m, String(team), new Map()) : null;
+        const usual = new Map((rot || []).map((x) => [x.id, x.avg]));
+        for (const x of inj.byTeam[String(team)] || []) if (x.id) players[x.id] = { name: x.name, team: String(team), status: x.status, usual: +(usual.get(x.id) || 0).toFixed(1) };
+      }
+      injLog[eventId] = { t, players };
+      clearTimeout(injTimer);
+      injTimer = setTimeout(() => {
+        const cutoff = Date.now() - KEEP_DAYS * 864e5;
+        for (const [id, e] of Object.entries(injLog)) if (e.t < cutoff) delete injLog[id];
+        try {
+          localStorage.setItem(INJ_KEY, JSON.stringify(injLog));
+        } catch (e) {}
+      }, 1000);
+    },
+    all: () => injLog,
+    // For the morning review: by status, how often a listed player played and his
+    // minutes against his usual, from the season's final rows. minUsual: only
+    // players who usually play that much (stars and starters).
+    async grade(minUsual = 0) {
+      const games = await seasonGames();
+      const rows = new Map(games.filter((g) => g.rows).map((g) => [String(g.id), g.rows]));
+      const by = {};
+      for (const [id, e] of Object.entries(injLog)) {
+        const r = rows.get(String(id));
+        if (!r) continue;
+        for (const [pid, x] of Object.entries(e.players)) {
+          if (x.usual < minUsual) continue;
+          const min = Array.isArray(r[pid]) && r[pid][3] ? r[pid][3][1] || 0 : 0;
+          const o = (by[x.status] = by[x.status] || { n: 0, played: 0, min: 0, usual: 0, guess: OUT_SHARE[x.status.toLowerCase()] ?? 0 });
+          o.n++;
+          if (min > 0) o.played++;
+          o.min += min;
+          o.usual += x.usual;
+        }
+      }
+      for (const o of Object.values(by)) {
+        o.playedShare = o.n ? +(o.played / o.n).toFixed(3) : null;
+        // The share of usual minutes lost: what OUT_SHARE is guessing.
+        o.lostShare = o.usual ? +(1 - o.min / o.usual).toFixed(3) : null;
+      }
+      return by;
+    },
+  };
   // picksOf(v): one metric's store. picks: the toggle's metric for reading;
   // settling goes to both (a final settles every pick on the game).
   const picksOf = (v) => stores[v === 2 ? 2 : 1];
@@ -675,5 +845,5 @@
     settleOld: () => Promise.all([stores[1].settleOld(), stores[2].settleOld()]),
   };
 
-  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, models, picksOf, buildModel, backtest, stints, teamStrength, predict, topPer36, injuries, lineupEdge, picks: pickStore, RECENT };
+  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, models, picksOf, buildModel, backtest, stints, teamShots, teamStrength, predict, topPer36, injuries, injuryLog, lineupEdge, picks: pickStore, RECENT };
 })();

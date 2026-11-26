@@ -178,9 +178,10 @@
     const other = g[side === 'home' ? 'away' : 'home'];
     const showScore = g.state === 'live' || g.state === 'final';
     const cls = showScore && g.state === 'final' && t.score < other.score ? 'lost' : '';
+    const ta = teamAttrs(g, t);
     return `<div class="team ${cls}">
-      <img class="logo" src="${esc(t.logo)}" alt="">
-      <span class="abbr">${t.rank ? `<small class="rk">${t.rank}</small>` : ''}${esc(t.abbr)}${g.state === 'live' && g.poss === side ? '<i class="poss" title="Has the ball"></i>' : ''}</span>
+      ${tlogo(g, t, 'logo')}
+      <span class="abbr${ta ? ' tlink' : ''}"${ta}>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}${esc(t.abbr)}${g.state === 'live' && g.poss === side ? '<i class="poss" title="Has the ball"></i>' : ''}</span>
       <span class="rec">${esc(t.record)}</span>
       <span class="score" data-side="${side}">${showScore ? t.score : ''}</span>
     </div>`;
@@ -193,15 +194,17 @@
     }
     const top = g.players.slice().sort((a, b) => val(b) - val(a))[0];
     if (!top) return `<div class="g-foot dim">${g.noPbp ? 'No play-by-play from ESPN' : '&nbsp;'}</div>`;
+    const topTeam = top.teamId === g.home.id ? g.home : g.away;
     return `<div class="g-foot">
       ${headshot(top, 'sm')}
-      <span class="who">${esc(top.last)}</span>
+      <span class="who tlink" ${playerAttrs(g, top, topTeam)}>${esc(top.last)}</span>
       <span class="line">${esc(shortStat(top))}</span>
       <span class="wpa ${val(top) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(top))}<small>${metricShort()}</small></span>
     </div>`;
   }
 
   function tileHTML(g) {
+    if (g.soccer) return SB.soccer.boardTileHTML(g); // score-only: its own card (js/soccer.js)
     const wpLabels =
       g.wp == null || g.state === 'final'
         ? ''
@@ -359,6 +362,12 @@
     if (lastPaint && !morphing) paint(lastPaint[0], lastPaint[1], false);
   }
 
+  // A team's drawer (js/drawers.js): every league, soccer by its competition.
+  const teamAttrs = (g, t) => (SB.drawers ? SB.drawers.team(g.soccer ? 'soccer' : g.league, t, g.comp) : ''); // the soccer top card's league is the competition's label
+  const tlogo = (g, t, cls = '') => {
+    const a = teamAttrs(g, t);
+    return `<img${cls || a ? ` class="${[cls, a ? 'tlink' : ''].filter(Boolean).join(' ')}"` : ''} src="${esc(t.logo)}" alt=""${a}>`;
+  };
   // What a click needs to open the player drawer (js/player.js).
   const playerAttrs = (g, p, team) =>
     `data-pid="${esc(p.id)}" data-team="${esc(team.id)}" data-league="${esc(g.league)}" data-name="${esc(p.name)}" data-shot="${esc(
@@ -417,7 +426,7 @@
         .slice(0, 5);
       if (!five.length) return '';
       return `<div class="five">
-        <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+        <div class="five-h tlink"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
         ${five
           .map(
             (p) => `<div class="crow${isFocus(g, p)}" ${playerAttrs(g, p, t)}>
@@ -469,7 +478,7 @@
     };
     return `<div class="ice">
       ${banner}
-      <div class="ice-head"><span><img src="${esc(g.away.logo)}" alt="">${esc(g.away.abbr)}</span><span>${esc(g.home.abbr)}<img src="${esc(g.home.logo)}" alt=""></span></div>
+      <div class="ice-head"><span class="tlink"${teamAttrs(g, g.away)}><img src="${esc(g.away.logo)}" alt="">${esc(g.away.abbr)}</span><span class="tlink"${teamAttrs(g, g.home)}>${esc(g.home.abbr)}<img src="${esc(g.home.logo)}" alt=""></span></div>
       ${rows
         .map(
           ([label, a, h, av, hv]) => `<div class="ice-row">
@@ -547,7 +556,7 @@
     const sub = d.result ? `${playsText} · ${d.result}` : playsText;
     const cls = (v) => (v >= 0 ? 'pos' : 'neg');
     return `<div class="dstats">
-      <div class="dcell dteam">
+      <div class="dcell dteam tlink"${teamAttrs(g, team)}>
         <img src="${esc(team.logo)}" alt="">
         <span><small>${heading}</small><b>${esc(team.abbr)}</b><em>${esc(sub)}</em></span>
       </div>
@@ -599,21 +608,26 @@
   function swingsHTML(g) {
     const fp = focusedPlayer(g);
     if (fp) {
+      // A hovered player's biggest plays take the game's rows exactly: the same
+      // number of single-line rows and no header of their own (his name is in the
+      // chart heading). Any change in height here moves the leaders under a still
+      // pointer, which ends the hover, which moves them back: the card shook.
+      const slots = metric === 'imp' && g.impSwings?.length ? Math.min(3, g.impSwings.length) : g.swings.length;
+      if (!slots) return '';
       const key = 'imp';
       const top = (fp.moments || [])
         .filter((m) => m.play && m[key])
         .sort((a, b) => Math.abs(b[key]) - Math.abs(a[key]))
-        .slice(0, 3);
-      const head = `<div class="swings-h">${esc(fp.last || fp.name)}'s biggest plays <small>by ${N()}</small></div>`;
-      if (!top.length) return `<div class="swings">${head}<div class="swing"><span>No credited plays yet</span></div></div>`;
-      return `<div class="swings">${head}${top
-        .map(
-          (m) => `<div class="swing ${m[key] >= 0 ? 'pos' : 'neg'}">
+        .slice(0, slots);
+      const rows = top.map(
+        (m) => `<div class="swing ${m[key] >= 0 ? 'pos' : 'neg'}">
             <b>${fmtWPA(m[key])} ${N()}</b>
             <span>${esc(playWhen(g, m.play))} · <em class="sc">${esc(scoreAt(g, m.play))}</em> · ${esc(m.play.text)}</span>
           </div>`
-        )
-        .join('')}</div>`;
+      );
+      if (!rows.length) rows.push(`<div class="swing"><b>&nbsp;</b><span>No credited plays yet for ${esc(fp.last || fp.name)}</span></div>`);
+      while (rows.length < slots) rows.push(`<div class="swing" aria-hidden="true"><b>&nbsp;</b><span>&nbsp;</span></div>`);
+      return `<div class="swings">${rows.join('')}</div>`;
     }
     if (metric === 'imp' && g.impSwings?.length) {
       return `<div class="swings">${g.impSwings
@@ -693,16 +707,18 @@
   function heroTeam(g, side, hide) {
     const t = g[side];
     const showScore = g.state === 'live' || g.state === 'final';
+    // The logo and name open the team's drawer (NBA: js/team.js; every other league: js/drawers.js).
+    const tid = teamAttrs(g, t);
     if (hide) {
       return `<div class="h-team ${side}">
-      <img class="logo" src="${esc(t.logo)}" alt="">
-      <div class="h-name"><b>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}</small></div>
+      <img class="logo${tid ? ' tlink' : ''}" src="${esc(t.logo)}" alt=""${tid}>
+      <div class="h-name"><b${tid ? ` class="tlink"${tid}` : ''}>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}</small></div>
       <span class="score hidden" data-side="${side}" style="--tc:${t.css}" aria-label="Score hidden">–</span>
     </div>`;
     }
     return `<div class="h-team ${side}">
-      <img class="logo" src="${esc(t.logo)}" alt="">
-      <div class="h-name"><b>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}${
+      <img class="logo${tid ? ' tlink' : ''}" src="${esc(t.logo)}" alt=""${tid}>
+      <div class="h-name"><b${tid ? ` class="tlink"${tid}` : ''}>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}<span class="full">${esc(t.name)}</span><span class="short">${esc(t.abbr)}</span></b><small>${esc(t.record)}${
       g.wp != null && g.state === 'live' ? ` · ${pct(side === 'home' ? g.wp : 1 - g.wp)} to win` : ''
     }</small></div>
       <span class="score" data-side="${side}" style="--tc:${t.css}">${showScore ? t.score : ''}</span>
@@ -746,7 +762,7 @@
     const pick = bonesPick(g);
     const conf = Math.max(b.pHome, 1 - b.pHome);
     const call = conf < 0.53 ? 'Toss-up' : conf >= 0.62 ? 'Strong lean' : 'Lean';
-    const side = (t, p) => `<div class="bp-team${t === pick ? ' pick' : ''}"><img src="${esc(t.logo)}" alt=""><b>${pct(p)}</b><small>${esc(t.abbr)}</small></div>`;
+    const side = (t, p) => `<div class="bp-team tlink${t === pick ? ' pick' : ''}"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt=""><b>${pct(p)}</b><small>${esc(t.abbr)}</small></div>`;
     return `<div class="bones-pred">
       <div class="bp-row">${side(g.away, 1 - b.pHome)}
         <div class="bp-call"><small>${N()} picks</small><b>${conf < 0.53 ? 'Toss-up' : esc(pick.name)}</b><small>${call === 'Toss-up' ? 'too close to call' : `${call.toLowerCase()} · ${pct(conf)}`}</small></div>
@@ -761,7 +777,7 @@
     const side = (t, list) =>
       list.length
         ? `<div class="five">
-          <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+          <div class="five-h tlink"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
           ${list
             .map((p) => {
               const pl = { id: p.id, name: p.name, headshot: `https://a.espncdn.com/i/headshots/nba/players/full/${p.id}.png` };
@@ -785,9 +801,9 @@
     const side = (t, list) => {
       const out = list.filter((x) => x.out);
       const gtd = list.filter((x) => !x.out);
-      const names = (xs, tag) => xs.map((x) => `<span class="inj-name">${esc(x.name)}${tag ? ` <small>${esc(tag(x))}</small>` : ''}</span>`).join('');
+      const names = (xs, tag) => xs.map((x) => `<span class="inj-name${x.id ? ' tlink' : ''}"${x.id ? ` ${playerAttrs(g, { id: x.id, name: x.name, headshot: `https://a.espncdn.com/i/headshots/nba/players/full/${x.id}.png` }, t)}` : ''}>${esc(x.name)}${tag ? ` <small>${esc(tag(x))}</small>` : ''}</span>`).join('');
       return `<div class="inj-team">
-        <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+        <div class="five-h tlink"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
         ${out.length ? `<div class="inj-row"><span class="inj-tag out">Out</span><span class="inj-list">${names(out, (x) => (/doubtful/i.test(x.status) ? 'doubtful' : ''))}</span></div>` : ''}
         ${gtd.length ? `<div class="inj-row"><span class="inj-tag gtd">GTD</span><span class="inj-list">${names(gtd, (x) => x.status.toLowerCase())}</span></div>` : ''}
         ${!list.length ? `<div class="inj-row"><span class="inj-list dim">Nobody listed</span></div>` : ''}
@@ -829,7 +845,7 @@
   // Focus mode (js/focus.js): the top game alone in the middle, panels around
   // it. NBA, once the game has started. The same button leaves it.
   function focusBtn(g) {
-    if (g.league !== 'nba' || g.state === 'pre' || !SB.focus) return '';
+    if (g.state === 'pre' || !SB.focus) return ''; // every sport on the board (js/focus.js picks its panels)
     const on = SB.focus.id() === g.id;
     return `<button type="button" class="focus-btn${on ? ' on' : ''}" data-action="focus" aria-pressed="${on}" title="${
       on ? 'Back to the full board' : 'This game alone, with more on it around it'
@@ -842,6 +858,7 @@
     const pin = opts.pinned
       ? `<button class="pin on" data-action="unpin" title="Go back to the automatic top game">Pinned · release</button>`
       : `<span class="pin">Top game</span>`;
+    if (g.soccer) return soccerHeroHTML(g, pin);
     const hide = g.state !== 'pre' && blurred.has(g.id);
     const mid =
       g.state === 'pre'
@@ -894,6 +911,44 @@
           ${partsHTML(g)}
         </section>
         ${middle}
+      </div>`;
+  }
+
+  // Soccer's top card (since Nov 24): the same frame as every other sport's (the
+  // top row, the big score, the bar), with soccer inside. Since Nov 25 the bar is
+  // the live win chances and the left column is the win probability chart over
+  // the timeline (js/soccerwp.js); the pitch switches to a shot map. Before: the pitch
+  // (wide, where the win probability and field go) and the top players with the
+  // substitutions under them (js/soccer.js). Home on the left, as soccer writes it
+  // and as the pitch draws it. (A match timeline column was tried and dropped for
+  // the bigger pitch; SB.soccer.timelineHTML still exists.)
+  function soccerHeroHTML(g, pin) {
+    const S = SB.soccer;
+    const comp = (S.LEAGUES.find((l) => l.id === g.comp) || {}).short || 'Soccer';
+    const team = (t) => ({ ...t, name: t.short || t.name, record: `${t.record}${t.form ? ` · form ${t.form}` : ''}` });
+    // The left slot is styled as the "away" side and the right as "home": home goes in the left one.
+    const view = { ...g, league: comp, away: team(g.home), home: team(g.away), wp: null };
+    const mid =
+      g.state === 'pre'
+        ? `<b>${esc(new Date(g.start).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</b><small>${S.lastHTML(g)}</small>`
+        : `<b>${esc(g.statusText)}</b><small class="lastplay">${S.lastHTML(g)}</small>`;
+    return `
+      <div class="g-top">
+        ${statusPill(view)}
+        ${pin}
+        <span class="chips">${chips(g.reasons)}</span>
+        <span class="widx" title="Watch index (soccer's own: closeness and the minute, then team quality)"><small>Watch index</small>${g.index}</span>
+      </div>
+      <div class="h-score">
+        ${heroTeam(view, 'away', false)}
+        <div class="h-mid">${mid}</div>
+        ${heroTeam(view, 'home', false)}
+      </div>
+      <div class="g-wp">${S.barHTML(g)}</div>
+      <div class="h-body ms-body">
+        <section class="h-col ms-evcol"><h3 class="wp-h">Win probability <small class="wp-key">home · draw · away</small></h3>${S.wpChartHTML(g)}${S.eventsHTML(g)}</section>
+        <section class="h-col ms-pitchcol">${S.pitchColHTML(g)}</section>
+        <section class="h-col">${S.leadersHeadHTML()}<div class="leaders">${S.leadersHTML(g)}</div>${S.subsHTML(g)}</section>
       </div>`;
   }
 
@@ -1023,6 +1078,21 @@
     );
   }
 
+  // A view transition that can't capture the new page (a tab in the background,
+  // or throttled) never finishes, and the board waits on it: every later update
+  // queued behind it and the board froze (Nov 24, after the drawer reflow). The
+  // longest one runs well under a second, so skip any still going after 2.5s;
+  // skipping still applies the update, it just drops the animation.
+  function guard(t) {
+    const timer = setTimeout(() => {
+      try {
+        t.skipTransition();
+      } catch (e) {}
+    }, 2500);
+    t.finished.catch(() => {}).then(() => clearTimeout(timer));
+    return t;
+  }
+
   function morph(models, opts) {
     morphing = true;
     // The two cards trading the top spot get their own choreography in the CSS.
@@ -1031,10 +1101,10 @@
     const roles = out === inc ? [] : [[out, 'hero-out'], [inc, 'hero-in']].filter(([el]) => el);
     for (const [el, name] of roles) el.style.viewTransitionName = name;
 
-    const t = document.startViewTransition(() => {
+    const t = guard(document.startViewTransition(() => {
       paint(models, opts, false);
       if (opts.toTop) window.scrollTo(0, 0);
-    });
+    }));
     t.ready.catch(() => {}); // a cancelled transition (tab hidden, resize) is fine
     t.finished.catch(() => {}).then(() => {
       for (const [el] of roles) el.style.viewTransitionName = `g${el.dataset.id}`;
@@ -1045,6 +1115,35 @@
         render(m, o);
       }
     });
+  }
+
+  // The page changes width (a drawer opened or closed, js/player.js): one
+  // view transition, so the cards resize and move into the space that's left
+  // while the drawers slide (they're drawn live, above the cards: the
+  // ::view-transition-group(*.drawer) rules). A board morph already running
+  // takes the change live instead of being cut short. Returns a promise that
+  // settles when it's done.
+  function reflow(fn) {
+    if (morphing || !canMorph()) {
+      fn();
+      return Promise.resolve();
+    }
+    morphing = true;
+    const root = document.documentElement;
+    root.classList.add('vt-reflow');
+    const t = guard(document.startViewTransition(fn));
+    t.ready.catch(() => {});
+    return t.finished
+      .catch(() => {})
+      .then(() => {
+        root.classList.remove('vt-reflow');
+        morphing = false;
+        if (pending && board) {
+          const [m, o] = pending;
+          pending = null;
+          render(m, o);
+        }
+      });
   }
 
   // Cards glide to their new slots; used where morphing isn't available.
@@ -1321,19 +1420,28 @@
           )}</div></div>`
         : '';
     const relCol = playersRank === 'rel' ? ' class="sorted"' : '';
+    // Soccer rows (js/soccer.js playersOf) name the competition and the soccer metric, and open a soccer player's drawer (js/drawers.js).
+    const lgName = (g) => (g.soccer ? `${(SB.soccer.LEAGUES.find((l) => l.id === g.comp) || {}).short || 'Soccer'} · ${SB.soccer.METRIC_NAME[SB.soccer.metricOn()]}` : SB.league.name(g.league));
+    const attrs = (g, p, team) => (g.soccer ? (SB.drawers ? SB.drawers.soccerPlayer(g.id, p.id) : '') : playerAttrs(g, p, team));
+    // Soccer: the shirt number, with the headshot over it when ESPN has one (about a third of players).
+    const face = (p, team, cls = '') =>
+      p.soccer
+        ? `<span class="shot ${cls} ms-num ms-face-r" style="--c:${team.css};--t:${p.ink || '#fff'}">${esc(p.jersey)}${p.headshot ? `<img src="${esc(p.headshot)}" alt="" loading="lazy" onerror="SB.soccer.noHead(this)">` : ''}</span>`
+        : headshot(p, cls);
+    const soccerSw = SB.soccer && rows.some((r) => r.g.soccer) ? `<div class="ss-controls ms-rank-sw"><span>Soccer</span>${SB.soccer.metricSwitchHTML()}</div>` : '';
     const top = rows.slice(0, 60);
     const crown = top[0];
     const crownHTML = crown
-      ? `<div class="potd" style="--tc:${crown.team.css}" ${playerAttrs(crown.g, crown.p, crown.team)}>
+      ? `<div class="potd" style="--tc:${crown.team.css}" ${attrs(crown.g, crown.p, crown.team)}>
           <span class="potd-k">Player of the Day${soFar}</span>
-          ${headshot(crown.p)}
-          <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${SB.league.name(crown.g.league)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
+          ${face(crown.p, crown.team)}
+          <div class="potd-who"><b>${esc(crown.p.name)}</b><small>${lgName(crown.g)} · ${esc(crown.team.abbr)} · ${gameLabel(crown.g)}</small><small>${statLine(crown.p)}</small></div>
           <div class="potd-v"><b>${fmtWPA(playersRank === 'rel' ? rel(crown) : val(crown.p))}</b><small>${metricShort()}${playersRank === 'rel' ? ' · sport-adjusted' : ''}</small></div>
         </div>`
       : '';
-    const rowHTML = ({ p, g, team }, i) => `<tr ${playerAttrs(g, p, team)}>
+    const rowHTML = ({ p, g, team }, i) => `<tr ${attrs(g, p, team)}>
           <td class="rk">${i + 1}</td>
-          <td class="pl">${headshot(p, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${SB.league.name(g.league)} · ${esc(team.abbr)}</small></span></td>
+          <td class="pl">${face(p, team, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${lgName(g)} · ${esc(team.abbr)}</small></span></td>
           <td class="gm">${gameLabel(g)}</td>
           <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
           <td${relCol}><span class="${rel({ p, g }) >= 0 ? 'pos' : 'neg'}">${fmtWPA(rel({ p, g }))}</span></td>
@@ -1350,7 +1458,7 @@
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
-    return `${filters}${crownHTML}${
+    return `${filters}${soccerSw}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
             <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
@@ -1400,7 +1508,7 @@
     const crownHTML = crown
       ? `<div class="potd potd-play" style="--tc:${crown.team.css}" ${gameAttrs(crown.g)}>
           <span class="potd-k">${WHEN[playsWhen].crown}${soFar}</span>
-          <img class="potd-logo" src="${esc(crown.team.logo)}" alt="">
+          ${tlogo(crown.g, crown.team, 'potd-logo')}
           <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
             <small>${SB.league.name(crown.g.league)} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
             <div class="by-list">${by(crown.g, crown.s)}</div></div>
@@ -1411,7 +1519,7 @@
       .map(
         ({ g, s, team, imp }, i) => `<tr class="play-row" ${gameAttrs(g)}>
           <td class="rk">${i + 1}</td>
-          <td class="pt"><span class="pt-team" style="--tc:${team.css}"><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${SB.league.name(g.league)} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
+          <td class="pt"><span class="pt-team tlink" style="--tc:${team.css}"${teamAttrs(g, team)}><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${SB.league.name(g.league)} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
           <td class="by-cell"><div class="by-list">${by(g, s)}</div></td>
           <td class="sc">${esc(scoreAt(g, s.play))}</td>
           <td${col('imp')}><span class="pos">${fmtWPA(imp)}</span></td>
@@ -1436,5 +1544,5 @@
     for (const id of lineupMemo.keys()) if (!keep.has(id)) lineupMemo.delete(id);
   }
 
-  SB.ui = { forget, isBlurred: (id) => blurred.has(id), statLine, headshot, fmtWPA, sportAdjusted, chartHTML, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
+  SB.ui = { reflow, forget, isBlurred: (id) => blurred.has(id), statLine, headshot, fmtWPA, sportAdjusted, chartHTML, setPlayersFilter, render, renderPlayers, rankTabs, teamColors, esc, toggleBlur, setMetric, getMetric: () => metric, setPlaysWhen };
 })();

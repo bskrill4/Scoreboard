@@ -24,6 +24,7 @@
     <nav class="views" id="views" aria-label="Views">
       <a href="#" data-view="board">Scores</a>
       <a href="#players" data-view="players">Rankings</a>
+      <a href="#standings" data-view="standings">Standings</a>
       <a href="#plan" data-view="plan">Plan</a>
       <a href="#bonezone" data-view="bonezone">Bone Zone</a>
       <div class="settings">
@@ -40,6 +41,8 @@
               <button type="button" class="league on" data-league="ncaam" aria-pressed="true" title="Hide NCAAM Top 25 games">NCAAM <small>Top 25</small></button>
               <button type="button" class="league on" data-league="ncaaf" aria-pressed="true" title="Hide college football Top 25 games (CFP rankings once out, AP before)">NCAAF <small>Top 25</small></button>
               <button type="button" class="league on" data-league="nhl" aria-pressed="true" title="Hide NHL games">NHL</button>
+              <button type="button" class="league on" data-league="eng.1" aria-pressed="true" title="Hide Premier League matches">EPL</button>
+              <button type="button" class="league on" data-league="uefa.champions" aria-pressed="true" title="Hide Champions League matches">UCL</button>
               <span class="league soon" title="Coming soon">MLB</span>
             </nav>
           </section>
@@ -140,6 +143,7 @@
   <section id="season" class="players season" hidden aria-label="NBA season standings"></section>
   <section id="nflseason" class="players season" hidden aria-label="NFL season standings"></section>
   <section id="bonezone" class="bonezone" hidden aria-label="The Bone Zone: how reliable BONES is"></section>
+  <section id="standings" class="players standings" hidden aria-label="NBA standings"></section>
   <section id="faq" class="faq" hidden aria-label="How BONES and MOUSSA work"></section>
   <footer class="foot">
     Scores, play-by-play and win probability from ESPN's public feed. BONES credits each play's swing in ESPN's win probability to the players responsible; MOUSSA does the same on our own score-only win probability (basketball). NHL win probability is our own model; ESPN doesn't publish one. <a href="#faq">How they work</a>.
@@ -154,6 +158,7 @@
   <script src="js/engine-nhl.js"></script>
   <script src="js/runs.js"></script>
   <script src="js/watch.js"></script>
+  <script src="js/watchstyle.js"></script>
   <script src="js/notes.js"></script>
   <script src="js/chime.js"></script>
   <script src="js/alerts.js"></script>
@@ -163,6 +168,8 @@
   <script src="js/ui.js"></script>
   <script src="js/focus.js"></script>
   <script src="js/player.js"></script>
+  <script src="js/team.js"></script>
+  <script src="js/drawers.js"></script>
   <script src="js/plan.js"></script>
   <script src="js/season.js"></script>
   <script src="js/bones.js"></script>
@@ -171,6 +178,10 @@
   <script src="js/myteams.js"></script>
   <script src="js/filter.js"></script>
   <script src="js/faq.js"></script>
+  <script src="js/standings.js"></script>
+  <script src="js/soccerwp.js"></script>
+  <script src="js/soccer.js"></script>
   <script src="js/main.js"></script>
+  <script src="js/a11y.js"></script>
 </body>
 </html>

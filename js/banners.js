@@ -112,7 +112,18 @@
     return el;
   }
 
+  // When the set of banners on screen changes, the board below moves down or
+  // up; that goes through the page transition (js/ui.js reflow) so the cards
+  // glide instead of jumping. Score and clock updates just repaint.
   function draw() {
+    const box = host();
+    const shown = items.slice(-MAX_SHOWN).reverse();
+    const visible = board && shown.length > 0;
+    const same = shown.length === els.size && shown.every((it) => els.has(it.key)) && box.hidden === !visible;
+    if (same || !board || document.body.classList.contains("focus-mode") || !SB.ui?.reflow) return paint();
+    SB.ui.reflow(paint);
+  }
+  function paint() {
     const box = host();
     const shown = items.slice(-MAX_SHOWN).reverse(); // newest first
     const keys = new Set(shown.map((it) => it.key));
@@ -148,9 +159,14 @@
       el.classList.add('out');
       els.delete(it.key);
       observer.unobserve(el);
+      // Removed inside the page transition, so the board glides up into its space.
       setTimeout(() => {
-        el.remove();
-        draw();
+        const done = () => {
+          el.remove();
+          paint();
+        };
+        if (board && SB.ui?.reflow && !document.body.classList.contains('focus-mode')) SB.ui.reflow(done);
+        else done();
       }, 300);
     } else draw();
     save(true);

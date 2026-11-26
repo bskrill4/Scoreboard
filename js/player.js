@@ -20,7 +20,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the BONES / MOUSSA math changes (saved rows still carry a WPA slot, unused).
-  const CACHE_VERSION = 30; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table; 23: frozen expected-points baseline, fouls without free throws not charged; 24: BONES v2 (score-only) saved as [6] [7]; 25: v2 knows who has the ball; 26: the ball worth half a possession each way; 27: v2 model with a possession's spread; 28: v2 on its own running score; 29: v2 values a loose ball after a miss; 30: NBA spike netting at the same clock only
+  const CACHE_VERSION = 32; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table; 23: frozen expected-points baseline, fouls without free throws not charged; 24: BONES v2 (score-only) saved as [6] [7]; 25: v2 knows who has the ball; 26: the ball worth half a possession each way; 27: v2 model with a possession's spread; 28: v2 on its own running score; 29: v2 values a loose ball after a miss; 30: NBA spike netting at the same clock only; 31: NBA team shooting (_teams) for Standings; 32: _teams no longer keyed by team id (team 3 read as a player)
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -147,6 +147,8 @@
                 // between), for the Bone Zone's season test of the lineup edge. Not a
                 // player row: readers skip it (they look for a box at index 3).
                 if (league === 'nba' && SB.bones) out._lineups = SB.bones.stints(tape);
+                // NBA: each team's shooting, expected vs actual (Standings, js/standings.js). Not a player row either.
+                if (league === 'nba' && SB.bones) out._teams = SB.bones.teamShots(tape);
               }
               // Saved for good only once the tape has the closing play: ESPN can mark a
               // game completed while its play-by-play is still a few rows short (or
@@ -409,15 +411,23 @@
   const basketball = (l) => l === 'nba' || l === 'ncaam';
   const open2 = () => panes.filter((p) => p.state);
 
+  let uid = 0;
   function makePane() {
     const el = document.createElement('aside');
     el.className = 'drawer';
+    el.style.viewTransitionName = `dr${++uid}`; // drawn live above the cards during page transitions
     el.setAttribute('aria-label', 'Player');
     el.hidden = true;
     document.body.appendChild(el);
     const pane = { el, state: null, range: 'season', sort: { key: 'day', dir: -1 }, token: 0, loadToken: 0 };
     el.addEventListener('click', (e) => onClick(pane, e));
     el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      const pl = pane.state?.kind === 'team' && e.target.closest('[data-pid]');
+      if (pl && e.target === pl) {
+        e.preventDefault();
+        return SB.team.openPlayer(pane, pl);
+      }
       if (e.key === 'Enter') openGame(pane, e.target.closest('tr[data-game]'));
     });
     return pane;
@@ -430,6 +440,13 @@
 
   function onClick(pane, e) {
     if (e.target.closest('[data-close]')) return closePane(pane);
+    if (pane.state?.kind === 'team') {
+      if (SB.team.click(pane, e)) return draw(pane);
+      if (e.target.closest('[data-pid]')) return;
+      return openGame(pane, e.target.closest('tr[data-game]'));
+    }
+    const tb = e.target.closest('[data-tid]');
+    if (tb) return openTeam({ id: tb.dataset.tid, color: pane.state?.color });
     const r = e.target.closest('[data-prange]');
     if (r && r.dataset.prange !== pane.range) {
       pane.range = r.dataset.prange;
@@ -453,25 +470,69 @@
   }
 
   // Side by side, oldest on the right: --i is each drawer's slot from the
-  // right, --dn how many are open (they narrow to fit; css/styles.css).
-  function layout() {
+  // right. Where there's room, the page gives the drawers its right side
+  // (body --push) and the board relays out in what's left (container
+  // queries, css/styles.css): each drawer is DRAWER_MAX wide, or narrower
+  // down to DRAWER_MIN so the board keeps BOARD_MIN. Without that room they
+  // cover the page as before: sharing the width, or under 900px each new one
+  // on top of the last.
+  const DRAWER_MAX = 440;
+  const DRAWER_MIN = 330;
+  const BOARD_MIN = 440;
+  const NARROW = 900;
+  function slots() {
     panes.forEach((p, i) => p.el.style.setProperty('--i', String(i)));
-    document.body.style.setProperty('--dn', String(Math.max(1, panes.length)));
-    document.body.classList.toggle('drawers-many', panes.length > 1);
   }
+  function layout() {
+    const n = panes.length;
+    const vw = document.documentElement.clientWidth;
+    let w = n ? Math.min(DRAWER_MAX, (vw - BOARD_MIN) / n) : DRAWER_MAX;
+    const push = n > 0 && vw > NARROW && w >= DRAWER_MIN;
+    if (!push) w = Math.min(DRAWER_MAX, vw / Math.max(1, n));
+    w = Math.floor(w);
+    slots();
+    const b = document.body.style;
+    b.setProperty('--dn', String(Math.max(1, n)));
+    b.setProperty('--w', `${w}px`);
+    b.setProperty('--push', push ? `${n * w}px` : '0px');
+    if (push) b.setProperty('--pw', `${(vw - n * w) / 100}px`);
+    else b.removeProperty('--pw');
+    document.body.classList.toggle('drawers-push', push);
+    document.body.classList.toggle('drawers-many', n > 1);
+  }
+  window.addEventListener('resize', () => {
+    if (panes.length) layout();
+  });
 
+  // Closing: the drawer slides out while the page takes its space back.
+  const GONE_MS = 450; // a little over the slide (css .drawer transition)
   function closePane(pane) {
     const i = panes.indexOf(pane);
-    if (i < 0) return;
+    if (i < 0) return Promise.resolve();
     panes.splice(i, 1);
-    pane.el.classList.remove('open');
     pane.state = null;
     pane.token++;
     pane.loadToken++;
-    setTimeout(() => pane.el.remove(), 300);
-    layout();
+    setTimeout(() => pane.el.remove(), GONE_MS);
+    return SB.ui.reflow(() => {
+      pane.el.classList.remove('open');
+      layout();
+    });
   }
-  const closeAll = () => [...panes].forEach(closePane);
+  function closeAll() {
+    if (!panes.length) return Promise.resolve();
+    const all = panes.splice(0);
+    for (const p of all) {
+      p.state = null;
+      p.token++;
+      p.loadToken++;
+      setTimeout(() => p.el.remove(), GONE_MS);
+    }
+    return SB.ui.reflow(() => {
+      for (const p of all) p.el.classList.remove('open');
+      layout();
+    });
+  }
 
   // ---- NBA standing: total, rank in the league, on the team, at the position ----
   // Totals come from the season page's replay of every game (js/season.js,
@@ -571,6 +632,10 @@
   function draw(pane) {
     const st = pane.state;
     if (!st) return;
+    if (st.kind === 'team') {
+      pane.el.innerHTML = SB.team.html(pane);
+      return;
+    }
     const { info, data, error } = st;
     const team = info.team || {};
     const meta = [info.jersey ? `#${esc(info.jersey)}` : '', esc(info.pos || ''), esc(team.name || '')].filter(Boolean).join(' · ');
@@ -629,7 +694,11 @@
       <header class="pl-head" style="--tc:${esc(st.color || 'var(--yellow)')}">
         <span class="shot pl-shot"><img src="${esc(info.headshot || '')}" alt="" onerror="this.style.visibility='hidden'"></span>
         <div class="pl-id">
-          <span class="pl-lg">${SB.league.name(st.league)}${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}${esc(team.abbr || '')}</span>
+          ${
+            st.league === 'nba' && st.teamId
+              ? `<button type="button" class="pl-lg pl-team" data-tid="${esc(st.teamId)}" title="Open the team's drawer">${SB.league.name(st.league)}${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}${esc(team.abbr || '')} ›</button>`
+              : `<span class="pl-lg">${SB.league.name(st.league)}${team.logo ? `<img src="${esc(team.logo)}" alt="">` : ''}${esc(team.abbr || '')}</span>`
+          }
           <h2>${esc(info.name || '')}</h2>
           <small>${meta}</small>
         </div>
@@ -645,12 +714,55 @@
   }
 
   // open({ id, league, teamId, endDay, name, headshot, color })
+  // A drawer for a new player or team: a new one, or with MAX open the newest
+  // (replaced, starting fresh).
+  function slot(label, range, sort) {
+    let pane;
+    if (panes.length >= MAX) {
+      // Replaced: its content changes in place, with a quick fade.
+      pane = panes[panes.length - 1];
+      pane.el.classList.remove('swap');
+      void pane.el.offsetWidth;
+      pane.el.classList.add('swap');
+    } else panes.push((pane = makePane()));
+    pane.range = range;
+    pane.sort = sort;
+    pane.el.setAttribute('aria-label', label);
+    return pane;
+  }
+  // A new drawer is placed in its slot off-screen (under the drawers already
+  // open), then slides in while the page makes room, in one transition.
+  function show(pane) {
+    pane.el.hidden = false;
+    slots();
+    draw(pane);
+    if (pane.el.classList.contains('open')) return; // a replaced drawer: already in place
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (!panes.includes(pane)) return; // closed before it got going
+        SB.ui.reflow(() => {
+          pane.el.classList.add('open');
+          layout();
+        });
+      })
+    );
+  }
+
+  // openTeam({ id, color?, logo?, name? }): an NBA team (js/team.js draws it).
+  function openTeam(o) {
+    if (panes.some((p) => p.state && p.state.kind === 'team' && p.state.id === String(o.id))) return;
+    const pane = slot('Team', 'l10', { key: 'cur', dir: -1 });
+    pane.token++;
+    pane.loadToken++;
+    pane.state = { kind: 'team', id: String(o.id), league: 'nba', color: o.color, logo: o.logo, name: o.name, ready: false, progress: null };
+    show(pane);
+    SB.team.load(pane, () => draw(pane));
+  }
+
   function open(o) {
     // Already open: leave it.
-    if (panes.some((p) => p.state && p.state.id === String(o.id) && p.state.league === o.league)) return;
-    let pane;
-    if (panes.length >= MAX) pane = panes[panes.length - 1]; // full: the newest is replaced
-    else panes.push((pane = makePane()));
+    if (panes.some((p) => p.state && p.state.kind !== 'team' && p.state.id === String(o.id) && p.state.league === o.league)) return;
+    const pane = slot('Player', 'season', { key: 'day', dir: -1 });
     const my = ++pane.token;
     pane.state = {
       id: String(o.id),
@@ -663,10 +775,7 @@
       error: null,
       rank: null,
     };
-    pane.el.hidden = false;
-    requestAnimationFrame(() => requestAnimationFrame(() => pane.el.classList.add('open'))); // a new element: let it lay out off-screen first
-    layout();
-    draw(pane);
+    show(pane);
 
     SB.api
       .athlete(o.id, o.league)
@@ -721,5 +830,5 @@
     }
   }
 
-  SB.player = { open, close: closeAll, finalPlayers, NFL_BOX, refresh: () => open2().forEach(draw) };
+  SB.player = { open, openTeam, close: closeAll, isOpen: () => panes.length > 0, finalPlayers, NFL_BOX, refresh: () => open2().forEach(draw) };
 })();

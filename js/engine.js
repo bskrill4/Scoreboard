@@ -232,7 +232,7 @@
   // offensive rebound's and of a missed shot's credit the player keeps (the rest
   // to his teammates on the floor). spikeSec: overrides each league's spike
   // window (impactAdjust) when set; null = the league's own.
-  const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9 };
+  const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9, defMake: 0, offMake: 1, shooterSkill: null, skillDefense: false, missCost: 1, missRecovery: null };
 
   SB.impact = { tune, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, withVersion, version: () => bonesV, name: (v = bonesV) => NAMES[v === 2 ? 2 : 1], NAMES };
 
@@ -546,6 +546,7 @@
       let prevWPN = null; // BONES v2: score-only win probability
       let ball = null; // who has the ball after each row (team id), for v2; null: loose or unknown
       let loose = null; // while the ball is loose after a miss: the team that missed
+      let looseR = OREB; // how often that miss comes back (tests: SB.impact.tune.missRecovery)
       let curPeriod = 0;
       let periodStartTotal = 0; // combined score when the period began
       let ftPending = false; // a foul's free throws still to come
@@ -630,7 +631,13 @@
           else if (ft) ball = lastFt ? (p.scoringPlay ? other : null) : team;
           else if (p.shootingPlay) ball = p.scoringPlay ? other : null;
           // A miss (a shot, or a last free throw) leaves the ball loose for the shooting team's side.
-          if (ball === null && was !== null && (p.shootingPlay || ft) && !p.scoringPlay) loose = team;
+          if (ball === null && was !== null && (p.shootingPlay || ft) && !p.scoringPlay) {
+            loose = team;
+            // Test setting (SB.impact.tune.missRecovery, null = off): the share of this
+            // miss the shooting team gets back, from the shot's type (TESTS.md, T26).
+            const rec = SB.impact.tune.missRecovery;
+            looseR = rec && !ft && SB.xpts ? rec(SB.xpts.features(p, elapsed - possStart, league), / blocks /.test(rowText)) ?? OREB : OREB;
+          }
           else if (ball !== null || /end (period|game)|jump ?ball/i.test(rowType)) loose = null;
         }
         // The possession's own spread (POSS_SD) too: what it scores is 0, 2 or 3,
@@ -646,7 +653,7 @@
         // 0, a miss cost only −0.57 (really about −0.88), a defensive rebound was
         // worth 0.57 (about 0.26) and an offensive rebound 0.57 (about 0.88).
         const half = possPts / 2;
-        const looseV = loose ? (loose === homeId ? 1 : -1) * half * (2 * OREB - 1) : 0;
+        const looseV = loose ? (loose === homeId ? 1 : -1) * half * (2 * looseR - 1) : 0;
         const possAdj = ball === homeId ? half : ball === awayId ? -half : looseV;
         const wpN = modelWP(hN - aN + possAdj, elapsed, REG_GAME, OT_PERIOD, POSS_SD);
         const deltaN = prevWPN == null ? 0 : wpN - prevWPN;
@@ -812,7 +819,10 @@
             if (!pl) continue;
             const side = pl.teamId === homeId ? 1 : -1;
             const v = side * p.impDelta * c.share * p.weight * rebShare;
-            const vN = side * (p.impDeltaN || 0) * c.share * wN * rebShare; // BONES v2
+            // Test setting (SB.impact.tune.missCost, 1 = off): the share of a missed
+            // field goal's v2 charge its shooter takes; the rest is dropped (TESTS.md, T24).
+            const missK = SB.impact.tune.missCost !== 1 && p.fga && !p.scoring && c.id === p.p0 ? SB.impact.tune.missCost : 1;
+            const vN = side * (p.impDeltaN || 0) * c.share * wN * rebShare * missK; // BONES v2
             pl.imp += v;
             pl.impN += vN;
             if (defensiveCredit(p, c.id)) {
@@ -876,7 +886,19 @@
           const prev = i > 0 ? tape.plays[i - 1] : null;
           const m0 = prev ? prev.home - prev.away : 0; // home margin before the shot
           const pointValue = (modelWP(m0 + 1, p.elapsed) - modelWP(m0 - 1, p.elapsed)) / 2;
-          const above = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) - SB.xpts.avg(league) : (p.scoring ? p.pts : 0) - (SB.xpts ? SB.xpts.avg(league) : SHOT_PTS);
+          const xpHere = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) : null;
+          // Test setting (SB.impact.tune.shooterSkill, null = off; TESTS.md, T23): a
+          // Map(player id -> [twos, threes]) of each shooter's points a shot above or
+          // below the table, from earlier games, regressed. xpShooter: the shot's
+          // expected points knowing who took it. Luck (offMake) is measured against
+          // it; with tune.skillDefense the defenders are credited by it too.
+          const skill = SB.impact.tune.shooterSkill?.get(p.p0);
+          const xpShooter = xpHere != null && skill ? xpHere + (p.shot.pts === 3 ? skill[1] : skill[0]) : xpHere;
+          const xpDef = SB.impact.tune.skillDefense ? xpShooter : xpHere;
+          // Test setting (SB.impact.tune.defMake, 0 = off): also charge or credit the
+          // defenders that share of the shot's result above or below its expected points.
+          const made = xpHere != null && SB.impact.tune.defMake ? SB.impact.tune.defMake * ((p.scoring ? p.pts : 0) - xpDef) : 0;
+          const above = (xpHere != null ? xpDef - SB.xpts.avg(league) : (p.scoring ? p.pts : 0) - (SB.xpts ? SB.xpts.avg(league) : SHOT_PTS)) + made;
           const v = (-above * pointValue * ON_COURT_D * p.weight) / 5;
           const vN = (-above * pointValue * ON_COURT_D * wN) / 5; // BONES v2: score-only leverage
           if (v && lineup[defTeam]) {
@@ -888,6 +910,22 @@
               pl.impN += vN;
               pl.defBonesN += vN;
               pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p, def: true });
+            }
+          }
+          // Test setting (SB.impact.tune.offMake, 1 = off): the share of a shot's result
+          // above or below its expected points that its credited players (shooter, and
+          // passer on an assist) keep; the rest is taken back, so they're paid for
+          // the look plus offMake of the luck (TESTS.md, T22).
+          const keepLuck = SB.impact.tune.offMake ?? 1;
+          if (keepLuck !== 1 && xpHere != null) {
+            const luck = (p.scoring ? p.pts : 0) - xpShooter;
+            const mine = (p.credits || []).filter((c) => players.get(c.id)?.teamId === shooter.teamId);
+            const tot = mine.reduce((s, c) => s + c.share, 0);
+            for (const c of tot ? mine : []) {
+              const pl = players.get(c.id);
+              const f = (1 - keepLuck) * luck * pointValue * (c.share / tot);
+              pl.imp -= f * p.weight;
+              pl.impN -= f * wN;
             }
           }
         }

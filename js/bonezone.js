@@ -200,6 +200,9 @@
         const call = (x) => (x ? { pick: x.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(x.pHome, 1 - x.pHome) } : null);
         const [h, a] = [pr.home, pr.away];
         const favHome = favoredHome(sum);
+        // The moneyline (the first sportsbook in ESPN's pick center), for the best bets below.
+        const pc = (sum?.pickcenter || [])[0];
+        const ml = { home: Number(pc?.homeTeamOdds?.moneyLine), away: Number(pc?.awayTeamOdds?.moneyLine) };
         const team = (c, s) => ({ id: String(c.team.id), abbr: c.team.abbreviation, name: c.team.shortDisplayName || c.team.displayName, logo: c.team.logo, missing: s.missing });
         return {
           id: e.id,
@@ -207,6 +210,8 @@
           home: team(home, h),
           away: team(away, a),
           calls: { 1: call(prs[1]), 2: call(prs[2]) },
+          ml: Number.isFinite(ml.home) && Number.isFinite(ml.away) ? ml : null,
+          book: pc?.provider?.name || '',
           fav: favHome == null ? null : favHome ? 'home' : 'away',
         };
       }
@@ -304,6 +309,120 @@
   // A split: BONES and MOUSSA pick different winners.
   const isSplit = (g) => !!(g.calls[1] && g.calls[2] && g.calls[1].pick !== g.calls[2].pick);
 
+  // ---------- best bets (since Nov 23) ----------
+  // Each metric's one bet tonight: among the night's games (the first day with
+  // games still to tip), the side with the highest expected return on the
+  // moneyline, from the metric's own win chance. Per $100: chance × profit if it
+  // wins − (1 − chance) × 100. A price only says how much is paid; the edge is
+  // the metric's chance against the chance the price implies (vig included). Not
+  // advice, and it loses plenty of nights: a scoreboard of what each metric
+  // believes, to grade like the picks.
+  const profit = (ml) => (ml > 0 ? ml / 100 : 100 / -ml);
+  const implied = (ml) => (ml > 0 ? 100 / (ml + 100) : -ml / (-ml + 100));
+  const fmtML = (ml) => (ml > 0 ? `+${ml}` : `${ml}`);
+  // Since Nov 25 (TESTS.md T28) the best bet skips edges above EDGE_CAP per $100:
+  // graded at the closing price, the biggest edges lost for both metrics (MOUSSA
+  // −15%, BONES −38%), and capping at $50 did better on nights predicted only from
+  // earlier ones (MOUSSA +11.2 units over 20 nights against +1.8), within noise.
+  // The uncapped pick is still worked out, shown when it differs, and both are
+  // tracked from Nov 25 so the cap is judged on new nights only.
+  const EDGE_CAP = 50;
+  function bestBet(games, v, cap = EDGE_CAP) {
+    const priced = games.filter((g) => g.ml && g.calls[v]);
+    if (!priced.length) return null;
+    const night = priced.map((g) => SB.days.dayOf(g.t)).sort()[0];
+    let best = null;
+    for (const g of priced.filter((x) => SB.days.dayOf(x.t) === night))
+      for (const side of ['home', 'away']) {
+        const c = g.calls[v];
+        const p = side === c.pick ? c.conf : 1 - c.conf;
+        const ev = (p * profit(g.ml[side]) - (1 - p)) * 100;
+        if (ev > cap) continue;
+        if (!best || ev > best.ev) best = { g, side, p, ev, ml: g.ml[side], implied: implied(g.ml[side]), night };
+      }
+    return best;
+  }
+
+  // ---------- best-bet tracker (since Nov 25) ----------
+  // Each night's best bet per metric, capped and uncapped, kept in this browser
+  // ('sb.bestBets'): updated each time the forecast is read until its game tips,
+  // then frozen and settled at the final. Key: night|metric|c (capped) or u.
+  // { id, side, ml, p, ev, t, abbr, won? }
+  const BETS_KEY = 'sb.bestBets';
+  let tracked = {};
+  try {
+    tracked = JSON.parse(localStorage.getItem(BETS_KEY) || '{}') || {};
+  } catch (e) {}
+  const saveTracked = () => {
+    try {
+      localStorage.setItem(BETS_KEY, JSON.stringify(tracked));
+    } catch (e) {}
+  };
+  function trackBets(games) {
+    const now = Date.now();
+    for (const v of [1, 2])
+      for (const [tag, cap] of [['c', EDGE_CAP], ['u', Infinity]]) {
+        const b = bestBet(games, v, cap);
+        if (!b || !(b.ev > 0)) continue;
+        const key = `${b.night}|${v}|${tag}`;
+        const cur = tracked[key];
+        if (cur && cur.t <= now) continue; // its game has tipped: frozen
+        if (b.g.t <= now) continue;
+        tracked[key] = { id: b.g.id, side: b.side, ml: b.ml, p: +b.p.toFixed(3), ev: Math.round(b.ev), t: b.g.t, abbr: b.g[b.side].abbr };
+      }
+    saveTracked();
+  }
+  async function settleBets() {
+    const open = Object.values(tracked).filter((b) => b.won == null && b.t < Date.now() - 4 * 36e5);
+    const days = [...new Set(open.map((b) => SB.days.dayOf(b.t)))];
+    const boards = await Promise.all(days.map((d) => SB.api.scoreboard(d, 'nba').catch(() => null)));
+    const winners = new Map();
+    for (const bd of boards)
+      for (const e of bd?.events || []) {
+        if (!e.status?.type?.completed) continue;
+        const cs = e.competitions[0].competitors;
+        const w = cs.find((c) => c.winner) || cs.slice().sort((a, b) => Number(b.score) - Number(a.score))[0];
+        if (w) winners.set(String(e.id), w.homeAway);
+      }
+    for (const b of open) if (winners.has(String(b.id))) b.won = winners.get(String(b.id)) === b.side;
+    saveTracked();
+  }
+  // "3–2, +1.4 units" for one metric's capped or uncapped bets.
+  function betRecord(v, tag) {
+    const done = Object.entries(tracked).filter(([k, b]) => k.split('|')[1] === String(v) && k.split('|')[2] === tag && b.won != null);
+    if (!done.length) return '';
+    const w = done.filter(([, b]) => b.won).length;
+    const units = done.reduce((s, [, b]) => s + (b.won ? profit(b.ml) : -1), 0);
+    return `${w}–${done.length - w}, ${units >= 0 ? '+' : ''}${units.toFixed(1)} units`;
+  }
+  function betsHTML(games) {
+    const card = (v, tok) => {
+      const b = bestBet(games, v);
+      const big = bestBet(games, v, Infinity);
+      if (!b && !big) return `<div class="bz-bet"><em>${tok}</em><span>No lines posted yet.</span></div>`;
+      // The edge left out by the cap, when it's a different bet.
+      const left = big && big.ev > EDGE_CAP && (!b || big.g.id !== b.g.id || big.side !== b.side) ? big : null;
+      const leftNote = left
+        ? `<span class="bz-bet-left">Left out: ${esc(left.g[left.side].abbr)} ${fmtML(left.ml)}, +$${left.ev.toFixed(0)} on paper. Edges over $${EDGE_CAP} have lost money all season: the price usually knows something the model doesn't.</span>`
+        : '';
+      // BONES has no measured edge over the closing line (T28): its log-loss trails the
+      // market's beyond noise, and the market + BONES mix earlier nights choose is all market.
+      const note = v === 1 ? `<span class="bz-bet-left">${KB} hasn't beaten the closing line this season; read its bet as a curiosity.</span>` : '';
+      const rec = [['c', 'capped'], ['u', 'uncapped']].map(([tag, w]) => (betRecord(v, tag) ? `${w} ${betRecord(v, tag)}` : '')).filter(Boolean).join(' · ');
+      const recNote = rec ? `<span class="bz-bet-rec">Tracked since Nov 25: ${rec}</span>` : '';
+      if (!b) return `<div class="bz-bet none"><em>${tok}</em><span>No bet at or under a $${EDGE_CAP} edge tonight.</span>${leftNote}${note}${recNote}</div>`;
+      const t = b.g[b.side];
+      const opp = b.g[b.side === 'home' ? 'away' : 'home'];
+      return `<div class="bz-bet${b.ev > 0 ? '' : ' none'}"><em>${tok}</em>
+          <span class="bz-bet-pick"><img src="${esc(t.logo || '')}" alt="">${esc(t.abbr)} <b>${fmtML(b.ml)}</b> <small>${b.side === 'home' ? 'vs' : 'at'} ${esc(opp.abbr)}</small></span>
+          <span class="bz-bet-why">${pct(b.p)} to win, the price says ${pct(b.implied)} · ${b.ev > 0 ? `<b>+$${b.ev.toFixed(0)}</b> expected per $100` : `no edge (${b.ev.toFixed(0)} per $100)`}</span>
+          ${leftNote}${note}${recNote}
+        </div>`;
+    };
+    const book = games.find((g) => g.book)?.book;
+    return `<div class="bz-bets"><h3>Best bets <small>tonight's highest expected return for each, up to a $${EDGE_CAP} edge, on the moneyline${book ? ` (${esc(book)})` : ''}</small></h3>${card(1, KB)}${card(2, KM)}</div>`;
+  }
+
   function predictScript(model, games) {
     const { right, n } = model.record;
     // The second half of the season is where BONES has its footing (players have
@@ -340,12 +459,22 @@
           )}. Those are the ones to watch: whichever is right there is the one that's learning something.`
         : `${KB} and ${KM} agree on every game this time.`
     );
+    const bet = bestBet(games, checkV);
+    if (bet) {
+      const t = bet.g[bet.side];
+      lines.push(
+        bet.ev > 0
+          ? `If I made one bet tonight: the ${t.name} at ${fmtML(bet.ml)}. I give them ${pct(bet.p)}; the price says ${pct(bet.implied)}. That's about $${bet.ev.toFixed(0)} back on every $100, on average. On average. The bones have lost money before.`
+          : `No bet worth making tonight: every price is at least as good as my read.`
+      );
+    }
     lines.push(`That's the reading. The bones never lie, but basketball does. Check back after tip-off.`);
     return lines;
   }
 
   function picksHTML(games) {
     if (!games.length) return '';
+    const bets = { 1: bestBet(games, 1), 2: bestBet(games, 2) };
     const callText = (g, c) => (!c ? '—' : c.conf < UPSET_MIN ? 'Toss-up' : `${esc(g[c.pick].abbr)} ${pct(c.conf)}`);
     const row = (g) => {
       const upset = isUpset(g);
@@ -355,11 +484,11 @@
       return `<li class="${upset ? 'upset' : ''}${split ? ' split' : ''}">
           <span class="bz-when">${esc(whenText(g.t))}</span>
           <span class="bz-match">${side('away')}<i>@</i>${side('home')}</span>
-          <span class="bz-call"><span class="bz-two"><span${mine(1)}><em>${KB}</em> ${callText(g, g.calls[1])}</span><span${mine(2)}><em>${KM}</em> ${callText(g, g.calls[2])}</span></span>${split ? '<b class="bz-split">Split</b>' : ''}${upset ? '<b>Upset pick</b>' : g.fav || g.conf < UPSET_MIN ? '' : '<small>no favorite yet</small>'}</span>
+          <span class="bz-call"><span class="bz-two"><span${mine(1)}><em>${KB}</em> ${callText(g, g.calls[1])}</span><span${mine(2)}><em>${KM}</em> ${callText(g, g.calls[2])}</span></span>${split ? '<b class="bz-split">Split</b>' : ''}${[1, 2].filter((v) => bets[v]?.g.id === g.id).map((v) => `<b class="bz-bb">${v === 1 ? KB : KM} best bet</b>`).join('')}${upset ? '<b>Upset pick</b>' : g.fav || g.conf < UPSET_MIN ? '' : '<small>no favorite yet</small>'}</span>
         </li>`;
     };
     const nSplit = games.filter(isSplit).length;
-    return `<h3>The skull's picks <small>${KB} and ${KM}${nSplit ? ` · ${nSplit} split${nSplit === 1 ? '' : 's'}` : ' · no splits'}</small></h3><ul class="bz-picks">${games.map(row).join('')}</ul>
+    return `${betsHTML(games)}<h3>The skull's picks <small>${KB} and ${KM}${nSplit ? ` · ${nSplit} split${nSplit === 1 ? '' : 's'}` : ' · no splits'}</small></h3><ul class="bz-picks">${games.map(row).join('')}</ul>
       <p class="bz-fine">Each metric on its own: each player's rating a minute × his minutes over his team's last ${RECENT} games, players listed out (or doubtful) removed, questionable at half. No home court. Win chances are fit to this season's results. <b>Split</b>: ${KB} and ${KM} pick different winners. Upset pick (for the check that's showing): it takes the team that isn't favored, by at least ${pct(UPSET_MIN)}; closer than that is a toss-up.</p>`;
   }
 
@@ -386,68 +515,86 @@
     const camera = new T.PerspectiveCamera(35, 1, 0.1, 50);
     camera.position.set(0, 0.1, 6);
 
-    scene.add(new T.AmbientLight(0xffffff, 0.45));
-    const key = new T.DirectionalLight(0xfff4dd, 1.1);
+    scene.add(new T.AmbientLight(0xffffff, 0.5));
+    const key = new T.DirectionalLight(0xfff4dd, 0.6);
     key.position.set(2.5, 3, 4);
     scene.add(key);
     const rim = new T.DirectionalLight(0x8ab4ff, 0.5);
     rim.position.set(-3, 1, -2);
     scene.add(rim);
 
-    const bone = new T.MeshStandardMaterial({ color: 0xe9e2cf, roughness: 0.65, metalness: 0.05 });
-    const dark = new T.MeshStandardMaterial({ color: 0x15151a, roughness: 1 });
+    // Cartoon look: two-tone toon shading plus a dark inverted-hull outline on
+    // the big bone shapes.
+    const tones = new T.DataTexture(new Uint8Array([110, 110, 110, 175, 175, 175, 255, 255, 255]), 3, 1, T.RGBFormat);
+    tones.minFilter = tones.magFilter = T.NearestFilter;
+    tones.needsUpdate = true;
+    const bone = new T.MeshToonMaterial({ color: 0xebe2c8, gradientMap: tones });
+    const dark = new T.MeshBasicMaterial({ color: 0x141418 });
+    const ink = new T.MeshBasicMaterial({ color: 0x141418, side: T.BackSide });
     const glow = new T.MeshBasicMaterial({ color: 0xffd60a });
+    const ball = (r, w = 24, h = 18) => new T.SphereGeometry(r, w, h);
+    // A part: geometry at a position, stretched, optionally outlined.
+    const part = (parent, geo, mat, [x, y, z], [sx, sy, sz] = [1, 1, 1], line = 0) => {
+      const m = new T.Mesh(geo, mat);
+      m.position.set(x, y, z);
+      m.scale.set(sx, sy, sz);
+      parent.add(m);
+      if (line) {
+        const o = new T.Mesh(geo, ink);
+        o.scale.setScalar(1 + line);
+        m.add(o);
+      }
+      return m;
+    };
 
     const skull = new T.Group();
-    // Cranium and cheekbones.
-    const cranium = new T.Mesh(new T.SphereGeometry(1, 40, 32), bone);
-    cranium.scale.set(1, 1.02, 1.12);
-    cranium.position.y = 0.25;
-    skull.add(cranium);
-    const face = new T.Mesh(new T.SphereGeometry(0.78, 32, 24), bone);
-    face.scale.set(1.05, 0.9, 0.95);
-    face.position.set(0, -0.2, 0.25);
-    skull.add(face);
-    // Eye sockets with a glow deep inside.
+    // Cranium: a big round dome, a little wider at the back, plus the brow.
+    part(skull, ball(1, 40, 32), bone, [0, 0.32, -0.05], [1.02, 0.98, 1.08], 0.035);
+    part(skull, ball(0.62, 32, 16), bone, [0, 0.2, 0.6], [1.25, 0.42, 0.62]); // brow ridge
+    // Face: a narrower muzzle under the dome, with cheekbones out to the sides.
+    part(skull, ball(0.7, 32, 24), bone, [0, -0.22, 0.38], [1, 0.82, 0.88], 0.045);
+    for (const x of [-1, 1]) part(skull, ball(0.17), bone, [x * 0.5, -0.2, 0.8], [1.1, 0.75, 0.8]);
+    // Eye sockets: big, deep and dark, with a glow floating inside each.
     const eyes = [];
-    for (const x of [-0.36, 0.36]) {
-      const socket = new T.Mesh(new T.SphereGeometry(0.25, 24, 18), dark);
-      socket.scale.set(1, 0.9, 0.6);
-      socket.position.set(x, 0.0, 0.86);
-      skull.add(socket);
-      const eye = new T.Mesh(new T.SphereGeometry(0.07, 16, 12), glow);
-      eye.position.set(x, 0.0, 1.0); // pokes just out of the socket's front
-      skull.add(eye);
-      eyes.push(eye);
+    for (const x of [-0.37, 0.37]) {
+      const socket = part(skull, ball(0.27), dark, [x, -0.02, 0.88], [1, 1.05, 0.55]);
+      socket.rotation.z = x > 0 ? -0.25 : 0.25; // tilted in a little: a friendlier look
+      eyes.push(part(skull, ball(0.075, 16, 12), glow, [x, -0.03, 1.02]));
     }
-    // Nose.
-    const nose = new T.Mesh(new T.ConeGeometry(0.12, 0.26, 3), dark);
-    nose.rotation.x = Math.PI;
-    nose.position.set(0, -0.32, 1.0);
-    skull.add(nose);
-    // Upper teeth.
-    const tooth = new T.BoxGeometry(0.1, 0.16, 0.08);
-    for (let i = -3; i <= 3; i++) {
-      const t = new T.Mesh(tooth, bone);
-      const a = i * 0.16;
-      t.position.set(Math.sin(a) * 0.62, -0.62, 0.62 + Math.cos(a) * 0.2);
-      t.rotation.y = a;
-      skull.add(t);
+    // Nasal cavity: an upside-down heart.
+    for (const x of [-1, 1]) {
+      const lobe = part(skull, ball(0.07, 16, 12), dark, [x * 0.055, -0.3, 1.0], [0.85, 1.35, 0.5]);
+      lobe.rotation.z = x * 0.45;
     }
+    part(skull, new T.ConeGeometry(0.09, 0.14, 12), dark, [0, -0.39, 0.98], [1, 1, 0.5]).rotation.x = Math.PI;
+    // Upper jaw: the dark mouth behind, then a row of rounded teeth.
+    part(skull, ball(0.42), dark, [0, -0.62, 0.62], [1, 0.32, 0.78]);
+    const tooth = ball(0.075, 12, 10);
+    const teeth = (parent, y, r, z0) => {
+      for (let i = -3; i <= 3; i++) {
+        const a = i * 0.2;
+        const t = part(parent, tooth, bone, [Math.sin(a) * r, y, z0 + Math.cos(a) * r * 0.42], [0.85, 1.4, 0.7], 0.12);
+        t.rotation.y = a;
+      }
+    };
+    teeth(skull, -0.6, 0.5, 0.75);
+    // A cartoon crack across the top of the dome.
+    const crackPts = [
+      [0.42, 0.95, 0.35],
+      [0.34, 0.78, 0.55],
+      [0.46, 0.66, 0.62],
+      [0.36, 0.52, 0.8],
+    ].map(([x, y, z]) => {
+      const v = new T.Vector3(x, y - 0.32, z + 0.05).normalize();
+      return new T.Vector3(v.x * 1.03, v.y * 0.99 + 0.32, v.z * 1.09 - 0.05);
+    });
+    part(skull, new T.TubeGeometry(new T.CatmullRomCurve3(crackPts, false, 'catmullrom', 0), 24, 0.018, 6), dark, [0, 0, 0]);
     // The jaw hinges open while the skull talks.
     const jaw = new T.Group();
     jaw.position.set(0, -0.6, 0.1);
-    const mandible = new T.Mesh(new T.SphereGeometry(0.62, 28, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), bone);
-    mandible.scale.set(1.05, 0.55, 1.05);
-    mandible.position.set(0, -0.06, 0.1);
-    jaw.add(mandible);
-    for (let i = -3; i <= 3; i++) {
-      const t = new T.Mesh(tooth, bone);
-      const a = i * 0.16;
-      t.position.set(Math.sin(a) * 0.6, 0.02, 0.5 + Math.cos(a) * 0.18);
-      t.rotation.y = a;
-      jaw.add(t);
-    }
+    part(jaw, new T.SphereGeometry(0.6, 28, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), bone, [0, -0.02, 0.2], [0.82, 0.6, 0.98], 0.05);
+    part(jaw, ball(0.2), bone, [0, -0.3, 0.64], [1.3, 0.75, 0.8]); // chin
+    teeth(jaw, 0.02, 0.47, 0.52);
     skull.add(jaw);
     scene.add(skull);
 
@@ -663,6 +810,8 @@
         await SB.bones.picks.settleOld().catch(() => {}); // finals the board didn't see
         const models = await SB.bones.models();
         future = { games: await predict(models), models };
+        trackBets(future.games);
+        await settleBets().catch(() => {});
       } catch (e) {
         future = { failed: true };
       }
