@@ -383,6 +383,15 @@ back-to-back term (`predict(..., ctx)`; it fits to about zero). Rows carry [8] [
 It has its own picks store (`sb.moussa2Picks`), Bone Zone check and best bet, a column in the drawers, and the
 first xW column on Standings while it's on. `SB.bones.pastSeason(2025)` reads last season's games into memory
 (nothing saved) for backtests. Last season it beat MOUSSA beyond noise; this season it trails within noise.
+**Where it comes from** (since Nov 26, `js/breakdown.js`): a section in a basketball player's drawer that splits his
+MOUSSA or MOUSSA V2 (its own switch, starting on the one in settings) over the drawer's games into the kinds of play
+that earned it: made twos and threes, free-throw trips, missed shots, assists, turnovers, offensive and defensive
+rebounds, steals, blocks, shot defense on the floor, fouls, and V2's team shares (opponents' rebounds, turnovers
+forced, teammates' late misses). Each kind shows its total, how many plays, and a tick for the average player in the
+same games scaled to his minutes, with how far he's ahead or behind it; the two biggest gaps each way are summed up in
+a line. Every credit is tagged in `js/engine.js` (`creditKind`, `kindAdd`, `pl.kinds[2|3]`), so the kinds add up to
+his total exactly. They aren't in the saved rows: a button replays the games' play-by-play in memory (shared between
+drawers; nothing saved, no cache version change).
 **Test settings** (`SB.impact.tune`, defaults 1 = unchanged): `missCost` (since Nov 24, TESTS.md T24), the share of a
 missed field goal's v2 charge its shooter takes, the rest dropped; BONES's lighter charge (about 0.55) tested worse
 beyond noise, so it stays at 1. `missRecovery` (null = off; T26), how often a miss comes back by its shot type, which sets

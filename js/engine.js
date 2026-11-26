@@ -302,6 +302,31 @@
   // made as the defender: a block, a steal, a defensive rebound (and the
   // blocker's half of one), and fouls he committed on defense (his share of a
   // free-throw trip, or a non-shooting foul). Offensive fouls are the offense's.
+  // What kind of play earned a player's credit, for the player drawer's
+  // breakdown (js/breakdown.js; display only, never saved in the rows).
+  function creditKind(p, id) {
+    if (p.ftTrip) return id === p.p0 ? 'ft' : 'foul';
+    if (p.blockBy === id || p.blockedBy === id) return 'blk';
+    if (p.stealBy === id) return 'stl';
+    if (p.fga || (p.blockBy && / blocks /.test(p.text))) {
+      if (id === p.p0) return p.scoring ? (p.pts === 3 ? 'three' : 'two') : 'miss';
+      if (id === p.p1 && p.scoring) return 'ast';
+    }
+    const tt = `${p.type} ${p.text}`;
+    if (p.isRebound) return /defensive/i.test(tt) ? 'dreb' : 'oreb';
+    if (/turnover|offensive foul|offensive charge|traveling|violation/i.test(tt)) return 'tov';
+    if (/foul/i.test(p.type)) return 'foul';
+    return 'other';
+  }
+  // Adds to a player's breakdown: kinds[metric][kind] = [value, plays].
+  // metric 2: MOUSSA, 3: MOUSSA V2.
+  function kindAdd(pl, v, kind, val, count = true) {
+    if (!pl || !val) return;
+    const k = ((pl.kinds ||= { 2: {}, 3: {} })[v][kind] ||= [0, 0]);
+    k[0] += val;
+    if (count) k[1]++;
+  }
+
   function defensiveCredit(p, id) {
     if (p.blockBy === id || p.blockedBy === id || p.stealBy === id) return true;
     if (p.isRebound && /defensive/i.test(`${p.type} ${p.text}`)) return true;
@@ -850,6 +875,7 @@
             const vN = side * (p.impDeltaN || 0) * c.share * wN * rebShare * missK; // BONES v2
             pl.imp += v;
             pl.impN += vN;
+            kindAdd(pl, 2, creditKind(p, c.id), vN);
             if (defensiveCredit(p, c.id)) {
               pl.defBones += v;
               pl.defBonesN += vN;
@@ -869,6 +895,7 @@
             pl.defBones += v;
             pl.impN += vN;
             pl.defBonesN += vN;
+            kindAdd(pl, 2, 'dreb', vN, false); // the rest of the defense's share of a defensive rebound
             pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p, def: true });
           }
           // BONES v2 settings (SB.impact.tune, for testing in the backtest): an
@@ -890,11 +917,13 @@
               const side = owner.teamId === homeId ? 1 : -1;
               const moved = side * p.impDeltaN * c.share * wN * (1 - keep);
               owner.impN -= moved;
+              kindAdd(owner, 2, 'other', -moved, false);
               const last = owner.moments[owner.moments.length - 1];
               if (last && last.play === p) last.impN -= moved;
               for (const id of mates) {
                 const pl = players.get(id);
                 pl.impN += moved / mates.length;
+                kindAdd(pl, 2, 'other', moved / mates.length, false);
                 pl.moments.push({ t: p.elapsed, wp: p.wp, imp: 0, impN: moved / mates.length, play: p, team: true });
               }
             }
@@ -934,6 +963,7 @@
               pl.defBones += v;
               pl.impN += vN;
               pl.defBonesN += vN;
+              kindAdd(pl, 2, 'shotD', vN);
               pl.moments.push({ t: p.elapsed, wp: p.wp, imp: v, impN: vN, play: p, def: true });
             }
           }
@@ -951,6 +981,7 @@
               const f = (1 - keepLuck) * luck * pointValue * (c.share / tot);
               pl.imp -= f * p.weight;
               pl.impN -= f * wN;
+              kindAdd(pl, 2, 'other', -f * wN, false);
             }
           }
         }
@@ -977,11 +1008,14 @@
           const C = SB.impact.V3;
           const on = C.on;
           const D = p.impDeltaN || 0;
-          const add = (id, val, def) => {
+          // kind: what earned it, for the drawer's breakdown (creditKind; count:
+          // whether it's a play of his own or a share of a teammate's or opponent's).
+          const add = (id, val, def, kind = 'other', count = true) => {
             const pl = players.get(id);
             if (!pl || !val) return;
             pl.impN3 += val;
             if (def) pl.defN3 += val;
+            kindAdd(pl, 3, kind, val, count);
           };
           const sideOf = (id) => (players.get(id)?.teamId === homeId ? 1 : -1);
           const teamOf = (id) => players.get(id)?.teamId;
@@ -1006,34 +1040,34 @@
             if (assisted) {
               const xp = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) : null;
               const sh = xp == null ? 0.2 : Math.min(C.assistMax, Math.max(C.assistMin, C.assistBase + C.assistSlope * (xp - SB.xpts.avg(league))));
-              add(p.p0, sideOf(p.p0) * D * (1 - sh) * wN, false);
-              add(p.p1, sideOf(p.p1) * D * sh * wN, false);
+              add(p.p0, sideOf(p.p0) * D * (1 - sh) * wN, false, p.pts === 3 ? 'three' : 'two');
+              add(p.p1, sideOf(p.p1) * D * sh * wN, false, 'ast');
             } else if (lateMiss && teamOf(p.p0)) {
               const rest = five(teamOf(p.p0)).filter((id) => id !== p.p0);
               const keep = rest.length ? C.lateShooter : 1;
-              add(p.p0, sideOf(p.p0) * D * keep * wN, false);
-              for (const id of rest) add(id, (sideOf(id) * D * (1 - keep) * wN) / rest.length, false);
+              add(p.p0, sideOf(p.p0) * D * keep * wN, false, 'miss');
+              for (const id of rest) add(id, (sideOf(id) * D * (1 - keep) * wN) / rest.length, false, 'lateMates', false);
             } else if (forced && teamOf(p.p0)) {
               const defs = five(oppOf(teamOf(p.p0)));
               const share = defs.length ? C.toDefShare : 0;
-              add(p.p0, sideOf(p.p0) * D * (1 - share) * wN, false);
-              for (const id of defs) add(id, (sideOf(id) * D * share * wN) / defs.length, true);
+              add(p.p0, sideOf(p.p0) * D * (1 - share) * wN, false, 'tov');
+              for (const id of defs) add(id, (sideOf(id) * D * share * wN) / defs.length, true, 'forced', false);
             } else if (defReb) {
               const got = new Set();
               for (const c of p.credits) {
-                add(c.id, sideOf(c.id) * D * c.share * REB_SHARE * wN, true);
+                add(c.id, sideOf(c.id) * D * c.share * REB_SHARE * wN, true, 'dreb');
                 got.add(c.id);
               }
               const tid = teamOf(p.credits[0].id);
               const rest = five(tid).filter((id) => !got.has(id));
-              for (const id of rest) add(id, (sideOf(id) * D * (1 - REB_SHARE) * wN) / rest.length, true);
+              for (const id of rest) add(id, (sideOf(id) * D * (1 - REB_SHARE) * wN) / rest.length, true, 'dreb', false);
             } else {
-              for (const c of p.credits) add(c.id, sideOf(c.id) * D * c.share * wN, defensiveCredit(p, c.id));
+              for (const c of p.credits) add(c.id, sideOf(c.id) * D * c.share * wN, defensiveCredit(p, c.id), creditKind(p, c.id));
             }
             // Zero-sum rebounding: the other side's five pay what the rebound gained.
             if (on.reb && (offReb || defReb) && teamOf(p.credits[0].id)) {
               const opp = five(oppOf(teamOf(p.credits[0].id)));
-              for (const id of opp) add(id, (sideOf(id) * D * wN) / opp.length, offReb);
+              for (const id of opp) add(id, (sideOf(id) * D * wN) / opp.length, offReb, 'rebOpp', false);
             }
           }
           // On-court shot defense, MOUSSA V2's way (shotD, rim).
@@ -1047,7 +1081,7 @@
             // pv is the win chance of one point (always positive), so this is the
             // defense's own credit, as MOUSSA's on-court defense computes it.
             const defs = five(shooter3.teamId === homeId ? awayId : homeId);
-            for (const id of defs) add(id, (-(quality + rim) * pv * wN) / defs.length, true);
+            for (const id of defs) add(id, (-(quality + rim) * pv * wN) / defs.length, true, 'shotD');
           }
         }
 

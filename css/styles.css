@@ -831,6 +831,36 @@ html.vt-reflow::view-transition-new(*) { animation: none; }
 button.pl-team { padding: 2px 6px 2px 0; margin-left: -1px; border: 0; border-radius: 6px; background: none; font-family: inherit; cursor: pointer; }
 button.pl-team:hover { color: var(--yellow); }
 
+/* Where a player's MOUSSA comes from, in the player drawer (js/breakdown.js). */
+.bk-tot { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; }
+.bk-tot span { display: flex; flex-direction: column; }
+.bk-tot small { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--dim); }
+.bk-tot b { font-size: 20px; font-weight: 900; }
+.bk-tot em { font-style: normal; font-size: 11px; color: var(--dim); margin-left: auto; }
+.bk-tot b.pos, .bk-v.pos { color: var(--yellow); }
+.bk-tot b.neg, .bk-v.neg { color: var(--red); }
+.bk-sum { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--dim); }
+.bk-sum b { color: var(--text); }
+.bk-go { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel-2); color: var(--text); font: inherit; font-size: 12px; font-weight: 800; cursor: pointer; }
+.bk-go:hover { border-color: var(--yellow); }
+.bk-go small { font-weight: 600; color: var(--dim); margin-left: 4px; }
+.bk-bars { display: grid; gap: 10px; margin: 12px 0 8px; }
+.bk-grp { display: grid; gap: 4px; }
+.bk-grp h4 { margin: 0 0 2px; font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.bk-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 46px 44px; align-items: center; gap: 8px; font-size: 12px; cursor: help; }
+.bk-l { display: flex; flex-direction: column; font-weight: 700; min-width: 0; }
+.bk-l small { font-size: 10px; font-weight: 600; color: var(--dim); }
+.bk-v { text-align: right; font-weight: 900; font-variant-numeric: tabular-nums; }
+.bk-d { text-align: right; font-size: 10px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.bk-d.up { color: var(--yellow); }
+.bk-d.down { color: var(--red); }
+.bk-bar { position: relative; height: 10px; background: var(--panel-2); border-radius: 3px; }
+.bk-bar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--line); }
+.bk-bar i { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.bk-bar i.pos { background: var(--yellow); }
+.bk-bar i.neg { background: var(--red); }
+.bk-bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text); border-radius: 1px; z-index: 1; }
+
 /* Team drawer (js/team.js): the same pieces as a player's, plus its own. */
 .tm-logo { border-radius: 16px; display: grid; place-items: center; }
 .tm-logo img { width: 78%; height: 78%; object-fit: contain; }

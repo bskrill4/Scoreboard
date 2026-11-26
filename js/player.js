@@ -692,6 +692,7 @@
         return `<th class="${cls}${on ? ' sorted' : ''}"><button type="button" data-psort="${k}" title="Sort by ${label}${k === 'day' ? '' : ': best games first'}">${label}${on ? (dir < 0 ? ' ▾' : ' ▴') : ''}</button></th>`;
       };
       body = `${(pane.range === 'week' ? chartWeek : chartSeason)(data, 'imp')}
+        ${SB.breakdown ? SB.breakdown.html(pane) : '' /* where his MOUSSA comes from (js/breakdown.js) */}
         ${
           data.games.length
             ? `<table class="pl-games"><thead><tr>${th('day', 'Day')}<th>Opp</th><th>Result</th><th>Line</th>${th('b', 'BONES', cur === 1 ? 'cur' : '')}${both ? th('m', 'MOUSSA', cur === 2 ? 'cur' : '') + th('m2', 'V2', cur === 3 ? 'cur' : '') : ''}</tr></thead><tbody>${rows}</tbody></table>`

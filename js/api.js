@@ -83,6 +83,15 @@
     engine: (l) => SB[INFO[l].engine],
   };
 
+  // ESPN's id for the season under way: basketball and hockey by the year it ends
+  // (2027 for 2026-27, from August on), football by the year it starts (2026 runs
+  // into February 2027).
+  function currentSeason(league, now = new Date()) {
+    const y = now.getFullYear();
+    if (INFO[league]?.football) return now.getMonth() >= 2 ? y : y - 1;
+    return now.getMonth() >= 7 ? y + 1 : y;
+  }
+
   // Every request gives up after FETCH_TIMEOUT, so one stalled connection can't
   // hold up the poll loop (which waits for a round of requests to finish).
   const FETCH_TIMEOUT = 15000;
@@ -269,7 +278,11 @@
     // oldest first, plus their experience ("Rookie", "3rd Season"). Cached per page load.
     // season: e.g. 2026 for 2025-26 (default: the current season).
     gamelog(id, league = 'nba', season = null) {
-      const key = `${league}:${id}:${season || ''}`;
+      // Always a season: without one ESPN sends the player's latest season with
+      // games, which for someone who hasn't played yet this season is last season's
+      // (Nov 26: Ariel Hukporti's drawer listed his 54 games of 2025-26 as this season's).
+      season = season || currentSeason(league);
+      const key = `${league}:${id}:${season}`;
       if (!gamelogs.has(key)) {
         const p = Promise.all([
           getJSON(`${LEAGUES[league].stats}/athletes/${id}/gamelog${season ? `?season=${season}` : ''}`),
