@@ -21,7 +21,9 @@
 //    those shots' expected points. Mostly luck so far (TESTS.md, T17).
 //  - Top injury: the best player listed Out, by the toggle's metric per 36
 //    (100+ season minutes).
-// The bracket seeds by ESPN's playoff seed, plays the play-in, and projects
+//  - Proj: the projected record, the rest of the season played out 1,000 times
+//    with the pick model, as of this morning (see "projected records" below).
+// The bracket seeds by ESPN's playoff seed (or, switched, by projected record), plays the play-in, and projects
 // every series with the toggle's pick model (higher seed at home in games 1,
 // 2, 5 and 7; players listed Out are left out).
 (function () {
@@ -229,6 +231,153 @@
     return { conf, seeds, seedOf, playIn, r1, r2, r3 };
   }
 
+  // ---------- projected records: the rest of the season, 1,000 times ----------
+  // Every regular-season game left (ESPN's monthly scoreboards) gets the pick
+  // model's home win chance (SB.bones.predict, the bracket's model). A player
+  // listed Out sits until his return date (two weeks when ESPN gives none).
+  // The season is played out RUNS times; a team's projected record is its
+  // average. As of this morning: the records count games finished before today
+  // (the season's games, js/bones.js), today's slate is simulated with the rest,
+  // and the random draws are seeded by the date. It runs once per page load and
+  // day: the records and draws hold all day, but the pick model and injury report
+  // are the latest, so a reload after games finish can move a team a win or so.
+  // Kept in memory only (nothing saved).
+  const RUNS = 1000;
+  const OUT_DAYS = 14; // an Out player without a return date
+  const proj = { day: null, sched: null, loading: false, error: null, byV: {} };
+  // mulberry32: a small seeded random number generator.
+  const rng = (seed) => () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const hash = (str) => [...str].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, 7);
+  // The months left in this season (it ends in April).
+  function monthsLeft(now = new Date()) {
+    const endYear = now.getMonth() >= 6 ? now.getFullYear() + 1 : now.getFullYear();
+    const out = [];
+    for (let d = new Date(now.getFullYear(), now.getMonth(), 1); d <= new Date(endYear, 3, 30); d = new Date(d.getFullYear(), d.getMonth() + 1, 1))
+      out.push(SB.days.ymd(d).slice(0, 6));
+    return out;
+  }
+  // Today's slate and every game after it.
+  async function scheduleLeft(today) {
+    const boards = await Promise.all(monthsLeft().map((m) => SB.api.scoreboardMonth(m, 'nba')));
+    const games = [];
+    const seen = new Set();
+    for (const b of boards)
+      for (const e of b.events || []) {
+        if (seen.has(e.id) || e.season?.slug !== 'regular-season') continue;
+        seen.add(e.id);
+        const day = SB.days.dayOf(Date.parse(e.date));
+        if (day < today) continue;
+        const c = e.competitions?.[0]?.competitors || [];
+        const side = (h) => c.find((x) => x.homeAway === h);
+        const home = side('home');
+        const away = side('away');
+        if (!home || !away) continue;
+        games.push({ id: e.id, day, home: String(home.team.id), away: String(away.team.id) });
+      }
+    return { games };
+  }
+  // Who's Out on a day, by return date (YYYYMMDD; none: OUT_DAYS from today).
+  function outOn(today) {
+    const until = SB.days.shiftDay(today, OUT_DAYS);
+    const list = [...state.injuries.values()].flat().filter((o) => o.id).map((o) => {
+      const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(o.back || '');
+      return { id: String(o.id), back: m ? `${m[1]}${m[2]}${m[3]}` : until };
+    });
+    return (day) => list.filter((o) => o.back > day);
+  }
+  function simulate(m, v) {
+    const today = proj.day;
+    const teams = state.confs.flatMap((c) => c.teams.map((t) => ({ t, conf: c.short })));
+    const idx = new Map(teams.map((x, i) => [x.t.id, i]));
+    const n = teams.length;
+    // This morning's records: every regular-season game finished before today.
+    const baseW = new Array(n).fill(0);
+    const baseL = new Array(n).fill(0);
+    for (const g of state.games || []) {
+      if (SB.days.dayOf(g.t) >= today || !idx.has(g.home) || !idx.has(g.away)) continue;
+      const homeWon = g.score[g.home] > g.score[g.away];
+      baseW[idx.get(homeWon ? g.home : g.away)]++;
+      baseL[idx.get(homeWon ? g.away : g.home)]++;
+    }
+    // Each game's home win chance, memoized by matchup and who's out.
+    const outs = outOn(today);
+    const memo = new Map();
+    const left = [];
+    for (const g of proj.sched.games) {
+      if (!idx.has(g.home) || !idx.has(g.away)) continue;
+      const o = outs(g.day).map((x) => x.id);
+      const key = `${g.home}|${g.away}|${o.join(',')}`;
+      if (!memo.has(key)) memo.set(key, gameP(m, { id: g.home }, { id: g.away }, new Map(o.map((id) => [id, 1]))));
+      left.push([idx.get(g.home), idx.get(g.away), memo.get(key)]);
+    }
+    // Games not on the schedule yet: every team plays 82, but the NBA Cup's
+    // knockout and consolation games are listed against "TBD" until the group
+    // stage ends. Each is played at the team's average chance in its known games.
+    const SEASON = 82;
+    const extra = teams.map((x, i) => {
+      let sum = 0;
+      let k = 0;
+      for (const [h, a, p] of left) {
+        if (h === i) (sum += p), k++;
+        else if (a === i) (sum += 1 - p), k++;
+      }
+      return { n: Math.max(0, SEASON - baseW[i] - baseL[i] - k), p: k ? sum / k : 0.5 };
+    });
+    const rand = rng(hash(`${today}|v${v}`));
+    const wins = teams.map(() => new Uint8Array(RUNS));
+    const top6 = new Float64Array(n);
+    const top10 = new Float64Array(n);
+    const byConf = ['East', 'West'].map((c) => teams.map((x, i) => (x.conf === c ? i : -1)).filter((i) => i >= 0));
+    const w = new Float64Array(n);
+    for (let r = 0; r < RUNS; r++) {
+      for (let i = 0; i < n; i++) w[i] = baseW[i];
+      for (const [h, a, p] of left) w[rand() < p ? h : a]++;
+      for (let i = 0; i < n; i++) for (let k = 0; k < extra[i].n; k++) if (rand() < extra[i].p) w[i]++;
+      for (let i = 0; i < n; i++) wins[i][r] = w[i];
+      // Seeds this run: most wins, ties broken at random (a stand-in for the tiebreakers).
+      for (const list of byConf) {
+        const order = list.map((i) => [w[i] + rand() * 0.5, i]).sort((x, y) => y[0] - x[0]);
+        order.forEach(([, i], k) => {
+          if (k < 6) top6[i]++;
+          if (k < 10) top10[i]++;
+        });
+      }
+    }
+    const out = {};
+    teams.forEach((x, i) => {
+      const sorted = Array.from(wins[i]).sort((a, b) => a - b);
+      const games = baseW[i] + baseL[i] + left.filter(([h, a]) => h === i || a === i).length + extra[i].n;
+      const mean = sorted.reduce((s2, y) => s2 + y, 0) / RUNS;
+      out[x.t.id] = { w: mean, l: games - mean, games, lo: sorted[Math.floor(RUNS * 0.1)], hi: sorted[Math.floor(RUNS * 0.9)], top6: top6[i] / RUNS, top10: top10[i] / RUNS };
+    });
+    return out;
+  }
+  // The projection under the switch's metric (null until the schedule and model are in).
+  function projected() {
+    const v = SB.impact.version();
+    const m = state.models?.[v];
+    if (!m || !proj.sched || !state.confs || proj.day !== SB.days.today()) return null;
+    return (proj.byV[v] ||= simulate(m, v));
+  }
+  async function loadProjection() {
+    const today = SB.days.today();
+    if (proj.loading || (proj.day === today && proj.sched)) return;
+    proj.loading = true;
+    try {
+      const sched = await scheduleLeft(today);
+      Object.assign(proj, { day: today, sched, byV: {}, error: null });
+    } catch (e) {
+      proj.error = 'Couldn’t load the rest of the schedule.';
+    }
+    proj.loading = false;
+    draw();
+  }
+
   // ---------- loading ----------
   let loadP = null;
   function load() {
@@ -253,6 +402,7 @@
       state.stats = seasonStats(games);
       state.models = await SB.bones.models();
       state.progress = null;
+      loadProjection();
     } catch (e) {
       console.error(e);
       state.error = 'Couldn’t reach ESPN for the standings. It’ll try again shortly.';
@@ -270,6 +420,12 @@
   };
   const team = (t) =>
     `<span class="st-team">${t.logo ? `<img src="${esc(t.logo)}" alt="" loading="lazy">` : ''}<b>${esc(t.short)}</b></span>`;
+  function projCell(t) {
+    const p = projected()?.[t.id];
+    if (!p) return `<td class="num st-proj">${proj.error ? '–' : '…'}</td>`;
+    const tip = `${Math.round(p.w)}-${Math.round(p.l)} on average (${p.w.toFixed(1)} wins); 8 in 10 seasons between ${p.lo} and ${p.hi} wins. Top 6 in the conference: ${pct0(p.top6)}. Top 10 (play-in or better): ${pct0(p.top10)}.`;
+    return `<td class="num st-proj" title="${esc(tip)}">${Math.round(p.w)}-${Math.round(p.l)}</td>`;
+  }
   function rowHTML(t, rank, leader, cls = '') {
     const s = state.stats?.[t.id];
     const m = state.models?.[SB.impact.version()];
@@ -282,6 +438,7 @@
       <td>${team(t)}</td>
       <td class="num">${t.w}-${t.l}</td>
       <td class="num">${pct3(t.pct)}</td>
+      ${projCell(t)}
       <td class="num">${gb > 0 ? (gb % 1 ? gb.toFixed(1) : gb) : '–'}</td>
       <td class="num">${esc(t.l10)}</td>
       <td class="num">${esc(t.streak)}</td>
@@ -303,7 +460,7 @@
     return `${title ? `<h3 class="ptable-sub st-sub">${esc(title)}</h3>` : ''}
       <div class="ptable-wrap"><table class="ptable st-table">
         <thead><tr>
-          ${h('#', opts.seeds ? 'Playoff seed (ESPN, with tiebreakers)' : 'Rank')}${h('Team', '')}${h('W-L', 'Record')}${h('Pct', 'Win percentage')}${h('GB', 'Games behind the leader of this table')}${h('L10', 'Last ten games')}${h('Strk', 'Current streak')}
+          ${h('#', opts.seeds ? 'Playoff seed (ESPN, with tiebreakers)' : 'Rank')}${h('Team', '')}${h('W-L', 'Record')}${h('Pct', 'Win percentage')}${h('Proj', `Projected record: the rest of the season played out ${RUNS.toLocaleString()} times with ${N}'s pick model, as of this morning`, 'st-proj')}${h('GB', 'Games behind the leader of this table')}${h('L10', 'Last ten games')}${h('Strk', 'Current streak')}
           ${h('Diff', 'Point differential per game')}
           ${h('xW MOUSSA', 'Wins MOUSSA says the team earned: each game’s MOUSSA gap between the teams, turned into a win chance and added up', cur(2))}
           ${h('xW BONES', 'Wins BONES says the team earned (swing only, no game floor)', cur(1))}
@@ -324,11 +481,32 @@
     const line = (t, p, won) => `<div class="br-team${won ? ' won' : ''}"><i>${seedOf?.get(t.id) ?? (Number.isFinite(t.seed) ? t.seed : '')}</i>${t.logo ? `<img src="${esc(t.logo)}" alt="" loading="lazy">` : ''}<b>${esc(t.abbr)}</b><span>${t.w}-${t.l}</span><em>${pct0(p)}</em></div>`;
     return `<div class="br-match">${line(a, pa, pa >= 0.5)}${line(b, 1 - pa, pa < 0.5)}${note ? `<small>${esc(note)}</small>` : ''}</div>`;
   }
+  // The bracket's seeds: today's records (ESPN's seeds) or the projected ones
+  // (most projected wins in the conference, ties to today's record).
+  let bracketMode = 'current';
+  function projectedConfs(P) {
+    return state.confs.map((c) => {
+      const teams = c.teams
+        .map((t) => ({ t, p: P[t.id] }))
+        .sort((a, b) => b.p.w - a.p.w || b.t.pct - a.t.pct)
+        .map(({ t, p }, i) => ({ ...t, seed: i + 1, w: Math.round(p.w), l: Math.round(p.l), pct: p.w / p.games }));
+      return { ...c, teams };
+    });
+  }
   function bracketHTML() {
     const m = state.models?.[SB.impact.version()];
     if (!state.confs || !m) return `<p class="st-note">The bracket appears once the season's games are read.</p>`;
     const out = allOut();
-    const bs = state.confs.map((c) => conferenceBracket(m, c, out)).filter(Boolean);
+    const P = projected();
+    const mode = bracketMode === 'projected' && P ? 'projected' : 'current';
+    const confs = mode === 'projected' ? projectedConfs(P) : state.confs;
+    const modeSeg = `<div class="seg st-brmode" role="group" aria-label="Seed the bracket by">${[
+      ['current', 'Current records'],
+      ['projected', 'Projected records'],
+    ]
+      .map(([k, label]) => `<button type="button" data-stbr="${k}" class="${bracketMode === k ? 'on' : ''}" aria-pressed="${bracketMode === k}"${k === 'projected' && !P ? ' disabled title="Simulating the rest of the season…"' : ''}>${label}</button>`)
+      .join('')}</div>`;
+    const bs = confs.map((c) => conferenceBracket(m, c, out)).filter(Boolean);
     if (bs.length !== 2) return '';
     const col = (title, items) => `<div class="br-col"><h4>${title}</h4><div class="br-list">${items.join('')}</div></div>`;
     const ser = (x, seedOf) => matchup(x.hi, x.lo, x.p, seedOf);
@@ -342,11 +520,15 @@
     const fin = series(m, e.r3.winner, w.r3.winner, out);
     const finSeeds = new Map([[e.r3.winner.id, e.seedOf.get(e.r3.winner.id)], [w.r3.winner.id, w.seedOf.get(w.r3.winner.id)]]);
     const N = SB.impact.name();
-    return `<h3 class="ptable-sub st-sub">If the playoffs started tonight <small>projected by ${N}</small></h3>
+    const seedsNote =
+      mode === 'projected'
+        ? `Seeds are by projected record (the Proj column: the rest of the season played out ${RUNS.toLocaleString()} times from this morning's records, players listed Out sitting until their return date), most projected wins first within each conference; records shown are projected.`
+        : "Seeds are ESPN's, with tiebreakers.";
+    return `<div class="st-brhead"><h3 class="ptable-sub st-sub">${mode === 'projected' ? `If the season ends as projected <small>by ${N}, ${RUNS.toLocaleString()} seasons</small>` : `If the playoffs started tonight <small>projected by ${N}</small>`}</h3>${modeSeg}</div>
       <div class="bracket">${conf(e)}${conf(w)}
         <section class="br-finals"><h3>NBA Finals</h3>${matchup(fin.hi, fin.lo, fin.p, finSeeds)}<p class="br-champ">${esc(fin.winner.name)} <small>${pct0(Math.max(fin.p, 1 - fin.p))} in the Finals</small></p></section>
       </div>
-      <p class="st-note">Seeds are ESPN's, with tiebreakers. Every game and series is ${N}'s pick model, the same one that makes the nightly picks: each team's players, their ${N} a minute, their recent minutes, minus everyone listed Out today; the higher seed is home in games 1, 2, 5 and 7. Percentages are each side's chance to win the series (in the play-in, the game); the favorite moves on. A projection, not a simulation: an upset early would change everything after it.</p>`;
+      <p class="st-note">${seedsNote} Every game and series is ${N}'s pick model, the same one that makes the nightly picks: each team's players, their ${N} a minute, their recent minutes, minus everyone listed Out today; the higher seed is home in games 1, 2, 5 and 7. Percentages are each side's chance to win the series (in the play-in, the game); the favorite moves on. A projection, not a simulation: an upset early would change everything after it.</p>`;
   }
 
   function draw() {
@@ -391,7 +573,7 @@
         <div class="seg" role="group" aria-label="Group by">${seg}</div>
       </div>
       ${loading}${body}
-      <p class="players-note st-note"><b>xW</b>: the wins each metric says a team earned, from its game-by-game gap with the opponent (BONES without its game floor). <b>xPts</b>: expected points from the shots a team takes, plus free throws made; <b>xPts allowed</b>, the same for its opponents. <b>Shot luck</b>: points a game from making, and opponents missing, more than those shots' expected points (we've found it's mostly luck so far: <a href="#faq">FAQ</a>). The highlighted xW is the metric switched on in settings, which also sets the top injury and the bracket.</p>
+      <p class="players-note st-note"><b>xW</b>: the wins each metric says a team earned, from its game-by-game gap with the opponent (BONES without its game floor). <b>xPts</b>: expected points from the shots a team takes, plus free throws made; <b>xPts allowed</b>, the same for its opponents. <b>Proj</b>: the projected record, the rest of the season played out ${RUNS.toLocaleString()} times with ${SB.impact.name()}'s pick model from this morning's records (hover for the range and playoff odds). <b>Shot luck</b>: points a game from making, and opponents missing, more than those shots' expected points (we've found it's mostly luck so far: <a href="#faq">FAQ</a>). The highlighted xW is the metric switched on in settings, which also sets the top injury and the bracket.</p>
       ${bracketHTML()}`;
     if (html !== root._html) {
       root._html = html;
@@ -418,6 +600,11 @@
           SB.soccer.sortTable(ts.dataset.mtsort);
           return draw();
         }
+        const br = e.target.closest('[data-stbr]');
+        if (br && !br.disabled) {
+          bracketMode = br.dataset.stbr;
+          return draw();
+        }
         const tm = e.target.closest('tr[data-tid]');
         if (tm) return SB.player.openTeam({ id: tm.dataset.tid });
         const b = e.target.closest('[data-stview]');
@@ -430,6 +617,7 @@
       });
     }
     if (sport === 'nba' && !state.loading && Date.now() - state.at > FRESH_MS) load();
+    else if (sport === 'nba' && state.models && proj.day !== SB.days.today()) loadProjection(); // a new morning
     draw();
   }
 

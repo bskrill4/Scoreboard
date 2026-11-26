@@ -18,6 +18,8 @@
     String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const SITE = 'https://site.api.espn.com/apis/site/v2/sports';
+  // A team's or player's drawer attributes (js/drawers.js), '' if it isn't loaded.
+  const dr = (fn, ...a) => (SB.drawers ? SB.drawers[fn](...a) : '');
   // Leagues, in the order of the chips. `on`: shown by default.
   const LEAGUES = [
     { id: 'eng.1', path: 'soccer/eng.1', name: 'Premier League', short: 'EPL', on: true },
@@ -404,6 +406,7 @@
         const num = (k) => Number(st[k]?.value ?? st[k]?.displayValue) || 0;
         return {
           rank: num('rank'),
+          id: String(e.team?.id || ''),
           team: e.team?.displayName || '',
           short: e.team?.shortDisplayName || e.team?.displayName || '',
           logo: e.team?.logos?.[0]?.href || '',
@@ -441,7 +444,7 @@
     const zones = [...new Map(t.rows.filter((r) => r.zone).map((r) => [r.zone.text, r.zone.color])).entries()];
     const body = rows
       .map(
-        (r) => `<tr>
+        (r) => `<tr${dr('team', 'soccer', { id: r.id, name: r.team, short: r.short, logo: r.logo }, id)} tabindex="0">
         <td class="num ms-rk"${r.zone ? ` style="--zone:${esc(r.zone.color)}" title="${esc(r.zone.text)}"` : ''}>${r.rank}${r.zone ? `<span class="sr-only">, ${esc(r.zone.text)}</span>` : ''}</td>
         <th scope="row" class="ms-tteam"><img src="${esc(r.logo)}" alt="" loading="lazy"><span>${esc(r.short)}</span></th>
         <td class="num">${r.p}</td><td class="num">${r.w}</td><td class="num">${r.d}</td><td class="num">${r.l}</td>
@@ -493,9 +496,10 @@
     const o = g[side === 'home' ? 'away' : 'home'];
     const lost = g.state === 'final' && (t.score < o.score || (t.score === o.score && t.shootout != null && t.shootout < o.shootout));
     const so = t.shootout != null && g.state !== 'pre' ? ` <small class="ms-so">(${t.shootout})</small>` : '';
+    const tl = dr('team', 'soccer', t, g.comp || g.league);
     return `<div class="ms-team${lost ? ' lost' : ''}">
-      <img class="logo" src="${esc(t.logo)}" alt="" loading="lazy">
-      <span class="ms-name"><b>${esc(t.short)}</b><small>${esc(t.record)}${t.form ? ` · form <span class="ms-form" aria-label="Last five: ${esc(t.form.split('').join(' '))}">${esc(t.form)}</span>` : ''}</small></span>
+      <img class="logo${tl ? ' tlink' : ''}" src="${esc(t.logo)}" alt=""${tl} loading="lazy">
+      <span class="ms-name"><b${tl ? ` class="tlink"${tl}` : ''}>${esc(t.short)}</b><small>${esc(t.record)}${t.form ? ` · form <span class="ms-form" aria-label="Last five: ${esc(t.form.split('').join(' '))}">${esc(t.form)}</span>` : ''}</small></span>
       <span class="ms-score">${g.state === 'pre' ? '' : t.score}${so}</span>
     </div>`;
   }
@@ -903,16 +907,16 @@
             .map((o) => {
               const ov = valueOf(g, team.side, o);
               const oc = `<div class="ms-card${where}" style="--c:${color}"><div class="ms-face" style="--t:${lum(color) > 0.6 ? '#111' : '#fff'}">${esc(o.jersey)}${o.head && !NO_HEAD.has(o.head) ? `<img src="${esc(o.head)}" alt="" loading="lazy" onerror="SB.soccer.noHead(this)">` : ''}</div><div><b>${esc(o.full || o.name)}</b><small>${esc(team.name)}${o.pos && o.pos !== 'SUB' ? ` · ${esc(o.pos)}` : ''} · off ${esc(o.offAt)}</small><small>${esc(statLine(o) || 'No stats')}</small></div>${ov == null ? '' : `<i title="${METRIC_NAME[metricOn()]}">${fmtV(ov)}</i>`}</div>`;
-              return `<div class="ms-dot ghost${o.id === hot ? ' hot' : ''}" data-pid="${esc(o.id)}" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--c:${color};--t:${lum(color) > 0.6 ? '#111' : '#fff'}"><b>${esc(o.jersey)}</b>${oc}</div>`;
+              return `<div class="ms-dot ghost${o.id === hot ? ' hot' : ''}" data-pid="${esc(o.id)}"${dr('soccerPlayer', g.id, o.id)} style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--c:${color};--t:${lum(color) > 0.6 ? '#111' : '#fff'}"><b>${esc(o.jersey)}</b>${oc}</div>`;
             })
             .join('');
-          return `${ghosts}<div class="ms-dot${s.rc ? ' off' : ''}${s.id === hot ? ' hot' : ''}" data-pid="${esc(s.id)}" tabindex="0" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--c:${color};--t:${lum(color) > 0.6 ? '#111' : '#fff'}" aria-label="${esc(`${s.full}${v == null ? '' : `, ${METRIC_NAME[metricOn()]} ${fmtV(v)}`}`)}"><b>${esc(s.jersey)}</b><span>${esc(s.name)}</span>${badges ? `<em>${badges}</em>` : ''}${card}</div>`;
+          return `${ghosts}<div class="ms-dot${s.rc ? ' off' : ''}${s.id === hot ? ' hot' : ''}" data-pid="${esc(s.id)}"${dr('soccerPlayer', g.id, s.id)} tabindex="0" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%;--c:${color};--t:${lum(color) > 0.6 ? '#111' : '#fff'}" aria-label="${esc(`${s.full}${v == null ? '' : `, ${METRIC_NAME[metricOn()]} ${fmtV(v)}`}`)}"><b>${esc(s.jersey)}</b><span>${esc(s.name)}</span>${badges ? `<em>${badges}</em>` : ''}${card}</div>`;
         })
         .join('');
     };
     const offHTML = (t) => (t.off.length ? `<p class="ms-off"><b>${esc(t.name)} off:</b> ${t.off.map((o) => `${esc(o.name)} <small>${esc(o.min)}${o.by ? ` · ${esc(o.by)} on` : ''}</small>`).join(', ')}</p>` : '');
     return `<div class="ms-pitch-wrap">
-        <div class="ms-pitch-head"><span>${esc(home.name)} <b>${esc(home.formation)}</b></span><span><b>${esc(away.formation)}</b> ${esc(away.name)}</span></div>
+        <div class="ms-pitch-head"><span><span class="tlink"${dr('team', 'soccer', g.home, g.comp || g.league)}>${esc(home.name)}</span> <b>${esc(home.formation)}</b></span><span><b>${esc(away.formation)}</b> <span class="tlink"${dr('team', 'soccer', g.away, g.comp || g.league)}>${esc(away.name)}</span></span></div>
         <div class="ms-pitch" role="img" aria-label="${esc(`Lineups: ${home.name} ${home.formation}, ${away.name} ${away.formation}`)}">
           <svg viewBox="0 0 105 68" preserveAspectRatio="none" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width=".35">
             <rect x=".5" y=".5" width="104" height="67"/><line x1="52.5" y1=".5" x2="52.5" y2="67.5"/><circle cx="52.5" cy="34" r="9.15"/>
@@ -1021,7 +1025,7 @@
     const title = `${what}: ${g.home.short} ${pc(o.home)}, draw ${pc(o.draw)}, ${g.away.short} ${pc(o.away)}`;
     if (g.state === 'final') {
       return `<div class="wpbar ms-bar" title="${esc(title)}"><i style="width:${(o.home * 100).toFixed(1)}%;background:${g.home.css}"></i><i style="width:${(o.draw * 100).toFixed(1)}%;background:var(--line)"></i><i style="width:${(o.away * 100).toFixed(1)}%;background:${g.away.css}"></i></div>
-        <div class="ms-bar-l"><span>${esc(g.home.short)}</span><span>${esc(g.decided || 'Full time')}</span><span>${esc(g.away.short)}</span></div>${stats}`;
+        <div class="ms-bar-l"><span class="tlink"${dr('team', 'soccer', g.home, g.comp || g.league)}>${esc(g.home.short)}</span><span>${esc(g.decided || 'Full time')}</span><span class="tlink"${dr('team', 'soccer', g.away, g.comp || g.league)}>${esc(g.away.short)}</span></div>${stats}`;
     }
     return `<div class="wpbar ms-bar" title="${esc(title)}"><i style="width:${(o.home * 100).toFixed(1)}%;background:${g.home.css}"></i><i style="width:${(o.draw * 100).toFixed(1)}%;background:var(--line)"></i><i style="width:${(o.away * 100).toFixed(1)}%;background:${g.away.css}"></i></div>
         <div class="ms-bar-l"><span>${pc(o.home)} to win</span><span>${o.draw ? `draw ${pc(o.draw)}` : 'to go through'}</span><span>${pc(o.away)} to win</span></div>${stats}`;
@@ -1222,7 +1226,7 @@
         const t = e.team === g.home.id ? g.home : g.away;
         const m = minuteNum(e.min);
         const div = m > 45.99 && m < 999 && !ht ? ((ht = true), '<li class="ms-ht">HT</li>') : '';
-        return `${div}<li class="${e.kind}" style="--tc:${t.css}"><span class="ms-ev-min">${esc(e.min)}</span>${icon[e.kind]}<span class="ms-ev-who"><b data-pid="${esc(e.p.id)}">${esc(e.p.name)}${word[e.kind]}</b>${e.ast ? `<small data-pid="${esc(e.ast.id)}">${esc(e.ast.name)}</small>` : ''}</span>${sw(e)}</li>`;
+        return `${div}<li class="${e.kind}" style="--tc:${t.css}"><span class="ms-ev-min">${esc(e.min)}</span>${icon[e.kind]}<span class="ms-ev-who"><b data-pid="${esc(e.p.id)}"${dr('soccerPlayer', g.id, e.p.id)}>${esc(e.p.name)}${word[e.kind]}</b>${e.ast ? `<small data-pid="${esc(e.ast.id)}"${dr('soccerPlayer', g.id, e.ast.id)}>${esc(e.ast.name)}</small>` : ''}</span>${sw(e)}</li>`;
       })
       .join('')}</ol>`;
   }
@@ -1336,7 +1340,7 @@
         const c = r.card;
         const v = r[m];
         const other = m === 'bones' ? 'xbones' : 'bones';
-        return `<div class="lrow${v < 0 ? ' cold' : ''}"${c ? ` data-pid="${esc(c.id)}"` : ''} style="--tc:${team.css}" title="${esc(`${METRIC_NAME[m]} ${fmtV(v)} · ${METRIC_NAME[other]} ${fmtV(r[other])}`)}">
+        return `<div class="lrow${v < 0 ? ' cold' : ''}"${c ? ` data-pid="${esc(c.id)}"${dr('soccerPlayer', g.id, c.id)}` : ''} style="--tc:${team.css}" title="${esc(`${METRIC_NAME[m]} ${fmtV(v)} · ${METRIC_NAME[other]} ${fmtV(r[other])}`)}">
           <span class="shot ms-num" style="--c:${team.css};--t:${lum(team.css) > 0.6 ? '#111' : '#fff'}">${esc(c?.jersey || '')}</span>
           <span class="who"><b>${esc(c?.full || r.name)}</b><small>${esc(team.abbr)} · ${esc(creditLine(r))}</small></span>
           <span class="wpa ${v >= 0 ? 'pos' : 'neg'}">${fmtV(v)}</span>
@@ -1351,6 +1355,7 @@
     prefs.metric = b.dataset.msmetric === 'xbones' ? 'xbones' : 'bones';
     save();
     if (onUpdate) onUpdate();
+    SB.player?.refresh?.(); // a soccer player's drawer shows both, the one that's on highlighted
   });
   const boardHeroHTML = (g) => `<div class="ms-board ms-board-hero">${boardInner(g, true)}</div>`;
 
@@ -1474,8 +1479,50 @@
     if (added) big ? SB.chime.big() : SB.chime.tap();
   }
 
+  // ---------- for the drawers (js/drawers.js) ----------
+  // A loaded match by its id (the board's "s…" or ESPN's).
+  function findMatch(id) {
+    const raw = String(id || '').replace(/^s/, '');
+    for (const v of data.values()) for (const g of v.games || []) if (g.id === raw) return g;
+    return null;
+  }
+  const cardsOf = (t) => [...t.played, ...t.slots.flatMap((x) => [x, ...(x.prev || [])])];
+  // Who a player in a match is: name, team, headshot (from the lineup, or the scoreboard's goal list before it loads).
+  function playerRef(gameId, pid) {
+    const g = findMatch(gameId);
+    if (!g) return { id: pid };
+    for (const t of peekLineup(g)?.teams || [])
+      for (const c of cardsOf(t))
+        if (c.id === pid) {
+          const team = g[t.side];
+          return { id: pid, comp: g.league, teamId: team.id, color: team.color, name: c.full || c.name, headshot: c.head && !NO_HEAD.has(c.head) ? c.head : '' };
+        }
+    const e = g.events.find((x) => x.pid === pid);
+    const team = e ? (e.team === g.home.id ? g.home : g.away) : null;
+    return { id: pid, comp: g.league, teamId: team?.id, color: team?.color, name: e?.who || '' };
+  }
+  // Every loaded match this player has BONES and xBONES in, newest first.
+  function playerMatches(pid) {
+    const out = [];
+    const seen = new Set();
+    for (const v of data.values())
+      for (const g of v.games || []) {
+        if (seen.has(g.id)) continue;
+        const r = (creditsOf(g) || []).find((x) => x.card?.id === pid);
+        if (r) {
+          seen.add(g.id);
+          out.push({ g, r, side: r.side });
+        }
+      }
+    return out.sort((a, b) => b.g.start - a.g.start);
+  }
+
   SB.soccer = {
     LEAGUES,
+    findMatch,
+    playerRef,
+    playerMatches,
+    creditLine,
     WATCH,
     rate,
     modelOf,

@@ -136,6 +136,16 @@ the season: result, the game's gap under the switch's metric, this team's total 
 underline where the result and the metric disagree, and who led the team; a row opens the game on the board). Nothing
 new is fetched: it reads what Standings loads (`SB.standings.ensure()` / `team(id)`, loaded on first ask) and the
 season's player rows (`SB.bones.seasonGames`).
+**Every team and player on screen** (`js/drawers.js`, since Nov 25): a team's logo or name anywhere (board tiles, the top
+card, the court and ice headers, Plays, Plan, the soccer tables) and any soccer player (pitch, timeline, top players,
+Rankings) opens a drawer in the same stack. NBA teams open the team drawer above, and basketball, football and hockey
+players the player drawer. Every other team (NFL, NHL, college, soccer) gets a lighter drawer from ESPN's team schedule
+and roster: record and standing, the last five and the next game, the last 10 or season's results (a row opens the game
+on the board) and the roster (a row opens the player; soccer adds appearances, goals and assists). A soccer player's
+drawer has their season from ESPN and every match on the board they played in, with BONES and xBONES. These drawers keep
+what they fetch in memory for the page load only: nothing new goes into localStorage. They ride in the stack as its team
+kind (`js/team.js` hands them to `SB.drawers`), so `js/player.js` is unchanged. Banners aren't clickable: their saved
+copy of each game would need the team ids.
 **Rankings** has two tabs: **Players** (`#players`) ranks everyone on the board by BONES or MOUSSA (whichever is on), with their
 counting stats and a Player of the Day, filtered by sport if you like, and either **sport-adjusted** (the default) or by
 the raw number. Impact isn't zero-sum and each sport has its own baseline and spread: basketball credits a make without
@@ -286,6 +296,15 @@ every series projected by the toggle's pick model (higher seed home in 1, 2, 5, 
 favorites advancing. Each game's team shooting is cached as `_teams` (`SB.bones.teamShots`; `CACHE_VERSION` 32: it is
 deliberately not keyed by team id, because every row reader takes a key with an entry at `[3]` for a player, and team 3
 is New Orleans).
+**Proj** (since Nov 25): the projected record. Every regular-season game left (ESPN's monthly scoreboards) gets the
+toggle's pick model's home win chance (`SB.bones.predict`, the bracket's model); a player listed Out sits until his
+return date (two weeks without one); the NBA Cup's knockout games, listed against "TBD" until the groups finish, are
+played at the team's average chance. The season is played out 1,000 times from this morning's records (games finished
+before today; today's slate is simulated), with random draws seeded by the date, and a team's Proj is its average
+(hover: the 10th-90th percentile wins, and the odds of finishing top 6 and top 10 in the conference, ties broken at
+random). It runs in memory once per page load and day; nothing is saved. The bracket switches between **Current
+records** (ESPN's seeds) and **Projected records** (seeded by projected wins in each conference, projected records
+shown); the switch isn't remembered across reloads.
 
 **MOUSSA** (since Nov 21; until then "BONES v2"): **M**argin-**O**nly **U**ncertainty **S**wings, **S**plit by **A**ction,
 named for our second patron saint, Moussa Diabaté. It's no longer framed as a version of BONES but as its own metric beside

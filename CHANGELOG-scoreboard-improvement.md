@@ -148,6 +148,30 @@ Also in this commit, from review of section 7: the standings table now refreshes
 
 The Bone Zone skull was redesigned to look more like a skull while staying cartoonish: toon shading with ink outlines, a brow ridge, cheekbones, deep tilted eye sockets, an upside-down-heart nose, rounded teeth over a dark mouth, a narrower jaw with a chin, and a crack on the dome. Cursor following, float, talking jaw and eye glow are unchanged. Zap p asked for it to go on this branch. Only the drawing changed; no BONES/MOUSSA code, numbers or text were touched (the diff is one hunk inside `buildSkull()`).
 
+## 11. A drawer for every team and player on screen (`js/drawers.js`; small hooks in `js/team.js`, `js/ui.js`, `js/soccer.js`, `js/plan.js`)
+
+| Change | Why |
+| --- | --- |
+| Team logos and names on tiles, the top card, court/ice/drive headers, the pre-game cards, Plays, Plan and the soccer tables open that team's drawer, in every league. The NBA keeps its full team drawer. | Zapp: a drawer for any team or player that shows up on the screen. |
+| A lighter team drawer for every other league (NFL, NHL, NCAAM, NCAAF, soccer): record and standing, last five and next game, results (last 10 or season; a row opens the game on the board), roster (a row opens the player). | ESPN's `/teams/{id}` isn't cross-origin, so it's built from the team schedule and roster, which are. |
+| Soccer players open a drawer from the pitch, the timeline, Top players and Rankings: bio, season stats from ESPN, and each match on the board they played in, with BONES and xBONES. The other sports' players already had one; it now also opens from a tile's top player and the injury list. | Soccer players had hover cards only. |
+| Everything new is kept **in memory for the page load**; no new localStorage keys or values (checked: storage byte-for-byte the same after opening several). | "Without storing any more information in the local cache." |
+| `js/player.js` is untouched: these drawers use its existing team kind, and `js/team.js` passes them on (`SB.drawers.owns`). No BONES or MOUSSA code or numbers changed. | Branch ground rule. |
+
+Not done: banners (their saved copy of the game has no team ids, and adding them would store more), Bone Zone and the recap (on the no-edit list), and the team badge inside a non-NBA player's drawer (in `js/player.js`).
+
+## 12. Projected records and a projected bracket (`js/standings.js`, `css/styles.css`)
+
+| Change | Why |
+| --- | --- |
+| A **Proj** column on the NBA standings: the rest of the season played out 1,000 times with the pick model (BONES or MOUSSA, whichever is on), from this morning's records; the average record, with the 10th-90th percentile wins and top-6 / top-10 odds on hover. | Zapp: simulate the season each morning for an average record per team. |
+| The bracket has a **Current records / Projected records** switch; projected seeds by projected wins within each conference. | "Choose between the current records and projected record for the playoff bracket." |
+| Players listed Out sit until ESPN's return date (two weeks with none). The NBA Cup's two unscheduled knockout games per team are played at the team's average chance, so every team totals 82. | Without them every team projected to 80 games. |
+| Random draws are seeded by the date; the records are counted from games finished before today. Runs in memory, nothing saved; no new localStorage. | Same morning, same records and draws; the pick model and injury report still update, so a reload after games finish can move a team about a win. |
+| Reads the pick model (`SB.bones.predict`); no BONES or MOUSSA code or numbers changed. | Branch ground rule. |
+
+Not backtested: the projection is the backtested pick model played forward, but the season-long record and odds haven't been checked against past seasons (TESTS.md has no entry for it).
+
 ## How to verify the whole branch
 
 1. `python server.py` (or `ruby server.rb`), open http://localhost:5173.

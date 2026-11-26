@@ -857,6 +857,35 @@ img.tlink:hover { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tc, var(-
 .st-table tr[data-tid] { cursor: pointer; }
 .st-table tr[data-tid]:hover td, .st-table tr[data-tid]:focus-visible td { background: color-mix(in srgb, var(--yellow) 8%, transparent); }
 
+/* Every team and player on screen opens a drawer (js/drawers.js): the hover cue. */
+[data-dteam], [data-dsp] { cursor: pointer; }
+span.tlink:hover, div.tlink:hover, .ms-name b.tlink:hover, .abbr.tlink:hover, .who.tlink:hover, .inj-name.tlink:hover { color: var(--yellow); }
+.five-h.tlink:hover img, .dteam.tlink:hover img, .bp-team.tlink:hover img, .pt-team.tlink:hover img, .ice-head .tlink:hover img, .pp-teams .tlink:hover img { filter: drop-shadow(0 0 6px color-mix(in srgb, var(--tc, var(--yellow)) 70%, transparent)); }
+.pp-teams > .tlink { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ms-standings tr[data-dteam]:hover td, .ms-standings tr[data-dteam]:hover th, .ms-standings tr[data-dteam]:focus-visible td { background: color-mix(in srgb, var(--yellow) 8%, transparent); }
+.ms-evs [data-dsp]:hover, .lrow[data-dsp]:hover .who b { color: var(--yellow); }
+/* Other leagues' team drawer and the soccer player drawer. */
+.dr-form { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 12px; }
+.dr-form > small, .dr-next small { font-size: 10px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin-right: 3px; }
+.dr-res { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; font-size: 11px; font-weight: 900; background: var(--panel-2); }
+.dr-res.w { background: color-mix(in srgb, var(--yellow) 26%, var(--panel-2)); }
+.dr-res.l { background: color-mix(in srgb, var(--red) 30%, var(--panel-2)); }
+.dr-next { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; font-size: 12px; }
+.dr-next img { width: 18px; height: 18px; object-fit: contain; }
+.dr-next em { font-style: normal; color: var(--dim); font-size: 11px; }
+.dr-shot { position: relative; display: grid; place-items: center; }
+.dr-shot > b { font-size: 28px; font-weight: 900; color: var(--text); }
+.dr-shot > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
+.dr-num { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--panel-2); font-size: 10px; font-weight: 900; flex: none; }
+.dr-flag { width: 16px; height: 11px; object-fit: cover; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+.dr-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 6px; }
+.dr-stats span { display: flex; flex-direction: column; padding: 7px 9px; background: var(--panel-2); border-radius: 8px; }
+.dr-stats b { font-size: 18px; font-weight: 900; }
+.dr-stats small { font-size: 10px; font-weight: 800; letter-spacing: .06em; color: var(--dim); }
+.tm-roster tr[data-rpid], .pl-games tr[data-dgm] { cursor: pointer; }
+.tm-roster tr[data-rpid]:hover td, .tm-roster tr[data-rpid]:focus-visible td, .pl-games tr[data-dgm]:hover td, .pl-games tr[data-dgm]:focus-visible td { background: color-mix(in srgb, var(--yellow) 8%, transparent); }
+.pl-games tr[data-dgm].on td { background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+
 .pl-sec { padding-top: 16px; }
 .pl-sec-h { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .pl-sec-h h3 { margin: 0; font-size: 12px; font-weight: 900; letter-spacing: .1em; text-transform: uppercase; color: var(--yellow); }
@@ -2215,6 +2244,10 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 /* ---------------- Standings (#standings, js/standings.js) ---------------- */
 .st-head { align-items: center; }
 .st-sub { margin: 22px 0 8px; }
+.st-brhead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 22px 0 8px; }
+.st-brhead .st-sub { margin: 0; }
+.st-brmode button[disabled] { opacity: .45; cursor: progress; }
+.st-table td.st-proj { font-weight: 800; cursor: help; }
 .st-sub small { color: var(--dim); font-weight: 600; margin-left: 6px; text-transform: none; letter-spacing: 0; }
 .st-table td.num, .st-table th { text-align: right; font-variant-numeric: tabular-nums; }
 .st-table th:nth-child(2), .st-table th:last-child { text-align: left; }

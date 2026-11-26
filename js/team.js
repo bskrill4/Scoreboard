@@ -12,6 +12,8 @@
 //   - Games (last 10 or the season): the result, the game's gap under the
 //     switch's metric (this team's total minus the opponent's) and who led the
 //     team in it; a row opens the game on the board.
+// Other leagues' teams and soccer players use the same drawer kind; js/drawers.js
+// draws them (owns(pane)), from ESPN's schedule, roster and athlete feeds, in memory.
 // Everything comes from data Standings already reads: ESPN's standings and
 // injury report and the season's player rows (SB.bones.seasonGames).
 (function () {
@@ -84,6 +86,7 @@
   // Standings (records, injuries, xW, models) and the season's rows, with the
   // games-read progress shown while they come in.
   async function load(pane, redraw) {
+    if (SB.drawers?.owns(pane)) return SB.drawers.load(pane, redraw); // another league's team, or a soccer player
     const st = pane.state;
     const my = pane.token;
     let queued = false;
@@ -108,6 +111,7 @@
 
   // ---------- drawing ----------
   function html(pane) {
+    if (SB.drawers?.owns(pane)) return SB.drawers.html(pane);
     const st = pane.state;
     const d = SB.standings.team(st.id);
     const t = d?.t;
@@ -224,6 +228,7 @@
 
   // Clicks inside a team drawer. Returns true when the drawer should redraw.
   function click(pane, e) {
+    if (SB.drawers?.owns(pane)) return SB.drawers.click(pane, e);
     const r = e.target.closest('[data-trange]');
     if (r) {
       pane.range = r.dataset.trange;

@@ -178,9 +178,10 @@
     const other = g[side === 'home' ? 'away' : 'home'];
     const showScore = g.state === 'live' || g.state === 'final';
     const cls = showScore && g.state === 'final' && t.score < other.score ? 'lost' : '';
+    const ta = teamAttrs(g, t);
     return `<div class="team ${cls}">
-      <img class="logo" src="${esc(t.logo)}" alt="">
-      <span class="abbr">${t.rank ? `<small class="rk">${t.rank}</small>` : ''}${esc(t.abbr)}${g.state === 'live' && g.poss === side ? '<i class="poss" title="Has the ball"></i>' : ''}</span>
+      ${tlogo(g, t, 'logo')}
+      <span class="abbr${ta ? ' tlink' : ''}"${ta}>${t.rank ? `<small class="rk">${t.rank}</small>` : ''}${esc(t.abbr)}${g.state === 'live' && g.poss === side ? '<i class="poss" title="Has the ball"></i>' : ''}</span>
       <span class="rec">${esc(t.record)}</span>
       <span class="score" data-side="${side}">${showScore ? t.score : ''}</span>
     </div>`;
@@ -193,9 +194,10 @@
     }
     const top = g.players.slice().sort((a, b) => val(b) - val(a))[0];
     if (!top) return `<div class="g-foot dim">${g.noPbp ? 'No play-by-play from ESPN' : '&nbsp;'}</div>`;
+    const topTeam = top.teamId === g.home.id ? g.home : g.away;
     return `<div class="g-foot">
       ${headshot(top, 'sm')}
-      <span class="who">${esc(top.last)}</span>
+      <span class="who tlink" ${playerAttrs(g, top, topTeam)}>${esc(top.last)}</span>
       <span class="line">${esc(shortStat(top))}</span>
       <span class="wpa ${val(top) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(top))}<small>${metricShort()}</small></span>
     </div>`;
@@ -360,6 +362,12 @@
     if (lastPaint && !morphing) paint(lastPaint[0], lastPaint[1], false);
   }
 
+  // A team's drawer (js/drawers.js): every league, soccer by its competition.
+  const teamAttrs = (g, t) => (SB.drawers ? SB.drawers.team(g.soccer ? 'soccer' : g.league, t, g.comp) : ''); // the soccer top card's league is the competition's label
+  const tlogo = (g, t, cls = '') => {
+    const a = teamAttrs(g, t);
+    return `<img${cls || a ? ` class="${[cls, a ? 'tlink' : ''].filter(Boolean).join(' ')}"` : ''} src="${esc(t.logo)}" alt=""${a}>`;
+  };
   // What a click needs to open the player drawer (js/player.js).
   const playerAttrs = (g, p, team) =>
     `data-pid="${esc(p.id)}" data-team="${esc(team.id)}" data-league="${esc(g.league)}" data-name="${esc(p.name)}" data-shot="${esc(
@@ -418,7 +426,7 @@
         .slice(0, 5);
       if (!five.length) return '';
       return `<div class="five">
-        <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+        <div class="five-h tlink"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
         ${five
           .map(
             (p) => `<div class="crow${isFocus(g, p)}" ${playerAttrs(g, p, t)}>
@@ -470,7 +478,7 @@
     };
     return `<div class="ice">
       ${banner}
-      <div class="ice-head"><span><img src="${esc(g.away.logo)}" alt="">${esc(g.away.abbr)}</span><span>${esc(g.home.abbr)}<img src="${esc(g.home.logo)}" alt=""></span></div>
+      <div class="ice-head"><span class="tlink"${teamAttrs(g, g.away)}><img src="${esc(g.away.logo)}" alt="">${esc(g.away.abbr)}</span><span class="tlink"${teamAttrs(g, g.home)}>${esc(g.home.abbr)}<img src="${esc(g.home.logo)}" alt=""></span></div>
       ${rows
         .map(
           ([label, a, h, av, hv]) => `<div class="ice-row">
@@ -548,7 +556,7 @@
     const sub = d.result ? `${playsText} · ${d.result}` : playsText;
     const cls = (v) => (v >= 0 ? 'pos' : 'neg');
     return `<div class="dstats">
-      <div class="dcell dteam">
+      <div class="dcell dteam tlink"${teamAttrs(g, team)}>
         <img src="${esc(team.logo)}" alt="">
         <span><small>${heading}</small><b>${esc(team.abbr)}</b><em>${esc(sub)}</em></span>
       </div>
@@ -699,8 +707,8 @@
   function heroTeam(g, side, hide) {
     const t = g[side];
     const showScore = g.state === 'live' || g.state === 'final';
-    // NBA: the logo and name open the team's drawer (js/team.js).
-    const tid = g.league === 'nba' && t.id ? ` data-tid="${esc(t.id)}" data-tcolor="${esc(t.css || '')}" title="Open the ${esc(t.name)} drawer"` : '';
+    // The logo and name open the team's drawer (NBA: js/team.js; every other league: js/drawers.js).
+    const tid = teamAttrs(g, t);
     if (hide) {
       return `<div class="h-team ${side}">
       <img class="logo${tid ? ' tlink' : ''}" src="${esc(t.logo)}" alt=""${tid}>
@@ -754,7 +762,7 @@
     const pick = bonesPick(g);
     const conf = Math.max(b.pHome, 1 - b.pHome);
     const call = conf < 0.53 ? 'Toss-up' : conf >= 0.62 ? 'Strong lean' : 'Lean';
-    const side = (t, p) => `<div class="bp-team${t === pick ? ' pick' : ''}"><img src="${esc(t.logo)}" alt=""><b>${pct(p)}</b><small>${esc(t.abbr)}</small></div>`;
+    const side = (t, p) => `<div class="bp-team tlink${t === pick ? ' pick' : ''}"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt=""><b>${pct(p)}</b><small>${esc(t.abbr)}</small></div>`;
     return `<div class="bones-pred">
       <div class="bp-row">${side(g.away, 1 - b.pHome)}
         <div class="bp-call"><small>${N()} picks</small><b>${conf < 0.53 ? 'Toss-up' : esc(pick.name)}</b><small>${call === 'Toss-up' ? 'too close to call' : `${call.toLowerCase()} · ${pct(conf)}`}</small></div>
@@ -769,7 +777,7 @@
     const side = (t, list) =>
       list.length
         ? `<div class="five">
-          <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+          <div class="five-h tlink"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
           ${list
             .map((p) => {
               const pl = { id: p.id, name: p.name, headshot: `https://a.espncdn.com/i/headshots/nba/players/full/${p.id}.png` };
@@ -793,9 +801,9 @@
     const side = (t, list) => {
       const out = list.filter((x) => x.out);
       const gtd = list.filter((x) => !x.out);
-      const names = (xs, tag) => xs.map((x) => `<span class="inj-name">${esc(x.name)}${tag ? ` <small>${esc(tag(x))}</small>` : ''}</span>`).join('');
+      const names = (xs, tag) => xs.map((x) => `<span class="inj-name${x.id ? ' tlink' : ''}"${x.id ? ` ${playerAttrs(g, { id: x.id, name: x.name, headshot: `https://a.espncdn.com/i/headshots/nba/players/full/${x.id}.png` }, t)}` : ''}>${esc(x.name)}${tag ? ` <small>${esc(tag(x))}</small>` : ''}</span>`).join('');
       return `<div class="inj-team">
-        <div class="five-h"><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
+        <div class="five-h tlink"${teamAttrs(g, t)}><img src="${esc(t.logo)}" alt="">${esc(t.abbr)}</div>
         ${out.length ? `<div class="inj-row"><span class="inj-tag out">Out</span><span class="inj-list">${names(out, (x) => (/doubtful/i.test(x.status) ? 'doubtful' : ''))}</span></div>` : ''}
         ${gtd.length ? `<div class="inj-row"><span class="inj-tag gtd">GTD</span><span class="inj-list">${names(gtd, (x) => x.status.toLowerCase())}</span></div>` : ''}
         ${!list.length ? `<div class="inj-row"><span class="inj-list dim">Nobody listed</span></div>` : ''}
@@ -1412,9 +1420,9 @@
           )}</div></div>`
         : '';
     const relCol = playersRank === 'rel' ? ' class="sorted"' : '';
-    // Soccer rows (js/soccer.js playersOf) name the competition and the soccer metric, and don't open the drawer (it has no soccer).
+    // Soccer rows (js/soccer.js playersOf) name the competition and the soccer metric, and open a soccer player's drawer (js/drawers.js).
     const lgName = (g) => (g.soccer ? `${(SB.soccer.LEAGUES.find((l) => l.id === g.comp) || {}).short || 'Soccer'} · ${SB.soccer.METRIC_NAME[SB.soccer.metricOn()]}` : SB.league.name(g.league));
-    const attrs = (g, p, team) => (g.soccer ? `data-spid="${esc(p.id)}"` : playerAttrs(g, p, team));
+    const attrs = (g, p, team) => (g.soccer ? (SB.drawers ? SB.drawers.soccerPlayer(g.id, p.id) : '') : playerAttrs(g, p, team));
     // Soccer: the shirt number, with the headshot over it when ESPN has one (about a third of players).
     const face = (p, team, cls = '') =>
       p.soccer
@@ -1500,7 +1508,7 @@
     const crownHTML = crown
       ? `<div class="potd potd-play" style="--tc:${crown.team.css}" ${gameAttrs(crown.g)}>
           <span class="potd-k">${WHEN[playsWhen].crown}${soFar}</span>
-          <img class="potd-logo" src="${esc(crown.team.logo)}" alt="">
+          ${tlogo(crown.g, crown.team, 'potd-logo')}
           <div class="potd-who"><b>${esc(crown.s.play.text)}</b>
             <small>${SB.league.name(crown.g.league)} · ${esc(playWhen(crown.g, crown.s.play))} · ${esc(scoreAt(crown.g, crown.s.play))} · ${gameLabel(crown.g)}</small>
             <div class="by-list">${by(crown.g, crown.s)}</div></div>
@@ -1511,7 +1519,7 @@
       .map(
         ({ g, s, team, imp }, i) => `<tr class="play-row" ${gameAttrs(g)}>
           <td class="rk">${i + 1}</td>
-          <td class="pt"><span class="pt-team" style="--tc:${team.css}"><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${SB.league.name(g.league)} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
+          <td class="pt"><span class="pt-team tlink" style="--tc:${team.css}"${teamAttrs(g, team)}><img src="${esc(team.logo)}" alt="">${esc(team.abbr)}</span><span class="pt-txt">${esc(s.play.text)}<small>${SB.league.name(g.league)} · ${esc(playWhen(g, s.play))} · ${gameLabel(g)}</small></span></td>
           <td class="by-cell"><div class="by-list">${by(g, s)}</div></td>
           <td class="sc">${esc(scoreAt(g, s.play))}</td>
           <td${col('imp')}><span class="pos">${fmtWPA(imp)}</span></td>
