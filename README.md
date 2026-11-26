@@ -286,7 +286,9 @@ live, hourly once final), not just the top game's.
 **Standings** (`#standings`, `js/standings.js`, since Nov 22; NBA for now): ESPN's standings by **division,
 conference or league** (records, seeds with tiebreakers, last ten, streak; a line under the 6 seed and a dashed one under
 the 10th) and its injury report, refetched every 10 minutes, plus the team numbers behind the picks: **Diff** (point
-differential a game), **xW MOUSSA / xW BONES** (each game's metric gap between the teams, through one logistic fit of
+differential a game), **MOUSSA/g** or **BONES/g** (since Nov 26, the toggle's metric: the team's metric a game minus
+its opponents', the metric's own differential; TESTS.md T31; every column sorts: click a header, again to flip, # for
+the table's own order), **xW MOUSSA / xW BONES** (each game's metric gap between the teams, through one logistic fit of
 results on that gap, summed into expected wins; BONES swing-only, since its game floor goes to the winner), **xPts /
 xPts allowed** (expected points of the shots taken or allowed, `js/xpts.js`, plus free throws made), **xNet**, **Shot
 luck** (points a game from making, and opponents missing, more than expected; T17 says mostly luck so far) and **Top

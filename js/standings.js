@@ -14,6 +14,11 @@
 //    result on that gap over the whole season turns each game into a win
 //    chance; a team's expected wins are the sum. BONES uses swing-only rows (its
 //    game floor goes to the winner, so it would be partly true by construction).
+//  - MOUSSA/g or BONES/g (since Nov 26; the toggle's metric): the team's metric a
+//    game minus its opponents', like Diff in the metric's units (×100, as players'
+//    per-game numbers). MOUSSA/g follows Diff closely (r .98, TESTS.md T31).
+//  Every column sorts (since Nov 26): click a header; again to flip; # goes back
+//  to the table's own order. Sorting is within each table (division, conference).
 //  - xPts / xPts allowed: expected points a game from the shots taken (each
 //    shot's expected points, js/xpts.js, from where and how it was taken) plus
 //    free throws made; the same for the shots a team allows.
@@ -113,7 +118,7 @@
   // ---------- the season: expected wins and shooting ----------
   function seasonStats(games) {
     const T = {};
-    const get = (id) => (T[id] ??= { gp: 0, sg: 0, xp: 0, fgPts: 0, ftPts: 0, oXp: 0, oFgPts: 0, oFtPts: 0, d: { 1: [], 2: [] } });
+    const get = (id) => (T[id] ??= { gp: 0, sg: 0, xp: 0, fgPts: 0, ftPts: 0, oXp: 0, oFgPts: 0, oFtPts: 0, d: { 1: [], 2: [] }, net1: 0, net2: 0 });
     for (const g of games) {
       if (!g.rows || !g.home || !g.away) continue;
       const val = { 1: {}, 2: {} };
@@ -129,6 +134,8 @@
         t.gp++;
         const win = g.score[a] > g.score[b] ? 1 : 0;
         for (const v of [1, 2]) t.d[v].push([(val[v][a] || 0) - (val[v][b] || 0), win]);
+        t.net1 += (val[1][a] || 0) - (val[1][b] || 0);
+        t.net2 += (val[2][a] || 0) - (val[2][b] || 0);
         if (tm && tm[a] && tm[b]) {
           t.sg++;
           t.xp += tm[a][1];
@@ -160,7 +167,7 @@
       const n = t.sg || NaN;
       const xPts = (t.xp + t.ftPts) / n;
       const xPa = (t.oXp + t.oFtPts) / n;
-      out[id] = { gp: t.gp, xw1: xw(1), xw2: xw(2), xPts, xPa, xNet: xPts - xPa, luck: (t.fgPts - t.xp - (t.oFgPts - t.oXp)) / n };
+      out[id] = { gp: t.gp, xw1: xw(1), xw2: xw(2), m1: (100 * t.net1) / t.gp, m2: (100 * t.net2) / t.gp, xPts, xPa, xNet: xPts - xPa, luck: (t.fgPts - t.xp - (t.oFgPts - t.oXp)) / n };
     }
     return out;
   }
@@ -426,7 +433,54 @@
     const tip = `${Math.round(p.w)}-${Math.round(p.l)} on average (${p.w.toFixed(1)} wins); 8 in 10 seasons between ${p.lo} and ${p.hi} wins. Top 6 in the conference: ${pct0(p.top6)}. Top 10 (play-in or better): ${pct0(p.top10)}.`;
     return `<td class="num st-proj" title="${esc(tip)}">${Math.round(p.w)}-${Math.round(p.l)}</td>`;
   }
-  function rowHTML(t, rank, leader, cls = '') {
+  const mg = (s) => (SB.impact.version() === 2 ? s.m2 : s.m1);
+  // ---------- sorting (since Nov 26) ----------
+  // Every column: [key, value from a team, ascending first?]. null key: the table's own order.
+  const l10Wins = (t) => Number(String(t.l10 || '').split('-')[0]);
+  const streakNum = (t) => {
+    const m = /^([WL])(\d+)/.exec(t.streak || '');
+    return m ? (m[1] === 'W' ? 1 : -1) * +m[2] : 0;
+  };
+  const SORTS = {
+    team: [(t) => t.short, true],
+    wl: [(t) => t.w - t.l],
+    pct: [(t) => t.pct],
+    proj: [(t) => projected()?.[t.id]?.w],
+    gb: [(t) => -(t.w - t.l)],
+    l10: [l10Wins],
+    strk: [streakNum],
+    diff: [(t) => t.diff],
+    mg: [(t) => state.stats?.[t.id] && mg(state.stats[t.id])],
+    xw2: [(t) => state.stats?.[t.id]?.xw2],
+    xw1: [(t) => state.stats?.[t.id]?.xw1],
+    xpts: [(t) => state.stats?.[t.id]?.xPts],
+    xpa: [(t) => state.stats?.[t.id]?.xPa, true],
+    xnet: [(t) => state.stats?.[t.id]?.xNet],
+    luck: [(t) => state.stats?.[t.id]?.luck],
+    inj: [
+      (t) => {
+        const m = state.models?.[SB.impact.version()];
+        const i = m ? topInjury(m, t.id) : null;
+        return i ? i.p.rate : -Infinity;
+      },
+    ],
+  };
+  let sortKey = null;
+  let sortDir = -1; // -1 descending
+  function sorted(teams) {
+    if (!sortKey || !SORTS[sortKey]) return teams;
+    const [f] = SORTS[sortKey];
+    const v = (t) => {
+      const x = f(t);
+      return x == null || (typeof x === 'number' && !Number.isFinite(x)) ? null : x;
+    };
+    return teams.slice().sort((a, b) => {
+      const [x, y] = [v(a), v(b)];
+      if (x == null || y == null) return x == null ? (y == null ? 0 : 1) : -1; // blanks last
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * sortDir;
+    });
+  }
+  function rowHTML(t, rank, leader, cls = '', col = 0) {
     const s = state.stats?.[t.id];
     const m = state.models?.[SB.impact.version()];
     const inj = m ? topInjury(m, t.id) : null;
@@ -443,6 +497,7 @@
       <td class="num">${esc(t.l10)}</td>
       <td class="num">${esc(t.streak)}</td>
       <td class="num ${tone(t.diff)}">${sign1(t.diff)}</td>
+      <td class="num ${s ? tone(mg(s)) : ''}">${s ? sign1(mg(s)) : '…'}</td>
       <td class="num"${cur(2)}>${s ? fix1(s.xw2) : '…'}</td>
       <td class="num"${cur(1)}>${s ? fix1(s.xw1) : '…'}</td>
       <td class="num">${s ? fix1(s.xPts) : '…'}</td>
@@ -450,28 +505,37 @@
       <td class="num ${s ? tone(s.xNet) : ''}">${s ? sign1(s.xNet) : '…'}</td>
       <td class="num ${s ? tone(s.luck) : ''}">${s ? sign1(s.luck) : '…'}</td>
       <td class="st-inj"${inj ? ` title="${esc(`${inj.o.name}: ${fix1(inj.p.rate * 36)} ${SB.impact.name()} per 36${inj.o.what ? `, ${inj.o.what}` : ''}${inj.o.back ? `, back ${inj.o.back}` : ''}`)}"` : ''}>${inj ? `<b>${esc(shortName(inj.o.name))}</b><small>${fix1(inj.p.rate * 36)}${inj.o.what ? ` · ${esc(inj.o.what)}` : ''}</small>` : m ? '<small>—</small>' : '…'}</td>
-    </tr>`;
+    </tr>`.replace(/<td\b/g, ((n) => (m) => (++n === col ? '<td data-sorted' : m))(0));
   }
   function tableHTML(title, teams, opts = {}) {
     const N = SB.impact.name();
-    const h = (label, tip, cls = '') => `<th class="${cls}" title="${esc(tip)}">${label}</th>`;
+    // Each header sorts by its column (# returns to the table's own order).
+    const h = (label, tip, cls = '', key = null) => {
+      const on = key === sortKey || (key === 'rank' && !sortKey);
+      const aria = key === sortKey && key ? ` aria-sort="${sortDir < 0 ? 'descending' : 'ascending'}"` : '';
+      return `<th class="${cls}${on && key !== 'rank' ? ' sorted' : ''}" title="${esc(tip)}"${aria}><button type="button" class="st-sort" data-stsort="${key || 'rank'}">${label}${key === sortKey && key ? `<i aria-hidden="true">${sortDir < 0 ? '▼' : '▲'}</i>` : ''}</button></th>`;
+    };
     const cur = (v) => (SB.impact.version() === v ? 'cur' : '');
     const leader = teams[0];
+    const rankOf = new Map(teams.map((t, i) => [t.id, opts.seeds ? t.seed : i + 1]));
+    const rows = sorted(teams);
+    const col = sortKey ? ['rank', 'team', 'wl', 'pct', 'proj', 'gb', 'l10', 'strk', 'diff', 'mg', 'xw2', 'xw1', 'xpts', 'xpa', 'xnet', 'luck', 'inj'].indexOf(sortKey) + 1 : 0;
     return `${title ? `<h3 class="ptable-sub st-sub">${esc(title)}</h3>` : ''}
       <div class="ptable-wrap"><table class="ptable st-table">
         <thead><tr>
-          ${h('#', opts.seeds ? 'Playoff seed (ESPN, with tiebreakers)' : 'Rank')}${h('Team', '')}${h('W-L', 'Record')}${h('Pct', 'Win percentage')}${h('Proj', `Projected record: the rest of the season played out ${RUNS.toLocaleString()} times with ${N}'s pick model, as of this morning`, 'st-proj')}${h('GB', 'Games behind the leader of this table')}${h('L10', 'Last ten games')}${h('Strk', 'Current streak')}
-          ${h('Diff', 'Point differential per game')}
-          ${h('xW MOUSSA', 'Wins MOUSSA says the team earned: each game’s MOUSSA gap between the teams, turned into a win chance and added up', cur(2))}
-          ${h('xW BONES', 'Wins BONES says the team earned (swing only, no game floor)', cur(1))}
-          ${h('xPts', 'Expected points a game: the expected points of every shot taken (from where and how), plus free throws made')}
-          ${h('xPts allowed', 'Expected points a game from the shots the team allows, plus opponents’ free throws made')}
-          ${h('xNet', 'Expected points minus expected points allowed, a game')}
-          ${h('Shot luck', 'Points a game from making, and opponents missing, more than those shots’ expected points. Mostly luck so far')}
-          ${h('Top injury', `The best player listed Out, by ${N} per 36 (100+ minutes)`)}
+          ${h('#', opts.seeds ? 'Playoff seed (ESPN, with tiebreakers). Click to return to this order' : 'Rank. Click to return to this order', '', 'rank')}${h('Team', 'Sort by name', '', 'team')}${h('W-L', 'Record', '', 'wl')}${h('Pct', 'Win percentage', '', 'pct')}${h('Proj', `Projected record: the rest of the season played out ${RUNS.toLocaleString()} times with ${N}'s pick model, as of this morning`, 'st-proj', 'proj')}${h('GB', 'Games behind the leader of this table', '', 'gb')}${h('L10', 'Last ten games', '', 'l10')}${h('Strk', 'Current streak', '', 'strk')}
+          ${h('Diff', 'Point differential per game', '', 'diff')}
+          ${h(`${N}/g`, `Team ${N} a game minus its opponents’: like Diff, in ${N}${N === 'MOUSSA' ? ' (it follows Diff closely, r .98)' : ''}. Switch metrics in settings`, '', 'mg')}
+          ${h('xW MOUSSA', 'Wins MOUSSA says the team earned: each game’s MOUSSA gap between the teams, turned into a win chance and added up', cur(2), 'xw2')}
+          ${h('xW BONES', 'Wins BONES says the team earned (swing only, no game floor)', cur(1), 'xw1')}
+          ${h('xPts', 'Expected points a game: the expected points of every shot taken (from where and how), plus free throws made', '', 'xpts')}
+          ${h('xPts allowed', 'Expected points a game from the shots the team allows, plus opponents’ free throws made (fewest first)', '', 'xpa')}
+          ${h('xNet', 'Expected points minus expected points allowed, a game', '', 'xnet')}
+          ${h('Shot luck', 'Points a game from making, and opponents missing, more than those shots’ expected points. Mostly luck so far', '', 'luck')}
+          ${h('Top injury', `The best player listed Out, by ${N} per 36 (100+ minutes)`, '', 'inj')}
         </tr></thead>
-        <tbody>${teams
-          .map((t, i) => rowHTML(t, opts.seeds ? t.seed : i + 1, leader, opts.seeds && t.seed === 6 ? 'st-cut' : opts.seeds && t.seed === 10 ? 'st-cut st-cut-out' : ''))
+        <tbody>${rows
+          .map((t) => rowHTML(t, rankOf.get(t.id), leader, !sortKey && opts.seeds && t.seed === 6 ? 'st-cut' : !sortKey && opts.seeds && t.seed === 10 ? 'st-cut st-cut-out' : '', col))
           .join('')}</tbody>
       </table></div>`;
   }
@@ -573,7 +637,7 @@
         <div class="seg" role="group" aria-label="Group by">${seg}</div>
       </div>
       ${loading}${body}
-      <p class="players-note st-note"><b>xW</b>: the wins each metric says a team earned, from its game-by-game gap with the opponent (BONES without its game floor). <b>xPts</b>: expected points from the shots a team takes, plus free throws made; <b>xPts allowed</b>, the same for its opponents. <b>Proj</b>: the projected record, the rest of the season played out ${RUNS.toLocaleString()} times with ${SB.impact.name()}'s pick model from this morning's records (hover for the range and playoff odds). <b>Shot luck</b>: points a game from making, and opponents missing, more than those shots' expected points (we've found it's mostly luck so far: <a href="#faq">FAQ</a>). The highlighted xW is the metric switched on in settings, which also sets the top injury and the bracket.</p>
+      <p class="players-note st-note">Click any column to sort (again to flip; # returns to the table's order). <b>${SB.impact.name()}/g</b>: the team's ${SB.impact.name()} a game minus its opponents', the metric's own point differential (switch metrics in settings). <b>xW</b>: the wins each metric says a team earned, from its game-by-game gap with the opponent (BONES without its game floor). <b>xPts</b>: expected points from the shots a team takes, plus free throws made; <b>xPts allowed</b>, the same for its opponents. <b>Proj</b>: the projected record, the rest of the season played out ${RUNS.toLocaleString()} times with ${SB.impact.name()}'s pick model from this morning's records (hover for the range and playoff odds). <b>Shot luck</b>: points a game from making, and opponents missing, more than those shots' expected points (we've found it's mostly luck so far: <a href="#faq">FAQ</a>). The highlighted xW is the metric switched on in settings, which also sets the top injury and the bracket.</p>
       ${bracketHTML()}`;
     if (html !== root._html) {
       root._html = html;
@@ -598,6 +662,14 @@
         const ts = e.target.closest('[data-mtsort]');
         if (ts && SB.soccer) {
           SB.soccer.sortTable(ts.dataset.mtsort);
+          return draw();
+        }
+        const so = e.target.closest('[data-stsort]');
+        if (so) {
+          const k = so.dataset.stsort;
+          if (k === 'rank') sortKey = null;
+          else if (k === sortKey) sortDir = -sortDir;
+          else [sortKey, sortDir] = [k, SORTS[k]?.[1] ? 1 : -1];
           return draw();
         }
         const br = e.target.closest('[data-stbr]');

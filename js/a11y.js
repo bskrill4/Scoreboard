@@ -51,10 +51,16 @@
       if (!name) continue;
       parts.push(`${rk ? `No. ${rk} ` : ''}${name}${score && score !== '–' ? ` ${score}` : ''}`);
     }
+    // Soccer cards (js/soccer.js) list the home side first: read them as "away at home".
+    if (!parts.length) {
+      const ms = [...card.querySelectorAll('.ms-team')].slice(0, 2).map((t) => `${text(t.querySelector('.ms-name b'))}${text(t.querySelector('.ms-score')) ? ` ${text(t.querySelector('.ms-score'))}` : ''}`);
+      if (ms.length === 2 && ms.every((x) => x.trim())) parts.push(ms[1], ms[0]);
+    }
     const league = text(card.querySelector('.lg'));
     const status = text(card.querySelector('.status')) || text(card.querySelector('.h-status b, .g-status b'));
     const idx = (text(card.querySelector('.widx')).match(/\d+/) || [])[0];
-    const chips = [...card.querySelectorAll('.chips .chip[title]')].slice(0, 3).map((c) => c.getAttribute('title')).filter(Boolean);
+    // Each reason once: the "+1" chip repeats a hidden chip's title, and soccer's chips have no title.
+    const chips = [...new Set([...card.querySelectorAll('.chips .chip:not(.more)')].map((c) => c.getAttribute('title') || text(c)).filter(Boolean))].slice(0, 3);
     const bits = [];
     if (card.classList.contains('is-hero')) bits.push('Top game');
     bits.push([league, parts.join(' at ') || 'Game'].filter(Boolean).join(': '));

@@ -53,6 +53,8 @@ range for the change; when it includes 0, the change is within noise.
 | T28 | Nov 25 | Best-bet rules: cap the edge, or pull toward the market (earlier nights only) | Cap at 50% better in 90%, within noise; BONES has no edge over the market | **Adopted** (cap at $50, tracked); **Re-run** |
 | T29 | Nov 25 | Recency weighting (older games count less) | No half-life helps; the recent slump gets worse | Rejected |
 | T30 | Nov 25 | Day-to-day guess, and minutes averaged over games played | Played-only better for both, within noise; day-to-day needs forward data | **Adopted** (played-only, both); injury log started; **Re-run** |
+| T31 | Nov 26 | Does MOUSSA favor teams that win close over teams that win big? | Team MOUSSA follows Diff (r .98); the pick model under-rates defense-first teams (Boston), but that doesn't predict misses yet | Informational |
+| T32 | Nov 26 | Team defense: players share their opponents' MOUSSA kept below average | Neutral at 10%, worse beyond; second half worse at every share | Rejected; **Re-run** with T17/T18 |
 | S01 | Nov 25 | Soccer expected goals from the commentary's shot spots | Log-loss −0.281 out of sample vs −0.329 flat; sums to the real goal total | **Adopted** (shown) |
 | S02 | Nov 25 | Soccer live win chances: what moves the scoring rates | Red cards and trailing-side push help on both halves; xG so far hurts in all 24 versions | **Adopted** (reds, trailing push); xG rejected; **Re-run** |
 | S03 | Nov 25 | Soccer win chances: calibration and gain over score + clock | Within ~2 points in every band; better in 92% of resamples, within noise | **Adopted** |
@@ -474,6 +476,56 @@ MOUSSA has Portland 63%. Day-to-day guess: the injury log started (`SB.bones.inj
 picks lock); grade it with `SB.bones.injuryLog.grade(15)` (players who usually play 15+ minutes) in about two weeks.
 **Re-run** mid-December with T20: undo played-only if counting zeros pulls ahead.
 
+### T31: Does MOUSSA prefer teams that win close to teams that win big? (Nov 26)
+**Basis.** The user's theory after MOUSSA's 8-1 night: MOUSSA rewards teams that play hard and fast and don't blow
+opponents out. The three best point differentials (San Antonio, Minnesota, Boston) seem less loved than teams below
+them, though Memphis (also high) is loved.
+**Procedure.** (1) Team MOUSSA a game minus its opponents' (new Standings column, MOUSSA/g) against point
+differential and win percentage, 30 teams. (2) The pick model's own team rating at full health (each player's
+MOUSSA a minute × projected minutes) against differential. (3) Whether the gaps carry: opponents' MOUSSA in the
+first half of the season against the second half, and against how each team did against the pick model's
+predictions in the second half.
+**Result.** (1) MOUSSA/g follows differential closely: r .976 (win percentage .959). The theory doesn't hold at the
+team level: San Antonio is #1 (+30.4), Minnesota #4. The biggest gaps from differential: Lakers +7.3, Magic +5.3
+above; Raptors −10.1, Grizzlies −5.2, Celtics −4.9 below. (A first pass on raw team totals, not net of the opponent,
+suggested the opposite; raw totals aren't zero-sum and mislead.) (2) The pick model is where the "darlings" are:
+at full health r .87 with differential, and it rates Philadelphia (+15 points of win chance above its differential),
+Denver (+12), the Lakers and Cleveland (+10) high, and Boston (−22), Golden State (−11), Minnesota (−10) and Dallas
+(−8) low. Boston's gap is defense: its opponents earn 58 MOUSSA a game against a league average of 76 (61 in the
+first half, 55 in the second), and player ratings credit defense only through shot quality, so that suppression
+belongs to no Boston player. Minnesota (Gobert) is the same kind of team. (3) League-wide it doesn't carry yet:
+opponents' MOUSSA repeats weakly between halves (r .07), and neither it nor own MOUSSA predicts second-half results
+against the pick model (r .05).
+**Status.** Informational. The theory's real version is "MOUSSA's player ratings miss team defense", which T17 and
+T18 tested and rejected at this sample. Boston is the clearest case; re-run T17 and T18 with this angle in
+mid-December. MOUSSA/g added to Standings.
+
+### T32: Team defense credited to the players on it (Nov 26)
+**Basis.** T31: the pick model rates Boston 22 points of win chance below its point differential, and the gap is
+defense: Boston's opponents earn 58 MOUSSA a game against a league average of 76, and no Celtic is credited for it.
+An early re-run of T17 and T18 aimed at exactly that.
+**Procedure.** `opts.teamDefense` (a share; off by default) in the game backtest: after each game, each team's
+players get that share of how far the opponents' total fell below the league's average team total so far, split by
+minutes played (so it enters their rating to date like any other credit). Shares 10%, 25%, 50%, 75%, 100%, both
+metrics, 192 graded games; 90% ranges by bootstrapping games.
+**Result.**
+
+| Share | MOUSSA winners | MOUSSA log-loss | 2nd half | Last third | Lineup r |
+|---|---|---|---|---|---|
+| **0 (now)** | 135/192 | −0.5777 | −0.5914 | −0.6263 | .062 |
+| 10% | 138/192 | −0.5769 | −0.5926 | −0.6223 | .063 |
+| 25% | 135/192 | −0.5776 | −0.5962 | −0.6207 | .065 |
+| 50% | 131/192 | −0.5820 | −0.6046 | −0.6217 | .065 |
+| 100% | 132/192 | −0.5945 | −0.6203 | −0.6301 | .065 |
+
+Per game against 0: 10% +0.0008 [−0.0034, +0.0052], 50% −0.0043 [−0.0226, +0.0141], 100% −0.0168 [−0.0439,
++0.0109]. BONES the same shape (10% +0.0010, 100% −0.0049). The lineup test and the last third lean the other way,
+slightly, at every share, within noise; the season and its second half get worse past 10%. Same as T17 and T18: a
+team's defensive suppression doesn't carry from game to game well enough (opponents' MOUSSA between halves r .07,
+T31) to help predict.
+**Status.** Rejected for now (`opts.teamDefense` stays as a test setting). **Re-run** with T17 and T18 in
+mid-December: what would change our mind is the second half improving, not just the lineup test.
+
 ## Watch index
 
 ### I01: The NFL against the NBA and NHL at equal game states (Nov 23)
@@ -601,7 +653,7 @@ players' BONES or xBONES predict its next results beyond the odds?) needs more m
 
 | # | Re-run when | What would change our mind |
 |---|---|---|
-| T17 | Mid-December | Team or defender repeatability climbing well past .2, and the backtest stops getting worse |
+| T17 | Mid-December (with T18, T32) | Team or defender repeatability climbing well past .2, and the backtest stops getting worse |
 | T21 | 25+ games with a team missing 3+ | A confidence scale fit on one half improves the other |
 | T20 | Mid-December | The 70% target falls behind 100% (undo it) |
 | T16 | When specialists log real minutes with 0–2 spacers | Their offensive-rebound rate drops sharply with fewer spacers |

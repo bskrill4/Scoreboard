@@ -2486,3 +2486,9 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .ptable .shot.ms-num { display: inline-grid; place-items: center; font-size: 11px; }
 .ms-face-r { position: relative; overflow: hidden; display: inline-grid; place-items: center; }
 .ms-face-r img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; background: var(--panel-2, #1c1c22); }
+/* Standings: every column sorts (since Nov 26). */
+.st-table th .st-sort { all: unset; cursor: pointer; display: inline-flex; align-items: flex-end; gap: 3px; }
+.st-table th .st-sort:hover, .st-table th .st-sort:focus-visible { color: var(--text); }
+.st-table th .st-sort:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; border-radius: 3px; }
+.st-table th .st-sort i { font-style: normal; font-size: 8px; }
+.st-table td[data-sorted] { font-weight: 900; color: var(--text); }

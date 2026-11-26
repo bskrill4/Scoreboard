@@ -368,6 +368,7 @@
     const homeRec = { w: 0, n: 0 }; // the season's home record so far
     const stintRows = []; // { edge, dur (min), pd }
     let decayedAt = null;
+    const teamTot = { sum: 0, n: 0 }; // every team's game total so far (opts.teamDefense)
     for (const g of games) {
       // Test setting (opts.halfLife, days; off by default): older games count less,
       // each player's BONES and minutes (and the league's) halving every halfLife
@@ -433,12 +434,39 @@
         for (const [h, a, dur, d] of L.st) stintRows.push({ edge: h.reduce((s, i) => s + per36(i), 0) - a.reduce((s, i) => s + per36(i), 0), dur: dur / 60, pd: d });
       }
       // Now let the game count.
+      // Test setting (opts.teamDefense, a share; off by default, TESTS.md T32): each
+      // team's players also get that share of how far the opponents' total fell
+      // below the league's average team total so far, split by minutes, so a
+      // defense that keeps opponents' credit down (Boston) shows in its players.
+      const teamDef = new Map();
+      if (opts.teamDefense && ids.length === 2) {
+        const tot = new Map(ids.map((id) => [id, 0]));
+        const tmin = new Map(ids.map((id) => [id, 0]));
+        for (const r of Object.values(g.rows)) {
+          if (!r || !r[3]) continue;
+          const tid = String(r[3][0]);
+          if (!tot.has(tid)) continue;
+          tot.set(tid, tot.get(tid) + SB.impact.rowImpact(r) * 100);
+          tmin.set(tid, tmin.get(tid) + (r[3][1] || 0));
+        }
+        if (teamTot.n) {
+          const avg = teamTot.sum / teamTot.n;
+          for (const id of ids) {
+            const opp = ids.find((x) => x !== id);
+            if (tmin.get(id) > 0) teamDef.set(id, (opts.teamDefense * (avg - tot.get(opp))) / tmin.get(id));
+          }
+        }
+        for (const id of ids) {
+          teamTot.sum += tot.get(id);
+          teamTot.n++;
+        }
+      }
       const mins = new Map(ids.map((id) => [id, new Map()]));
       for (const [pid, r] of Object.entries(g.rows)) {
         if (!r[3]) continue;
         const tid = String(r[3][0]);
-        const imp = SB.impact.rowImpact(r) * 100;
         const min = r[3][1] || 0;
+        const imp = SB.impact.rowImpact(r) * 100 + (teamDef.get(tid) || 0) * min;
         const p = players.get(pid) || { imp: 0, min: 0, team: tid };
         p.imp += imp;
         p.min += min;
