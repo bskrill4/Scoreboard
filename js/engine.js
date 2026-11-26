@@ -185,12 +185,16 @@
   // Switch in settings (sb.bonesV); everything that reads BONES follows it.
   // Since Nov 21 the score-only version has its own name, MOUSSA (Margin-Only
   // Uncertainty Swings, Split by Action), and the switch is a BONES | MOUSSA toggle.
+  // Since Nov 26 a third: MOUSSA V2 (3), MOUSSA with the credit rules and
+  // per-possession ratings a review proposed (the V3 block in viewAt; TESTS.md T33–T41).
+  const VERSIONS = [1, 2, 3];
+  const asVersion = (v) => (VERSIONS.includes(Number(v)) ? Number(v) : 1);
   let bonesV = 1;
   try {
-    bonesV = localStorage.getItem('sb.bonesV') === '2' ? 2 : 1;
+    bonesV = asVersion(localStorage.getItem('sb.bonesV'));
   } catch (e) {}
   function setVersion(v) {
-    bonesV = v === 2 ? 2 : 1;
+    bonesV = asVersion(v);
     try {
       localStorage.setItem('sb.bonesV', String(bonesV));
     } catch (e) {}
@@ -199,19 +203,21 @@
   // both models), without touching the setting. fn must be synchronous.
   function withVersion(v, fn) {
     const was = bonesV;
-    bonesV = v === 2 ? 2 : 1;
+    bonesV = asVersion(v);
     try {
       return fn();
     } finally {
       bonesV = was;
     }
   }
-  const NAMES = { 1: 'BONES', 2: 'MOUSSA' };
+  const NAMES = { 1: 'BONES', 2: 'MOUSSA', 3: 'MOUSSA V2' };
+  // MOUSSA's family (score-only, basketball): MOUSSA and MOUSSA V2.
+  const scoreOnly = (v = bonesV) => v === 2 || v === 3;
   // A view's players under the current version: v2 swaps in the score-only
   // numbers where the engine has them (basketball); v1 values stay on the
   // player as impV1 / defBones for saving.
   function applyVersion(view) {
-    if (bonesV !== 2) return;
+    if (!scoreOnly()) return;
     // MOUSSA's own biggest plays (basketball), on its own swing.
     if (view.impPlaysN) {
       view.impPlays = view.impPlaysN;
@@ -219,14 +225,31 @@
     }
     for (const p of view.players) {
       if (p.impN == null) continue;
-      p.imp = p.impN;
+      p.imp = bonesV === 3 && p.impN3 != null ? p.impN3 : p.impN;
       for (const m of p.moments || []) if (m.impN != null) m.imp = m.impN;
     }
   }
   // A saved game's row [imp, wpa, line, box, floor, def, impV2, defV2] -> BONES
   // under the current settings (v2 rows carry no floor; v1 adds it if it's on).
-  const rowImpact = (row) => (bonesV === 2 && row[6] != null ? row[6] : row[0] + (floorOn ? row[4] || 0 : 0));
-  const rowDefense = (row) => (bonesV === 2 && row[7] != null ? row[7] : row[5] || 0);
+  // Rows since Nov 26 add [8] [9] [10]: MOUSSA V2, its defensive part, and the
+  // player's weighted possessions on the floor (rows without them read as MOUSSA).
+  const rowImpact = (row) =>
+    bonesV === 3 && row[8] != null ? row[8] : scoreOnly() && row[6] != null ? row[6] : row[0] + (floorOn ? row[4] || 0 : 0);
+  const rowDefense = (row) => (bonesV === 3 && row[9] != null ? row[9] : scoreOnly() && row[7] != null ? row[7] : row[5] || 0);
+  // MOUSSA V2's credit rules (see viewAt). on: each part, for ablations in the backtest.
+  const V3 = {
+    on: { assist: true, late: true, to: true, shotD: true, rim: true, reb: true },
+    assistBase: 0.2,
+    assistSlope: 0.6,
+    assistMin: 0.05,
+    assistMax: 0.5,
+    lateShooter: 0.5,
+    toDefShare: 0.5,
+    shotD: 1,
+    rimMake: 0.25,
+    perPossession: true, // T37: ratings per weighted possession (bones.js)
+    restLogit: null, // T41: the back-to-back term, fit in the backtest (bones.js)
+  };
 
   // Test settings, for the backtest. BONES v2 (see viewAt): the share of an
   // offensive rebound's and of a missed shot's credit the player keeps (the rest
@@ -234,7 +257,7 @@
   // window (impactAdjust) when set; null = the league's own.
   const tune = { orebShare: 1, missShare: 1, spikeSec: null, keepFn: null, decidedW: 1, decidedAt: 0.9, defMake: 0, offMake: 1, shooterSkill: null, skillDefense: false, missCost: 1, missRecovery: null };
 
-  SB.impact = { tune, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, withVersion, version: () => bonesV, name: (v = bonesV) => NAMES[v === 2 ? 2 : 1], NAMES };
+  SB.impact = { tune, V3, weight: impactWeight, IMPACT, FLOOR, FLOOR_CAP, applyFloor, setFloor, floorOn: () => floorOn, rowImpact, rowDefense, applyVersion, setVersion, withVersion, version: () => bonesV, name: (v = bonesV) => NAMES[asVersion(v)], NAMES, VERSIONS, scoreOnly };
 
   // On-court defense (basketball, beta): on every field-goal attempt, the five
   // defenders on the floor share ON_COURT_D of what the shot was worth against
@@ -707,8 +730,10 @@
         // Possession changes: a make, a defensive rebound, a turnover, the last
         // free throw made. An offensive rebound is the 14-second reset.
         const what = `${type} ${text}`;
-        if ((fga && play.scoring) || /defensive (team )?rebound/i.test(what) || /turnover|traveling|offensive foul|steal/i.test(what) || (/free throw/i.test(text) && /(\d+) of \1\b/.test(text) && play.scoring))
+        if ((fga && play.scoring) || /defensive (team )?rebound/i.test(what) || /turnover|traveling|offensive foul|steal/i.test(what) || (/free throw/i.test(text) && /(\d+) of \1\b/.test(text) && play.scoring)) {
           possStart = elapsed;
+          play.possChange = true; // a possession ended here (MOUSSA V2's per-possession ratings)
+        }
         else if (/offensive (team )?rebound/i.test(what)) possStart = elapsed - 10;
         ts.push(t);
       }
@@ -756,7 +781,7 @@
       const { homeId, awayId, roster } = tape;
       const players = new Map();
       for (const r of roster.values()) {
-        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, imp: 0, impDef: 0, defBones: 0, impN: 0, defBonesN: 0, on: false, played: false, stints: [], moments: [] });
+        players.set(r.id, { ...r, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, wpa: 0, imp: 0, impDef: 0, defBones: 0, impN: 0, defBonesN: 0, impN3: 0, defN3: 0, wPoss3: 0, on: false, played: false, stints: [], moments: [] });
       }
       const lineup = { [homeId]: new Set(), [awayId]: new Set() };
       // Stints: the stretches of game time each player was on the floor, with the
@@ -927,6 +952,102 @@
               pl.imp -= f * p.weight;
               pl.impN -= f * wN;
             }
+          }
+        }
+
+        // ---- MOUSSA V2 (since Nov 26; TESTS.md T33–T41) ----
+        // MOUSSA's score-only swing and leverage weight, with the credit rules a
+        // review of MOUSSA proposed (SB.impact.V3; each part can be switched off for
+        // the backtest's ablations):
+        //  assist   the passer's share of a make grows with how easy the shot was
+        //           (shot_xPTS above average), 5%–50%, instead of a flat 20% (T39)
+        //  late     a miss late in the possession (21s+ in) is split 50% shooter,
+        //           50% the other four on the floor (T40)
+        //  to       a defense-caused turnover without a steal (shot clock, offensive
+        //           foul, 5/8 seconds, bad pass, lost ball) is split 50% committer,
+        //           50% the five defenders, like a steal (T33)
+        //  shotD    on-court shot defense at 100% of (average − shot_xPTS), not 50% (T34)
+        //  rim      plus 25% of (shot_xPTS − points scored) on rim shots only (T35)
+        //  reb      zero-sum rebounding: the five on the other side are charged what
+        //           an offensive or defensive rebound gains (T36)
+        // Every player also counts his possessions on the floor, each weighted by
+        // what a point was worth then × the leverage weight (wPoss3): ratings are
+        // credit per weighted possession, so pace and blowouts don't tilt them (T37).
+        {
+          const C = SB.impact.V3;
+          const on = C.on;
+          const D = p.impDeltaN || 0;
+          const add = (id, val, def) => {
+            const pl = players.get(id);
+            if (!pl || !val) return;
+            pl.impN3 += val;
+            if (def) pl.defN3 += val;
+          };
+          const sideOf = (id) => (players.get(id)?.teamId === homeId ? 1 : -1);
+          const teamOf = (id) => players.get(id)?.teamId;
+          const oppOf = (tid) => (tid === homeId ? awayId : homeId);
+          const five = (tid) => [...(lineup[tid] || [])];
+          const pvAt = (m) => (modelWP(m + 1, p.elapsed) - modelWP(m - 1, p.elapsed)) / 2;
+          if (p.possChange || i === 0) {
+            const w = Math.abs(pvAt(p.home - p.away)) * wN;
+            for (const tid of [homeId, awayId]) for (const id of five(tid)) players.get(id).wPoss3 += w;
+          }
+          if (D && p.credits.length) {
+            const tt = `${p.type} ${p.text}`;
+            const defReb = p.isRebound && /defensive/i.test(tt);
+            const offReb = p.isRebound && !defReb && /offensive/i.test(tt);
+            const forced =
+              on.to && !p.fga && !p.stealBy && /turnover|offensive foul|offensive charge|shot clock|second violation|bad pass|lost ball/i.test(tt) &&
+              /shot clock|offensive foul|offensive charge|charge|5 second|8 second|five second|eight second|bad pass|lost ball|out of bounds/i.test(tt) &&
+              !/3 second|three second|double dribble|backcourt|travel|kicked|lane|discontinue|palming|carry/i.test(tt);
+            const blocked = p.blockBy && p.blockBy !== p.p0;
+            const lateMiss = on.late && p.fga && !p.scoring && !blocked && p.shot?.clk === 'late';
+            const assisted = on.assist && p.fga && p.scoring && p.isAssist && p.p1 && players.get(p.p1);
+            if (assisted) {
+              const xp = p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) : null;
+              const sh = xp == null ? 0.2 : Math.min(C.assistMax, Math.max(C.assistMin, C.assistBase + C.assistSlope * (xp - SB.xpts.avg(league))));
+              add(p.p0, sideOf(p.p0) * D * (1 - sh) * wN, false);
+              add(p.p1, sideOf(p.p1) * D * sh * wN, false);
+            } else if (lateMiss && teamOf(p.p0)) {
+              const rest = five(teamOf(p.p0)).filter((id) => id !== p.p0);
+              const keep = rest.length ? C.lateShooter : 1;
+              add(p.p0, sideOf(p.p0) * D * keep * wN, false);
+              for (const id of rest) add(id, (sideOf(id) * D * (1 - keep) * wN) / rest.length, false);
+            } else if (forced && teamOf(p.p0)) {
+              const defs = five(oppOf(teamOf(p.p0)));
+              const share = defs.length ? C.toDefShare : 0;
+              add(p.p0, sideOf(p.p0) * D * (1 - share) * wN, false);
+              for (const id of defs) add(id, (sideOf(id) * D * share * wN) / defs.length, true);
+            } else if (defReb) {
+              const got = new Set();
+              for (const c of p.credits) {
+                add(c.id, sideOf(c.id) * D * c.share * REB_SHARE * wN, true);
+                got.add(c.id);
+              }
+              const tid = teamOf(p.credits[0].id);
+              const rest = five(tid).filter((id) => !got.has(id));
+              for (const id of rest) add(id, (sideOf(id) * D * (1 - REB_SHARE) * wN) / rest.length, true);
+            } else {
+              for (const c of p.credits) add(c.id, sideOf(c.id) * D * c.share * wN, defensiveCredit(p, c.id));
+            }
+            // Zero-sum rebounding: the other side's five pay what the rebound gained.
+            if (on.reb && (offReb || defReb) && teamOf(p.credits[0].id)) {
+              const opp = five(oppOf(teamOf(p.credits[0].id)));
+              for (const id of opp) add(id, (sideOf(id) * D * wN) / opp.length, offReb);
+            }
+          }
+          // On-court shot defense, MOUSSA V2's way (shotD, rim).
+          const shooter3 = p.fga && p.p0 && players.get(p.p0);
+          const xp3 = shooter3 && p.shot && SB.xpts?.has(league) ? SB.xpts.xp(p.shot, league) : null;
+          if (xp3 != null) {
+            const prev = i > 0 ? tape.plays[i - 1] : null;
+            const pv = pvAt(prev ? prev.home - prev.away : 0);
+            const quality = (xp3 - SB.xpts.avg(league)) * (on.shotD ? C.shotD : ON_COURT_D);
+            const rim = on.rim && p.shot.zone === 'rim' ? C.rimMake * ((p.scoring ? p.pts : 0) - xp3) : 0;
+            // pv is the win chance of one point (always positive), so this is the
+            // defense's own credit, as MOUSSA's on-court defense computes it.
+            const defs = five(shooter3.teamId === homeId ? awayId : homeId);
+            for (const id of defs) add(id, (-(quality + rim) * pv * wN) / defs.length, true);
           }
         }
 

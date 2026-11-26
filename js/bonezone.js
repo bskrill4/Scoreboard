@@ -25,10 +25,15 @@
   let lines = []; // what the skull says, in order
   let at = 0; // which line is showing
   let typing = null;
-  // Which metric the check grades: BONES (1) or MOUSSA (2). Its own buttons at
+  // Which metric the check grades: MOUSSA (2) or MOUSSA V2 (3); BONES left the zone Nov 26. Its own buttons at
   // the top of the page, starting from the settings toggle; each check is
   // counted once and kept (statsBy) until the numbers change underneath.
-  let checkV = SB.impact.version();
+  // Since Nov 26 the Bone Zone compares MOUSSA (2) and MOUSSA V2 (3) only; BONES
+  // lives on everywhere else (and still locks its picks for the morning recap).
+  // With BONES switched on in settings, the zone opens on MOUSSA.
+  const ZONE = [2, 3];
+  const zoneV = (v) => (ZONE.includes(Number(v)) ? Number(v) : 2);
+  let checkV = zoneV(SB.impact.version());
   // The × on the skull's bubble hides it (and its Back / Next) until the page
   // reloads, so the forecast list isn't pushed down by it.
   let quiet = false;
@@ -38,6 +43,8 @@
   // compares the two): written as these tokens, swapped in last by named().
   const KB = '{{B1}}';
   const KM = '{{M2}}';
+  const KV = '{{M3}}'; // MOUSSA V2 (since Nov 26)
+  const TOK = { 1: KB, 2: KM, 3: KV };
 
   // ---------- the numbers ----------
   function corr(xs, ys) {
@@ -78,7 +85,7 @@
         if (!r[3]) continue;
         const row = { imp: SB.impact.rowImpact(r) * 100, team: String(r[3][0]), min: r[3][1], pts: r[3][2] };
         team[row.team] = (team[row.team] || 0) + row.imp;
-        swing[row.team] = (swing[row.team] || 0) + (v === 2 && r[6] != null ? r[6] : r[0]) * 100; // MOUSSA has no floor
+        swing[row.team] = (swing[row.team] || 0) + (SB.impact.scoreOnly(v) ? SB.impact.rowImpact(r) : r[0]) * 100; // MOUSSA (and V2) have no floor
         const p = players.get(id) || { name: r[3][7], g: [] };
         p.g.push(row);
         players.set(id, p);
@@ -194,8 +201,8 @@
           sum = await SB.api.summary(e.id, 'nba');
         } catch (err) {}
         const out = SB.bones.injuries(sum).out;
-        const prs = { 1: SB.bones.predict(models[1], String(home.team.id), String(away.team.id), out), 2: SB.bones.predict(models[2], String(home.team.id), String(away.team.id), out) };
-        const pr = prs[1] || prs[2];
+        const prs = Object.fromEntries(SB.impact.VERSIONS.map((v) => [v, SB.bones.predict(models[v], String(home.team.id), String(away.team.id), out)]));
+        const pr = prs[1] || prs[2] || prs[3];
         if (!pr) return null;
         const call = (x) => (x ? { pick: x.pHome >= 0.5 ? 'home' : 'away', conf: Math.max(x.pHome, 1 - x.pHome) } : null);
         const [h, a] = [pr.home, pr.away];
@@ -209,7 +216,7 @@
           t: Date.parse(e.date),
           home: team(home, h),
           away: team(away, a),
-          calls: { 1: call(prs[1]), 2: call(prs[2]) },
+          calls: { 1: call(prs[1]), 2: call(prs[2]), 3: call(prs[3]) },
           ml: Number.isFinite(ml.home) && Number.isFinite(ml.away) ? ml : null,
           book: pc?.provider?.name || '',
           fav: favHome == null ? null : favHome ? 'home' : 'away',
@@ -306,8 +313,8 @@
   }
 
   const asOf = (games, v) => games.filter((g) => g.calls[v]).map((g) => ({ ...g, ...g.calls[v] }));
-  // A split: BONES and MOUSSA pick different winners.
-  const isSplit = (g) => !!(g.calls[1] && g.calls[2] && g.calls[1].pick !== g.calls[2].pick);
+  // A split: MOUSSA and MOUSSA V2 pick different winners.
+  const isSplit = (g) => new Set(ZONE.map((v) => g.calls[v]?.pick).filter(Boolean)).size > 1;
 
   // ---------- best bets (since Nov 23) ----------
   // Each metric's one bet tonight: among the night's games (the first day with
@@ -360,7 +367,7 @@
   };
   function trackBets(games) {
     const now = Date.now();
-    for (const v of [1, 2])
+    for (const v of ZONE)
       for (const [tag, cap] of [['c', EDGE_CAP], ['u', Infinity]]) {
         const b = bestBet(games, v, cap);
         if (!b || !(b.ev > 0)) continue;
@@ -405,9 +412,7 @@
       const leftNote = left
         ? `<span class="bz-bet-left">Left out: ${esc(left.g[left.side].abbr)} ${fmtML(left.ml)}, +$${left.ev.toFixed(0)} on paper. Edges over $${EDGE_CAP} have lost money all season: the price usually knows something the model doesn't.</span>`
         : '';
-      // BONES has no measured edge over the closing line (T28): its log-loss trails the
-      // market's beyond noise, and the market + BONES mix earlier nights choose is all market.
-      const note = v === 1 ? `<span class="bz-bet-left">${KB} hasn't beaten the closing line this season; read its bet as a curiosity.</span>` : '';
+      const note = '';
       const rec = [['c', 'capped'], ['u', 'uncapped']].map(([tag, w]) => (betRecord(v, tag) ? `${w} ${betRecord(v, tag)}` : '')).filter(Boolean).join(' · ');
       const recNote = rec ? `<span class="bz-bet-rec">Tracked since Nov 25: ${rec}</span>` : '';
       if (!b) return `<div class="bz-bet none"><em>${tok}</em><span>No bet at or under a $${EDGE_CAP} edge tonight.</span>${leftNote}${note}${recNote}</div>`;
@@ -420,7 +425,7 @@
         </div>`;
     };
     const book = games.find((g) => g.book)?.book;
-    return `<div class="bz-bets"><h3>Best bets <small>tonight's highest expected return for each, up to a $${EDGE_CAP} edge, on the moneyline${book ? ` (${esc(book)})` : ''}</small></h3>${card(1, KB)}${card(2, KM)}</div>`;
+    return `<div class="bz-bets"><h3>Best bets <small>tonight's highest expected return for each, up to a $${EDGE_CAP} edge, on the moneyline${book ? ` (${esc(book)})` : ''}</small></h3>${card(2, KM)}${card(3, KV)}</div>`;
   }
 
   function predictScript(model, games) {
@@ -454,10 +459,10 @@
     const splits = games.filter(isSplit);
     lines.push(
       splits.length
-        ? `${KB} and ${KM} don't agree on ${splits.length === 1 ? 'one game' : `${splits.length} games`}: ${list(
-            splits.map((g) => `${g.away.name} at ${g.home.name} (${KB} ${g[g.calls[1].pick].abbr}, ${KM} ${g[g.calls[2].pick].abbr})`)
+        ? `${KM} and ${KV} don't agree on ${splits.length === 1 ? 'one game' : `${splits.length} games`}: ${list(
+            splits.map((g) => `${g.away.name} at ${g.home.name} (${ZONE.filter((v) => g.calls[v]).map((v) => `${TOK[v]} ${g[g.calls[v].pick].abbr}`).join(', ')})`)
           )}. Those are the ones to watch: whichever is right there is the one that's learning something.`
-        : `${KB} and ${KM} agree on every game this time.`
+        : `${KM} and ${KV} agree on every game this time.`
     );
     const bet = bestBet(games, checkV);
     if (bet) {
@@ -474,7 +479,7 @@
 
   function picksHTML(games) {
     if (!games.length) return '';
-    const bets = { 1: bestBet(games, 1), 2: bestBet(games, 2) };
+    const bets = Object.fromEntries(ZONE.map((v) => [v, bestBet(games, v)]));
     const callText = (g, c) => (!c ? '—' : c.conf < UPSET_MIN ? 'Toss-up' : `${esc(g[c.pick].abbr)} ${pct(c.conf)}`);
     const row = (g) => {
       const upset = isUpset(g);
@@ -484,12 +489,12 @@
       return `<li class="${upset ? 'upset' : ''}${split ? ' split' : ''}">
           <span class="bz-when">${esc(whenText(g.t))}</span>
           <span class="bz-match">${side('away')}<i>@</i>${side('home')}</span>
-          <span class="bz-call"><span class="bz-two"><span${mine(1)}><em>${KB}</em> ${callText(g, g.calls[1])}</span><span${mine(2)}><em>${KM}</em> ${callText(g, g.calls[2])}</span></span>${split ? '<b class="bz-split">Split</b>' : ''}${[1, 2].filter((v) => bets[v]?.g.id === g.id).map((v) => `<b class="bz-bb">${v === 1 ? KB : KM} best bet</b>`).join('')}${upset ? '<b>Upset pick</b>' : g.fav || g.conf < UPSET_MIN ? '' : '<small>no favorite yet</small>'}</span>
+          <span class="bz-call"><span class="bz-two">${ZONE.map((v) => `<span${mine(v)}><em>${TOK[v]}</em> ${callText(g, g.calls[v])}</span>`).join('')}</span>${split ? '<b class="bz-split">Split</b>' : ''}${ZONE.filter((v) => bets[v]?.g.id === g.id).map((v) => `<b class="bz-bb">${TOK[v]} best bet</b>`).join('')}${upset ? '<b>Upset pick</b>' : g.fav || g.conf < UPSET_MIN ? '' : '<small>no favorite yet</small>'}</span>
         </li>`;
     };
     const nSplit = games.filter(isSplit).length;
-    return `${betsHTML(games)}<h3>The skull's picks <small>${KB} and ${KM}${nSplit ? ` · ${nSplit} split${nSplit === 1 ? '' : 's'}` : ' · no splits'}</small></h3><ul class="bz-picks">${games.map(row).join('')}</ul>
-      <p class="bz-fine">Each metric on its own: each player's rating a minute × his minutes over his team's last ${RECENT} games, players listed out (or doubtful) removed, questionable at half. No home court. Win chances are fit to this season's results. <b>Split</b>: ${KB} and ${KM} pick different winners. Upset pick (for the check that's showing): it takes the team that isn't favored, by at least ${pct(UPSET_MIN)}; closer than that is a toss-up.</p>`;
+    return `${betsHTML(games)}<h3>The skull's picks <small>${KM} and ${KV}${nSplit ? ` · ${nSplit} split${nSplit === 1 ? '' : 's'}` : ' · no splits'}</small></h3><ul class="bz-picks">${games.map(row).join('')}</ul>
+      <p class="bz-fine">Each metric on its own: each player's rating a minute × his minutes over his team's last ${RECENT} games, players listed out (or doubtful) removed, questionable at half. No home court. Win chances are fit to this season's results. <b>Split</b>: ${KM} and ${KV} pick different winners. Upset pick (for the check that's showing): it takes the team that isn't favored, by at least ${pct(UPSET_MIN)}; closer than that is a toss-up.</p>`;
   }
 
   // ---------- the skull ----------
@@ -638,7 +643,7 @@
   // The skull grades whichever metric the toggle shows (the numbers are read
   // under it), so its words name that one: BONES, or MOUSSA.
   const named = (t) =>
-    (checkV === 2 ? String(t).replace(/\bBONES\b/g, 'MOUSSA') : String(t)).split(KB).join('BONES').split(KM).join('MOUSSA');
+    (SB.impact.scoreOnly(checkV) ? String(t).replace(/\bBONES\b/g, SB.impact.name(checkV)) : String(t)).split(KB).join('BONES').split(KM).join('MOUSSA').split(KV).join('MOUSSA V2');
   function say(i) {
     at = Math.max(0, Math.min(lines.length - 1, i));
     const bubble = root.querySelector('.bz-bubble p');
@@ -699,7 +704,7 @@
   function start() {
     started = true;
     root.innerHTML = `<div class="bz${quiet ? ' bz-quiet' : ''}">
-        <div class="seg bz-which" role="radiogroup" aria-label="Which check">${[1, 2]
+        <div class="seg bz-which" role="radiogroup" aria-label="Which check">${ZONE
           .map((v) => `<button type="button" data-bzv="${v}" role="radio" class="${v === checkV ? 'on' : ''}" aria-checked="${v === checkV}">${SB.impact.name(v)} check</button>`)
           .join('')}</div>
         <div class="bz-stage"><canvas class="bz-skull" aria-label="A floating skull"></canvas></div>
@@ -733,9 +738,9 @@
     loadStats();
   }
 
-  // The BONES check / MOUSSA check buttons: back to the check, for that metric.
+  // The MOUSSA check / MOUSSA V2 check buttons: back to the check, for that metric.
   function setCheck(v) {
-    v = v === 2 ? 2 : 1;
+    v = zoneV(v);
     for (const b of root.querySelectorAll('[data-bzv]')) {
       const on = Number(b.dataset.bzv) === v;
       b.classList.toggle('on', on);
@@ -848,8 +853,8 @@
   // The numbers changed underneath (the game-floor switch): count again, now if
   // the page is showing, else on the next visit.
   function refresh() {
-    checkV = SB.impact.version();
-    for (const v of [1, 2]) delete statsBy[v];
+    checkV = zoneV(SB.impact.version());
+    for (const v of SB.impact.VERSIONS) delete statsBy[v];
     future = null;
     if (root) for (const b of root.querySelectorAll('[data-bzv]')) b.classList.toggle('on', Number(b.dataset.bzv) === checkV);
     if (!started) return;

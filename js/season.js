@@ -700,7 +700,7 @@
     },
     get note() {
       const n = SB.impact.name();
-      const moussa = SB.impact.version() === 2;
+      const moussa = SB.impact.scoreOnly();
       return `<b>${n}</b> is a season total from our own replay of every game (the same numbers as the board and the player drawer).
       ${moussa ? 'MOUSSA has no game floor: every game opens at 50% for both teams, so a blowout is already credited as it happens.' : "BONES includes the <b>game floor</b> (switch it off in settings for swing only): a game that stayed one-sided still credits the winner, up to 75% of a typical game, split by the winning players' share of its swings. Close games are untouched, so a thriller still pays more than a blowout."}
       <b>Defensive ${n}</b> is the part of a player's ${n}${moussa ? '' : ' (before the game floor)'} that came from defense: the five defenders on the floor credited for the expected value of every shot they allowed against the league's average shot (where it was taken, what kind, how far into the possession: whether it went in doesn't matter), plus his blocks, steals, defensive rebounds and the fouls he committed on defense. Beta.

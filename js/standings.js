@@ -118,24 +118,26 @@
   // ---------- the season: expected wins and shooting ----------
   function seasonStats(games) {
     const T = {};
-    const get = (id) => (T[id] ??= { gp: 0, sg: 0, xp: 0, fgPts: 0, ftPts: 0, oXp: 0, oFgPts: 0, oFtPts: 0, d: { 1: [], 2: [] }, net1: 0, net2: 0 });
+    const get = (id) => (T[id] ??= { gp: 0, sg: 0, xp: 0, fgPts: 0, ftPts: 0, oXp: 0, oFgPts: 0, oFtPts: 0, d: { 1: [], 2: [], 3: [] }, net1: 0, net2: 0, net3: 0 });
     for (const g of games) {
       if (!g.rows || !g.home || !g.away) continue;
-      const val = { 1: {}, 2: {} };
+      const val = { 1: {}, 2: {}, 3: {} };
       for (const r of Object.values(g.rows)) {
         if (!r || !r[3]) continue;
         const tid = String(r[3][0]);
         val[1][tid] = (val[1][tid] || 0) + (r[0] || 0); // BONES, swing only
         val[2][tid] = (val[2][tid] || 0) + (r[6] ?? r[0] ?? 0); // MOUSSA
+        val[3][tid] = (val[3][tid] || 0) + (r[8] ?? r[6] ?? r[0] ?? 0); // MOUSSA V2
       }
       const tm = g.rows._teams?.ids ? Object.fromEntries(g.rows._teams.ids.map((id, i) => [String(id), g.rows._teams.s[i]])) : null;
       for (const [a, b] of [[g.home, g.away], [g.away, g.home]]) {
         const t = get(a);
         t.gp++;
         const win = g.score[a] > g.score[b] ? 1 : 0;
-        for (const v of [1, 2]) t.d[v].push([(val[v][a] || 0) - (val[v][b] || 0), win]);
+        for (const v of [1, 2, 3]) t.d[v].push([(val[v][a] || 0) - (val[v][b] || 0), win]);
         t.net1 += (val[1][a] || 0) - (val[1][b] || 0);
         t.net2 += (val[2][a] || 0) - (val[2][b] || 0);
+        t.net3 += (val[3][a] || 0) - (val[3][b] || 0);
         if (tm && tm[a] && tm[b]) {
           t.sg++;
           t.xp += tm[a][1];
@@ -149,7 +151,7 @@
     }
     // One logistic slope per metric: the game's result on the in-game gap.
     const k = {};
-    for (const v of [1, 2]) {
+    for (const v of [1, 2, 3]) {
       const all = Object.values(T).flatMap((t) => t.d[v]);
       let best = -Infinity;
       for (let kk = 0.2; kk <= 40; kk += 0.2) {
@@ -167,7 +169,7 @@
       const n = t.sg || NaN;
       const xPts = (t.xp + t.ftPts) / n;
       const xPa = (t.oXp + t.oFtPts) / n;
-      out[id] = { gp: t.gp, xw1: xw(1), xw2: xw(2), m1: (100 * t.net1) / t.gp, m2: (100 * t.net2) / t.gp, xPts, xPa, xNet: xPts - xPa, luck: (t.fgPts - t.xp - (t.oFgPts - t.oXp)) / n };
+      out[id] = { gp: t.gp, xw1: xw(1), xw2: xw(2), xw3: xw(3), m1: (100 * t.net1) / t.gp, m2: (100 * t.net2) / t.gp, m3: (100 * t.net3) / t.gp, xPts, xPa, xNet: xPts - xPa, luck: (t.fgPts - t.xp - (t.oFgPts - t.oXp)) / n };
     }
     return out;
   }
@@ -433,7 +435,9 @@
     const tip = `${Math.round(p.w)}-${Math.round(p.l)} on average (${p.w.toFixed(1)} wins); 8 in 10 seasons between ${p.lo} and ${p.hi} wins. Top 6 in the conference: ${pct0(p.top6)}. Top 10 (play-in or better): ${pct0(p.top10)}.`;
     return `<td class="num st-proj" title="${esc(tip)}">${Math.round(p.w)}-${Math.round(p.l)}</td>`;
   }
-  const mg = (s) => (SB.impact.version() === 2 ? s.m2 : s.m1);
+  const mg = (s) => s[`m${SB.impact.version()}`] ?? s.m1;
+  // The first xW column: MOUSSA's, or MOUSSA V2's while it's switched on (since Nov 26).
+  const xwM = (s) => (SB.impact.version() === 3 ? s.xw3 : s.xw2);
   // ---------- sorting (since Nov 26) ----------
   // Every column: [key, value from a team, ascending first?]. null key: the table's own order.
   const l10Wins = (t) => Number(String(t.l10 || '').split('-')[0]);
@@ -451,7 +455,7 @@
     strk: [streakNum],
     diff: [(t) => t.diff],
     mg: [(t) => state.stats?.[t.id] && mg(state.stats[t.id])],
-    xw2: [(t) => state.stats?.[t.id]?.xw2],
+    xw2: [(t) => state.stats?.[t.id] && xwM(state.stats[t.id])],
     xw1: [(t) => state.stats?.[t.id]?.xw1],
     xpts: [(t) => state.stats?.[t.id]?.xPts],
     xpa: [(t) => state.stats?.[t.id]?.xPa, true],
@@ -498,7 +502,7 @@
       <td class="num">${esc(t.streak)}</td>
       <td class="num ${tone(t.diff)}">${sign1(t.diff)}</td>
       <td class="num ${s ? tone(mg(s)) : ''}">${s ? sign1(mg(s)) : '…'}</td>
-      <td class="num"${cur(2)}>${s ? fix1(s.xw2) : '…'}</td>
+      <td class="num"${SB.impact.version() === 3 ? cur(3) : cur(2)}>${s ? fix1(xwM(s)) : '…'}</td>
       <td class="num"${cur(1)}>${s ? fix1(s.xw1) : '…'}</td>
       <td class="num">${s ? fix1(s.xPts) : '…'}</td>
       <td class="num">${s ? fix1(s.xPa) : '…'}</td>
@@ -526,7 +530,7 @@
           ${h('#', opts.seeds ? 'Playoff seed (ESPN, with tiebreakers). Click to return to this order' : 'Rank. Click to return to this order', '', 'rank')}${h('Team', 'Sort by name', '', 'team')}${h('W-L', 'Record', '', 'wl')}${h('Pct', 'Win percentage', '', 'pct')}${h('Proj', `Projected record: the rest of the season played out ${RUNS.toLocaleString()} times with ${N}'s pick model, as of this morning`, 'st-proj', 'proj')}${h('GB', 'Games behind the leader of this table', '', 'gb')}${h('L10', 'Last ten games', '', 'l10')}${h('Strk', 'Current streak', '', 'strk')}
           ${h('Diff', 'Point differential per game', '', 'diff')}
           ${h(`${N}/g`, `Team ${N} a game minus its opponents’: like Diff, in ${N}${N === 'MOUSSA' ? ' (it follows Diff closely, r .98)' : ''}. Switch metrics in settings`, '', 'mg')}
-          ${h('xW MOUSSA', 'Wins MOUSSA says the team earned: each game’s MOUSSA gap between the teams, turned into a win chance and added up', cur(2), 'xw2')}
+          ${SB.impact.version() === 3 ? h('xW MOUSSA V2', 'Wins MOUSSA V2 says the team earned: each game’s MOUSSA V2 gap between the teams, turned into a win chance and added up (switch to MOUSSA in settings for its column)', cur(3), 'xw2') : h('xW MOUSSA', 'Wins MOUSSA says the team earned: each game’s MOUSSA gap between the teams, turned into a win chance and added up', cur(2), 'xw2')}
           ${h('xW BONES', 'Wins BONES says the team earned (swing only, no game floor)', cur(1), 'xw1')}
           ${h('xPts', 'Expected points a game: the expected points of every shot taken (from where and how), plus free throws made', '', 'xpts')}
           ${h('xPts allowed', 'Expected points a game from the shots the team allows, plus opponents’ free throws made (fewest first)', '', 'xpa')}

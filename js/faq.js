@@ -25,6 +25,19 @@
         <p>Switch between them in settings or with the chips on Rankings. Both lock a pick before every NBA tip-off, so they're graded side by side every morning.</p>`,
     },
     {
+      q: 'What is MOUSSA V2?',
+      a: `<p>A third metric, added Nov 26: MOUSSA rebuilt on the changes an outside review (Gemini) proposed after reading our write-up. Same score-only win probability, same leverage weight; different rules for who gets the credit:</p>
+        <ul>
+          <li><b>Zero-sum rebounding</b>: when a team grabs a rebound, the five on the other side are charged what it gained, so boxing out (and failing to) finally shows on both ledgers.</li>
+          <li><b>Forced turnovers</b>: a shot-clock violation, offensive foul, 5- or 8-second call, bad pass or lost ball without a steal is split 50/50 between the player who lost it and the five defenders, like a steal.</li>
+          <li><b>Shot defense at full value</b>: defenders get all, not half, of the shot quality they allow, plus a quarter of the result on shots at the rim, where stopping makes is a repeatable skill.</li>
+          <li><b>Assists by difficulty</b>: the passer's share of a make grows with how easy the shot was (5% to 50%, not a flat 20%), so a lob creator gets more and a tough shot-maker keeps more.</li>
+          <li><b>Late-clock misses</b>: a miss deep into the possession is split between the shooter and his four teammates, who left him the bailout.</li>
+          <li><b>Ratings per possession</b>: credit is divided by the possessions a player was on the floor for (each weighted like the plays in it), not by minutes, so fast teams and blowouts don't tilt it.</li>
+        </ul>
+        <p>How it's doing (TESTS.md, T33): on last season's 1,213 games it beat MOUSSA beyond noise (69.1% of winners against 67.3%); on this season's first 192 it trails MOUSSA, within noise. It makes its own picks every night, graded beside BONES and MOUSSA.</p>`,
+    },
+    {
       q: 'How is a single play credited?',
       a: `<ul>
           <li><b>Made shot</b>: the shooter, with a share to the passer on an assisted basket.</li>

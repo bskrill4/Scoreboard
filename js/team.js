@@ -45,25 +45,29 @@
     const byTeam = new Map(); // team id -> its games, oldest first
     for (const g of games) {
       if (!g.rows) continue;
-      const sum = { 1: {}, 2: {} };
-      const best = {}; // team id -> { 1: {id, v}, 2: {id, v} }
+      const sum = { 1: {}, 2: {}, 3: {} };
+      const best = {}; // team id -> { 1: {id, v}, 2: {id, v}, 3: {id, v} }
       for (const [pid, r] of Object.entries(g.rows)) {
         if (pid[0] === '_' || !r || !r[3]) continue;
         const tid = String(r[3][0]);
         const v1 = SB.impact.withVersion(1, () => SB.impact.rowImpact(r)) * 100;
         const v2 = SB.impact.withVersion(2, () => SB.impact.rowImpact(r)) * 100;
+        const v3 = SB.impact.withVersion(3, () => SB.impact.rowImpact(r)) * 100;
         let p = players.get(pid);
-        if (!p) players.set(pid, (p = { id: pid, name: r[3][7] || '', team: tid, t: -1, gp: 0, min: 0, v1: 0, v2: 0 }));
+        if (!p) players.set(pid, (p = { id: pid, name: r[3][7] || '', team: tid, t: -1, gp: 0, min: 0, v1: 0, v2: 0, v3: 0 }));
         if (g.t >= p.t) [p.t, p.team, p.name] = [g.t, tid, r[3][7] || p.name];
         p.gp++;
         p.min += r[3][1] || 0;
         p.v1 += v1;
         p.v2 += v2;
+        p.v3 += v3;
         sum[1][tid] = (sum[1][tid] || 0) + v1;
         sum[2][tid] = (sum[2][tid] || 0) + v2;
-        const b = (best[tid] ||= { 1: null, 2: null });
+        sum[3][tid] = (sum[3][tid] || 0) + v3;
+        const b = (best[tid] ||= { 1: null, 2: null, 3: null });
         if (!b[1] || v1 > b[1].v) b[1] = { id: pid, v: v1 };
         if (!b[2] || v2 > b[2].v) b[2] = { id: pid, v: v2 };
+        if (!b[3] || v3 > b[3].v) b[3] = { id: pid, v: v3 };
       }
       for (const [me, opp] of [[g.home, g.away], [g.away, g.home]]) {
         if (!byTeam.has(me)) byTeam.set(me, []);
@@ -74,8 +78,8 @@
           opp,
           us: g.score[me],
           them: g.score[opp],
-          gap: { 1: (sum[1][me] || 0) - (sum[1][opp] || 0), 2: (sum[2][me] || 0) - (sum[2][opp] || 0) },
-          top: best[me] || { 1: null, 2: null },
+          gap: { 1: (sum[1][me] || 0) - (sum[1][opp] || 0), 2: (sum[2][me] || 0) - (sum[2][opp] || 0), 3: (sum[3][me] || 0) - (sum[3][opp] || 0) },
+          top: best[me] || { 1: null, 2: null, 3: null },
         });
       }
     }
@@ -136,7 +140,7 @@
 
     // Record against what was earned, each ranked in the league.
     const s = d.stats;
-    const xw = v === 2 ? s.xw2 : s.xw1;
+    const xw = s[`xw${v}`] ?? s.xw1;
     const ahead = t.w - xw;
     const rk = (key, hi = true) => {
       const all = Object.values(d.all).map((o) => o[key]).filter(Number.isFinite).sort((a, b) => (hi ? b - a : a - b));
@@ -147,7 +151,7 @@
     const card = `<div class="pl-rank tm-rank">
         <div class="pr-total"><small>${t.w}-${t.l} · ${N} says</small><b>${fix1(xw)}</b><em>expected wins · ${Math.abs(ahead) < 0.5 ? 'right on it' : `${fix1(Math.abs(ahead))} ${ahead > 0 ? 'ahead (lucky)' : 'behind (unlucky)'}`}</em></div>
         <div class="pr-ranks tm-ranks">
-          ${cell(`#${rk(v === 2 ? 'xw2' : 'xw1')}`, `xW`, 'in the NBA')}
+          ${cell(`#${rk(`xw${v}`)}`, `xW`, 'in the NBA')}
           ${cell(fmt(t.diff), 'Diff', `#${rk('diff')} NBA`)}
           ${cell(fmt(s.xNet), 'xNet', `#${rk('xNet')} NBA`)}
           ${cell(fmt(s.luck), 'Shot luck', `#${rk('luck')} NBA`)}
@@ -174,9 +178,9 @@
 
     // The roster.
     const { key, dir } = pane.sort;
-    const val = (p) => (key === 'gp' ? p.gp : key === 'min' ? p.min / p.gp : key === 'b' ? p.v1 : key === 'm' ? p.v2 : v === 2 ? p.v2 : p.v1);
+    const val = (p) => (key === 'gp' ? p.gp : key === 'min' ? p.min / p.gp : key === 'b' ? p.v1 : key === 'm' ? p.v2 : key === 'm2' ? p.v3 : p[`v${v}`] ?? p.v1);
     const roster = [...S.players.values()].filter((p) => p.team === st.id).sort((a, b) => (dir < 0 ? val(b) - val(a) : val(a) - val(b)));
-    const sortKey = key === 'cur' ? (v === 2 ? 'm' : 'b') : key;
+    const sortKey = key === 'cur' ? { 1: 'b', 2: 'm', 3: 'm2' }[v] || 'b' : key;
     const th = (k, label, cls = '') => {
       const on = sortKey === k;
       return `<th class="${cls}${on ? ' sorted' : ''}"><button type="button" data-tsort="${k}" title="Sort by ${label}">${label}${on ? (dir < 0 ? ' ▾' : ' ▴') : ''}</button></th>`;
@@ -186,13 +190,13 @@
       .map(
         (p) => `<tr data-pid="${esc(p.id)}" data-name="${esc(p.name)}" tabindex="0" title="Open ${esc(p.name)}'s drawer">
           <td class="tm-pl"><img src="${shot(p.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">${esc(p.name)}${outIds.has(p.id) ? ' <i class="tm-o">Out</i>' : ''}</td>
-          <td>${p.gp}</td><td>${fix1(p.min / p.gp)}</td>${num(p.v1, 1)}${num(p.v2, 2)}
+          <td>${p.gp}</td><td>${fix1(p.min / p.gp)}</td>${num(p.v1, 1)}${num(p.v2, 2)}${num(p.v3, 3)}
         </tr>`
       )
       .join('');
     const rosterHTML = `<div class="pl-sec">
-        <div class="pl-sec-h"><h3>Roster</h3><div class="seg" role="radiogroup" aria-label="Player value">${seg(1)}${seg(2)}</div></div>
-        <table class="pl-games tm-roster"><thead><tr><th>Player</th>${th('gp', 'GP')}${th('min', 'MIN')}${th('b', 'BONES', v === 1 ? 'cur' : '')}${th('m', 'MOUSSA', v === 2 ? 'cur' : '')}</tr></thead><tbody>${rosterRows}</tbody></table>
+        <div class="pl-sec-h"><h3>Roster</h3><div class="seg" role="radiogroup" aria-label="Player value">${seg(1)}${seg(2)}${seg(3)}</div></div>
+        <table class="pl-games tm-roster"><thead><tr><th>Player</th>${th('gp', 'GP')}${th('min', 'MIN')}${th('b', 'BONES', v === 1 ? 'cur' : '')}${th('m', 'MOUSSA', v === 2 ? 'cur' : '')}${th('m2', 'V2', v === 3 ? 'cur' : '')}</tr></thead><tbody>${rosterRows}</tbody></table>
         <p class="pl-note">Season totals; MIN is a game. Players whose latest game was for this team.</p>
       </div>`;
 
@@ -237,7 +241,7 @@
     const s = e.target.closest('[data-tsort]');
     if (s) {
       const k = s.dataset.tsort;
-      const cur = pane.sort.key === 'cur' ? (SB.impact.version() === 2 ? 'm' : 'b') : pane.sort.key;
+      const cur = pane.sort.key === 'cur' ? { 1: 'b', 2: 'm', 3: 'm2' }[SB.impact.version()] || 'b' : pane.sort.key;
       pane.sort = cur === k ? { key: k, dir: -pane.sort.dir } : { key: k, dir: -1 };
       return true;
     }

@@ -20,7 +20,7 @@
   // per-player numbers are kept in localStorage (a couple of KB per game): a
   // game is downloaded and replayed once, and every player in it is free after.
   // Bump CACHE_VERSION whenever the BONES / MOUSSA math changes (saved rows still carry a WPA slot, unused).
-  const CACHE_VERSION = 32; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table; 23: frozen expected-points baseline, fouls without free throws not charged; 24: BONES v2 (score-only) saved as [6] [7]; 25: v2 knows who has the ball; 26: the ball worth half a possession each way; 27: v2 model with a possession's spread; 28: v2 on its own running score; 29: v2 values a loose ball after a miss; 30: NBA spike netting at the same clock only; 31: NBA team shooting (_teams) for Standings; 32: _teams no longer keyed by team id (team 3 read as a player)
+  const CACHE_VERSION = 33; // 2: Nov 13 score-drift fixes in engine.js; 3: NBA box line for season standings; 4: tie-to-OT win probability; 5: shifted win probability on rebuilt-score rows; 6: QB 65/35 pass split, goalie Impact at 0.6; 7: NFL box lines; 8: football one-row phantom scores; 9: defensive penalties; 10: keys by league, slim NFL rows; 11: hockey miss/block share; 12: game-floor top-up kept apart; 13: football defense credit; 14: floor split by playing time, capped; 15: only complete tapes cached, floor time split basketball-only, free-throw and college-pass fixes; 16: NBA lineup stints (_lineups); 17-18: on-court defense credit (basketball; 18 clears rows saved by its early drafts); 19: NBA defense credit on expected shot value; 20: NBA defensive BONES ([5]); 21: fouls charged above a possession's worth, defensive rebounds shared; 22: college defense on its own expected-points table; 23: frozen expected-points baseline, fouls without free throws not charged; 24: BONES v2 (score-only) saved as [6] [7]; 25: v2 knows who has the ball; 26: the ball worth half a possession each way; 27: v2 model with a possession's spread; 28: v2 on its own running score; 29: v2 values a loose ball after a miss; 30: NBA spike netting at the same clock only; 31: NBA team shooting (_teams) for Standings; 32: _teams no longer keyed by team id (team 3 read as a player); 33: MOUSSA V2 rows [8] [9] [10]
   const CACHE_PREFIX = `sb.final.v${CACHE_VERSION}.`;
   const CONCURRENCY = 4;
 
@@ -111,6 +111,45 @@
   // box = [teamId, name, ...NFL_BOX stats]; NFL also lists every box-score
   // athlete, at zero, who wasn't on a credited play.
   const finals = new Map(); // event id -> Promise
+  // A finished game's player rows from its summary (no caching, no side effects):
+  // what finalPlayers saves, and what the backtest reads for past seasons
+  // (SB.bones.pastSeason, kept in memory only).
+  function rowsFromSummary(s, league) {
+    const eng = SB.league.engine(league);
+    const tape = eng.buildTape(s);
+    if (!tape || !tape.plays.length) return { tape, out: null };
+    tape._n = undefined;
+    const view = eng.viewAt(tape, Infinity, true);
+    const out = {};
+    const mins = league === 'nba' ? boxMinutes(s) : null;
+    for (const pl of view.players) {
+      if (!SB.league.football(league) && league !== 'nhl' && !pl.played) continue;
+      // [swing-only Impact, WPA, line, box (NBA/NFL) or null, game-floor top-up]
+      const box = mins
+        ? [pl.teamId, mins.get(String(pl.id)) || 0, pl.pts, pl.reb, pl.ast, pl.stl, pl.blk, pl.name]
+        : league === 'nfl'
+        ? [pl.teamId, pl.name, ...NFL_BOX.map((k) => pl[k] || 0)]
+        : null;
+      // Basketball adds [5]: defensive BONES (see defensiveCredit in js/engine.js),
+      // [6] [7]: MOUSSA and its defensive part (score-only, js/engine.js), and since
+      // Nov 26 [8] [9] [10]: MOUSSA V2, its defensive part, and the player's weighted
+      // possessions on the floor (its rating's denominator, T37).
+      // impRaw / defBones are always v1, whichever version is showing.
+      out[pl.id] = [+(pl.impRaw ?? pl.imp ?? 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl), box, +(pl.impFloor || 0).toFixed(5)];
+      if (pl.impN != null) out[pl.id].push(+(pl.defBones || 0).toFixed(5), +pl.impN.toFixed(5), +(pl.defBonesN || 0).toFixed(5));
+      if (pl.impN3 != null) out[pl.id].push(+pl.impN3.toFixed(5), +(pl.defN3 || 0).toFixed(5), +(pl.wPoss3 || 0).toFixed(6));
+    }
+    if (league === 'nfl') {
+      for (const [id, a] of boxAthletes(s)) if (!out[id]) out[id] = [0, 0, 'No credited plays', [a.teamId, a.name]];
+    }
+    // NBA: the game's lineup stints (both fives, how long, the score in
+    // between), for the Bone Zone's season test of the lineup edge. Not a
+    // player row: readers skip it (they look for a box at index 3).
+    if (league === 'nba' && SB.bones) out._lineups = SB.bones.stints(tape);
+    // NBA: each team's shooting, expected vs actual (Standings, js/standings.js). Not a player row either.
+    if (league === 'nba' && SB.bones) out._teams = SB.bones.teamShots(tape);
+    return { tape, out };
+  }
   function finalPlayers(eventId, league) {
     if (!finals.has(eventId)) {
       const hit = cacheGet(eventId, league);
@@ -118,38 +157,8 @@
         hit !== undefined
           ? Promise.resolve(hit)
           : SB.api.summary(eventId, league).then((s) => {
-              const eng = SB.league.engine(league);
-              const tape = eng.buildTape(s);
               const done = s?.header?.competitions?.[0]?.status?.type?.completed;
-              let out = null;
-              if (tape && tape.plays.length) {
-                const view = eng.viewAt(tape, Infinity, true);
-                out = {};
-                const mins = league === 'nba' ? boxMinutes(s) : null;
-                for (const pl of view.players) {
-                  if (!SB.league.football(league) && league !== 'nhl' && !pl.played) continue;
-                  // [swing-only Impact, WPA, line, box (NBA/NFL) or null, game-floor top-up]
-                  const box = mins
-                    ? [pl.teamId, mins.get(String(pl.id)) || 0, pl.pts, pl.reb, pl.ast, pl.stl, pl.blk, pl.name]
-                    : league === 'nfl'
-                    ? [pl.teamId, pl.name, ...NFL_BOX.map((k) => pl[k] || 0)]
-                    : null;
-                  // Basketball adds [5]: defensive BONES (see defensiveCredit in js/engine.js),
-                  // and [6] [7]: BONES v2 and its defensive part (score-only, js/engine.js).
-                  // impRaw / defBones are always v1, whichever version is showing.
-                  out[pl.id] = [+(pl.impRaw ?? pl.imp ?? 0).toFixed(5), +(pl.wpa || 0).toFixed(5), statLine(pl), box, +(pl.impFloor || 0).toFixed(5)];
-                  if (pl.impN != null) out[pl.id].push(+(pl.defBones || 0).toFixed(5), +pl.impN.toFixed(5), +(pl.defBonesN || 0).toFixed(5));
-                }
-                if (league === 'nfl') {
-                  for (const [id, a] of boxAthletes(s)) if (!out[id]) out[id] = [0, 0, 'No credited plays', [a.teamId, a.name]];
-                }
-                // NBA: the game's lineup stints (both fives, how long, the score in
-                // between), for the Bone Zone's season test of the lineup edge. Not a
-                // player row: readers skip it (they look for a box at index 3).
-                if (league === 'nba' && SB.bones) out._lineups = SB.bones.stints(tape);
-                // NBA: each team's shooting, expected vs actual (Standings, js/standings.js). Not a player row either.
-                if (league === 'nba' && SB.bones) out._teams = SB.bones.teamShots(tape);
-              }
+              const { tape, out } = rowsFromSummary(s, league);
               // Saved for good only once the tape has the closing play: ESPN can mark a
               // game completed while its play-by-play is still a few rows short (or
               // not there yet), and a partial game must not stick until the next
@@ -656,9 +665,10 @@
         g.imp = SB.impact.rowImpact(g.row);
         g.vb = under(1, g.row);
         g.vm = both ? under(2, g.row) : null;
+        g.vm2 = both ? under(3, g.row) : null; // MOUSSA V2
       }
       const { key, dir } = pane.sort;
-      const val = (g) => (key === 'day' ? g.t : !g.played ? null : key === 'm' ? g.vm : g.vb);
+      const val = (g) => (key === 'day' ? g.t : !g.played ? null : key === 'm' ? g.vm : key === 'm2' ? g.vm2 : g.vb);
       const sorted = data.games.slice().sort((a, b) => {
         const x = val(a);
         const y = val(b);
@@ -673,7 +683,7 @@
             <td>${esc(g.opp)}</td>
             <td class="${g.result[0] === 'W' ? 'pos' : 'neg'}">${esc(g.result)}</td>
             <td class="ln">${g.pending ? '…' : esc(g.line)}</td>
-            ${cell(g.played ? g.vb : null, 1)}${both ? cell(g.played ? g.vm : null, 2) : ''}
+            ${cell(g.played ? g.vb : null, 1)}${both ? cell(g.played ? g.vm : null, 2) + cell(g.played ? g.vm2 : null, 3) : ''}
           </tr>`
         )
         .join('');
@@ -684,7 +694,7 @@
       body = `${(pane.range === 'week' ? chartWeek : chartSeason)(data, 'imp')}
         ${
           data.games.length
-            ? `<table class="pl-games"><thead><tr>${th('day', 'Day')}<th>Opp</th><th>Result</th><th>Line</th>${th('b', 'BONES', cur === 1 ? 'cur' : '')}${both ? th('m', 'MOUSSA', cur === 2 ? 'cur' : '') : ''}</tr></thead><tbody>${rows}</tbody></table>`
+            ? `<table class="pl-games"><thead><tr>${th('day', 'Day')}<th>Opp</th><th>Result</th><th>Line</th>${th('b', 'BONES', cur === 1 ? 'cur' : '')}${both ? th('m', 'MOUSSA', cur === 2 ? 'cur' : '') + th('m2', 'V2', cur === 3 ? 'cur' : '') : ''}</tr></thead><tbody>${rows}</tbody></table>`
             : ''
         }`;
     }
@@ -707,7 +717,7 @@
       <div class="pl-sec">
         <div class="pl-sec-h">
           <div class="pl-range" role="group" aria-label="Range">${rng('season', 'Season')}${rng('week', 'Last 7 days')}</div>
-          <div class="seg" role="radiogroup" aria-label="Player value">${seg(1)}${seg(2)}</div>
+          <div class="seg" role="radiogroup" aria-label="Player value">${seg(1)}${seg(2)}${seg(3)}</div>
         </div>
         ${body}
       </div>`;
@@ -830,5 +840,5 @@
     }
   }
 
-  SB.player = { open, openTeam, close: closeAll, isOpen: () => panes.length > 0, finalPlayers, NFL_BOX, refresh: () => open2().forEach(draw) };
+  SB.player = { open, openTeam, close: closeAll, isOpen: () => panes.length > 0, finalPlayers, rowsFromSummary, NFL_BOX, refresh: () => open2().forEach(draw) };
 })();

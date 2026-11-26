@@ -968,9 +968,9 @@
       if (bonesModel) {
         const out = inj?.out || new Map();
         const pr = SB.bones.predict(bonesModel, g.home.id, g.away.id, out);
-        // Each metric locks its own pick (BONES and MOUSSA are graded side by side).
+        // Each metric locks its own pick (BONES, MOUSSA and MOUSSA V2 are graded side by side).
         if (!replay && bonesModels)
-          for (const v of [1, 2]) {
+          for (const v of SB.impact.VERSIONS) {
             const pv = SB.bones.predict(bonesModels[v], g.home.id, g.away.id, out);
             if (pv)
               SB.bones.picksOf(v).lock(ev.id, {
@@ -1004,7 +1004,7 @@
     const picks = SB.bones.picks;
     // Replay: the lineup edge works, but nothing is locked or settled.
     if (!replay && evState === 'in' && bonesModels && pregame.get(ev.id)?.inj)
-      for (const v of [1, 2]) {
+      for (const v of SB.impact.VERSIONS) {
         const store = SB.bones.picksOf(v);
         if (store.get(ev.id)) continue;
         const pr = SB.bones.predict(bonesModels[v], g.home.id, g.away.id, pregame.get(ev.id).inj.out);
@@ -1336,14 +1336,15 @@
         b.classList.toggle('on', on);
         b.setAttribute('aria-checked', String(on));
       }
-      $('bonesV2Badge').hidden = v !== 2;
-      document.body.classList.toggle('bones-v2', v === 2);
+      $('bonesV2Badge').hidden = !SB.impact.scoreOnly(v);
+      $('bonesV2Badge').textContent = SB.impact.name(v);
+      document.body.classList.toggle('bones-v2', SB.impact.scoreOnly(v));
     };
     showValue();
     document.addEventListener('click', (e) => {
       const b = e.target.closest('[data-bver]');
       if (!b) return;
-      const v = Number(b.dataset.bver) === 2 ? 2 : 1;
+      const v = SB.impact.VERSIONS.includes(Number(b.dataset.bver)) ? Number(b.dataset.bver) : 1;
       if (v === SB.impact.version()) return;
       SB.impact.setVersion(v);
       showValue();

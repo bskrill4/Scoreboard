@@ -65,7 +65,7 @@
   // A single play's swing: MOUSSA's own in basketball when it's on (engine
   // impPlaysN); football and hockey have only BONES's.
   const hasMoussa = (g) => !!g && (g.league === 'nba' || g.league === 'ncaam');
-  const swingLabel = (g) => (SB.impact.version() === 2 && hasMoussa(g) ? 'MOUSSA' : 'BONES');
+  const swingLabel = (g) => (SB.impact.scoreOnly() && hasMoussa(g) ? SB.impact.name() : 'BONES');
   const setMetric = () => {};
 
   // ---------- formatting ----------
@@ -318,7 +318,7 @@
       .map((m) => {
         const size = (5 + (Math.abs(momentVal(m)) / big) * 9).toFixed(1);
         // On MOUSSA's dashed score-only line when MOUSSA is on (basketball).
-        const wp = SB.impact.version() === 2 && m.play?.wpN != null ? m.play.wpN : m.wp;
+        const wp = SB.impact.scoreOnly() && m.play?.wpN != null ? m.play.wpN : m.wp;
         return `<i class="mom ${cls(momentVal(m))}" style="left:${pct(m.t).toFixed(2)}%;top:${wpTop(wp)}%;--s:${size}px"></i>`;
       })
       .join('');
@@ -874,7 +874,7 @@
       ? `Top ${N()} per 36 <small>this season · tonight's rotation</small>`
       : !g.players.length
       ? 'Players to watch'
-      : `${bonesLabel()} leaders <small>${SB.impact.version() === 2 && hasMoussa(g) ? 'on a score-only win probability, 50% at tip · beta' : SB.impact.version() === 2 ? 'BONES numbers here: MOUSSA is basketball only · beta' : 'credit for their own plays, leverage-adjusted · beta'}</small>`;
+      : `${bonesLabel()} leaders <small>${SB.impact.scoreOnly() && hasMoussa(g) ? 'on a score-only win probability, 50% at tip · beta' : SB.impact.scoreOnly() ? `BONES numbers here: ${SB.impact.name()} is basketball only · beta` : 'credit for their own plays, leverage-adjusted · beta'}</small>`;
     const courtTitle = g.state === 'final' ? 'Starting lineup' : 'On court';
     const middle =
       SB.league.football(g.league)
@@ -1271,7 +1271,7 @@
           <h2>Rankings</h2>
           <p>${opts.dayLabel} · ${played.length} game${played.length === 1 ? '' : 's'} with play-by-play</p>
         </div>
-        <div class="seg" role="radiogroup" aria-label="Player value">${[1, 2].map((v) => `<button type="button" data-bver="${v}" role="radio" class="${SB.impact.version() === v ? 'on' : ''}" aria-checked="${SB.impact.version() === v}">${SB.impact.name(v)}</button>`).join('')}</div>
+        <div class="seg" role="radiogroup" aria-label="Player value">${SB.impact.VERSIONS.map((v) => `<button type="button" data-bver="${v}" role="radio" class="${SB.impact.version() === v ? 'on' : ''}" aria-checked="${SB.impact.version() === v}">${SB.impact.name(v)}</button>`).join('')}</div>
       </div>
       ${rankTabs(tab)}`;
 

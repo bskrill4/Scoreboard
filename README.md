@@ -317,7 +317,9 @@ also links. Every label (cards, picks, leaders, Rankings, the drawer, season sta
 whichever is on; single-play swings always say BONES. **Picks for both**: `SB.bones.models()` builds both models at once
 (`SB.impact.withVersion`), and the pick tracker locks a pick from each before every NBA tip-off into its own store
 (`sb.bonesPicks`, `sb.moussaPicks`; `SB.bones.picksOf(v)`); a final settles both. The morning recap shows both records,
-the games where they split and who was right. **The Bone Zone** has its own **BONES check / MOUSSA check** buttons
+the games where they split and who was right. **The Bone Zone** has its own check buttons (since Nov 26 **MOUSSA check /
+MOUSSA V2 check** only: BONES left the zone, which now compares the two MOUSSAs; with BONES on in settings it opens on
+MOUSSA, and BONES still locks its picks for the recap)
 (starting from the toggle; each check is counted once and kept until a setting changes the numbers): the skull grades the
 chosen metric (rows read under it with `SB.impact.withVersion`; its team-vs-margin check uses MOUSSA's own rows, which
 have no floor). Asking about upcoming games lists **both** metrics' calls for every game, the checked one brighter, and
@@ -329,7 +331,7 @@ summary's pick center. The card shows the price, the metric's chance and the cha
 best bet is tagged in the list; the skull reads out the checked metric's. With no positive return anywhere it says so.
 Since Nov 25 the best bet skips edges over $50 per $100 (`EDGE_CAP`, TESTS.md T27–T28): graded at DraftKings' closing
 price, the biggest edges lost money for both metrics, and the cap did better on nights predicted only from earlier
-ones (within noise). The card names the bigger edge it left out, and BONES's card notes that BONES hasn't beaten the
+ones (within noise). The card names the bigger edge it left out, and (until BONES left the zone on Nov 26) BONES's card noted it hadn't beaten the
 closing line this season. Each night's capped and uncapped bets per metric are tracked in this browser
 (`sb.bestBets`): saved each time the skull's forecast is read, frozen when the game tips, settled at the final, with
 the record under each card. A night counts only if the forecast was opened before its tip-off.
@@ -371,6 +373,16 @@ Nov 17: v1 had Brunson first (46.4) and Towns at 28.6, because ESPN's probabilit
 misses cost him +0.4 in v1; the value lands on the defensive rebound) or an offensive rebound (Towns's 6 were worth 0.6).
 v2: Towns 51.0 (7 of 9, offensive rebounds +18.3, assists +9.1) and Brunson 27.7 (makes +42.4, misses −32.4). Backtest after:
 74.3% of winners, log-loss −0.567 (best yet; second half 73.0%, −0.555).
+**MOUSSA V2** (since Nov 26, `SB.impact` version 3, TESTS.md T33): a third metric beside BONES and MOUSSA, built
+from an outside review of the metrics. MOUSSA's score-only swing and leverage weight with different credit rules
+(`SB.impact.V3`, each switchable for tests): the passer's share of a make grows with how easy the shot was
+(5%–50%); a miss 21s+ into a possession is split with the other four; a turnover the defense forced without a
+steal is split 50/50 with the five defenders; shot defense at full value plus a quarter of rim results; zero-sum
+rebounding. Ratings are per weighted possession on the floor (row [10]), not per minute, and the backtest fits a
+back-to-back term (`predict(..., ctx)`; it fits to about zero). Rows carry [8] [9] [10] since cache version 33.
+It has its own picks store (`sb.moussa2Picks`), Bone Zone check and best bet, a column in the drawers, and the
+first xW column on Standings while it's on. `SB.bones.pastSeason(2025)` reads last season's games into memory
+(nothing saved) for backtests. Last season it beat MOUSSA beyond noise; this season it trails within noise.
 **Test settings** (`SB.impact.tune`, defaults 1 = unchanged): `missCost` (since Nov 24, TESTS.md T24), the share of a
 missed field goal's v2 charge its shooter takes, the rest dropped; BONES's lighter charge (about 0.55) tested worse
 beyond noise, so it stays at 1. `missRecovery` (null = off; T26), how often a miss comes back by its shot type, which sets
@@ -566,7 +578,7 @@ start; then they go by start time, with the index breaking ties among games star
 (`SOON_MIN` in `js/main.js`; Nov 15 the 7:20 PM PIT–CIN sat on top from 11:37 to noon with eight noon games about to start). Click a tile to pin it to the top. Per-sport tuning
 (margins, record weighting, what counts as a big night) lives in `SPORT` and the `performance` functions in `js/watch.js`.
 
-**The Bone Zone** (`#bonezone`, `js/bonezone.js`): is BONES real yet? A floating 3D skull (Three.js r128, loaded from cdnjs
+**The Bone Zone** (`#bonezone`, `js/bonezone.js`): is MOUSSA real yet (MOUSSA or MOUSSA V2; BONES until Nov 26)? A floating 3D skull (Three.js r128, loaded from cdnjs
 only when the page opens) reads out a reliability check on this NBA regular season in speech bubbles, from the same
 per-game cache as the season pages. Players with 8+ games and 15+ minutes a game; everything per 36 minutes.
 **Consistency**: odd games vs even games (and the whole-season reliability by Spearman-Brown, 2r/(1+r)); **holding up**:

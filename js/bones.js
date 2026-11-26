@@ -119,7 +119,7 @@
       modelFrom = p;
       modelP = p.then((games) => {
         const done = games.filter((g) => g.rows);
-        return { 1: SB.impact.withVersion(1, () => buildOne(done)), 2: SB.impact.withVersion(2, () => buildOne(done)) };
+        return Object.fromEntries(SB.impact.VERSIONS.map((v) => [v, SB.impact.withVersion(v, () => buildOne(done))]));
       });
     }
     return modelP;
@@ -132,6 +132,7 @@
     const bt = backtest(done);
     m.backtest = bt;
     m.homeLogit = bt.home.logit; // the season's home record, blended with the long-run prior
+    m.restLogit = bt.restLogit || 0; // MOUSSA V2's back-to-back term (T41)
     if (bt.bones.n) {
       m.k = bt.bones.k;
       m.record = { right: bt.bones.right, n: bt.bones.n };
@@ -139,7 +140,33 @@
     return m;
   }
 
+  // MOUSSA V2 (T37): a rating is credit per weighted possession on the floor
+  // (row [10]), not per minute. To keep the rest of the model in minutes, the
+  // possessions are expressed as minutes at the league's average rate
+  // (weighted possessions per minute over the season): effMin.
+  function possScale(games) {
+    if (SB.impact.version() !== 3 || !SB.impact.V3.perPossession) return null;
+    let w = 0;
+    let m = 0;
+    for (const g of games)
+      for (const r of Object.values(g.rows || {})) {
+        if (!Array.isArray(r) || !r[3] || r[10] == null) continue;
+        w += r[10];
+        m += r[3][1] || 0;
+      }
+    return w > 0 && m > 0 ? w / m : null;
+  }
+  const effMin = (r, scale) => (scale && r[10] != null ? r[10] / scale : r[3][1] || 0);
+  // Back-to-backs (T41): who played the day before, by US date (game time − 8 hours).
+  const usDay = (t) => new Date(t - 8 * 36e5).toISOString().slice(0, 10);
+  function playedYesterday(games) {
+    const set = new Set();
+    for (const g of games) for (const id of [g.home, g.away]) if (id) set.add(`${id}|${usDay(g.t)}`);
+    return (id, t) => set.has(`${id}|${usDay(t - 864e5)}`);
+  }
+
   function buildModel(games) {
+    const scale = possScale(games);
     const teamGames = new Map(); // team -> [{ t, min: Map(player -> minutes) }]
     const players = new Map(); // id -> { name, team, t, imp, min, rate }
     let leagueImp = 0;
@@ -163,12 +190,12 @@
         team[tid] = (team[tid] || 0) + imp;
         const p = players.get(pid) || { name: r[3][7], team: tid, t: 0, imp: 0, min: 0 };
         p.imp += imp;
-        p.min += min;
+        p.min += effMin(r, scale); // MOUSSA V2: weighted possessions, in minutes
         if (g.t >= p.t) [p.t, p.team, p.name] = [g.t, tid, r[3][7] || p.name];
         players.set(pid, p);
         mins.get(tid)?.set(pid, min);
         leagueImp += imp;
-        leagueMin += min;
+        leagueMin += effMin(r, scale);
       }
       for (const id of ids) {
         const x = before.get(id) || { sum: 0, n: 0 };
@@ -294,11 +321,14 @@
   }
 
   // The home team's chance to win, BONES only. null if either team has no season yet.
-  function predict(m, homeId, awayId, out = new Map()) {
+  // ctx (optional): { b2bHome, b2bAway } — a team on the second night of a
+  // back-to-back, for a model that carries a rest term (MOUSSA V2, T41).
+  function predict(m, homeId, awayId, out = new Map(), ctx = null) {
     const h = teamStrength(m, homeId, out);
     const a = teamStrength(m, awayId, out);
     if (!h || !a) return null;
-    return { pHome: 1 / (1 + Math.exp(-(m.k * (h.bones - a.bones) + (m.homeLogit ?? HOME_LOGIT)))), home: h, away: a };
+    const rest = m.restLogit && ctx ? m.restLogit * ((ctx.b2bHome ? 1 : 0) - (ctx.b2bAway ? 1 : 0)) : 0;
+    return { pHome: 1 / (1 + Math.exp(-(m.k * (h.bones - a.bones) + (m.homeLogit ?? HOME_LOGIT) + rest))), home: h, away: a };
   }
 
   // A team's top players tonight by BONES per 36 (players ruled out left off),
@@ -369,6 +399,8 @@
     const stintRows = []; // { edge, dur (min), pd }
     let decayedAt = null;
     const teamTot = { sum: 0, n: 0 }; // every team's game total so far (opts.teamDefense)
+    const scale = opts.perPossession === false ? null : possScale(games); // MOUSSA V2 (T37)
+    const b2b = playedYesterday(games); // T41
     for (const g of games) {
       // Test setting (opts.halfLife, days; off by default): older games count less,
       // each player's BONES and minutes (and the league's) halving every halfLife
@@ -426,7 +458,7 @@
         const [sh, sa] = [strength(home), strength(away)];
         const [ph, pa] = [pd.get(home), pd.get(away)];
         if (sh != null && sa != null && ph && pa)
-          rows.push({ id: g.id, hl: homeEdge(homeRec.w, homeRec.n), b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0, margin: g.score[home] - g.score[away], outH: missing(home), outA: missing(away), t: g.t });
+          rows.push({ id: g.id, hl: homeEdge(homeRec.w, homeRec.n), b: sh - sa, p: ph.sum / ph.n - pa.sum / pa.n, win: g.score[home] > g.score[away] ? 1 : 0, margin: g.score[home] - g.score[away], outH: missing(home), outA: missing(away), t: g.t, b2bH: b2b(home, g.t) ? 1 : 0, b2bA: b2b(away, g.t) ? 1 : 0 });
       }
       const L = g.rows._lineups;
       if (L && leagueMin) {
@@ -469,12 +501,12 @@
         const imp = SB.impact.rowImpact(r) * 100 + (teamDef.get(tid) || 0) * min;
         const p = players.get(pid) || { imp: 0, min: 0, team: tid };
         p.imp += imp;
-        p.min += min;
+        p.min += effMin(r, scale);
         p.team = tid;
         players.set(pid, p);
         mins.get(tid)?.set(pid, min);
         leagueImp += imp;
-        leagueMin += min;
+        leagueMin += effMin(r, scale);
       }
       if (g.home && g.score[home] !== g.score[away]) {
         homeRec.n++;
@@ -521,6 +553,23 @@
       }
       return best;
     };
+    // The rest term (T41; MOUSSA V2 by default, opts.rest to force it on or off):
+    // a logit for being on the second night of a back-to-back, fit on these games
+    // after the slope, or given (opts.restLogit, e.g. fit on last season). Once
+    // set it is folded into each row's home term, so everything below uses it.
+    let restLogit = 0;
+    if (opts.restLogit != null || (opts.rest ?? SB.impact.version() === 3)) {
+      if (opts.restLogit != null) restLogit = opts.restLogit;
+      else {
+        const k0 = fitHome(rows).k;
+        let best = -Infinity;
+        for (let x = -0.8; x <= 0.4001; x += 0.02) {
+          const s = score(rows, (r) => k0 * r.b + r.hl + x * (r.b2bH - r.b2bA));
+          if (s.ll > best) [best, restLogit] = [s.ll, +x.toFixed(2)];
+        }
+      }
+      for (const r of rows) r.hl += restLogit * (r.b2bH - r.b2bA);
+    }
     const bones = fitHome(rows);
     const bonesNoHome = fit1(rows, 'b');
     const pdOnly = fit1(rows, 'p');
@@ -617,7 +666,7 @@
       const n = xs.length;
       return { lo, hi: Math.min(hi, 1), n, right: xs.filter((x) => x.right).length, expected: n ? xs.reduce((s, x) => s + x.conf, 0) / n : NaN };
     });
-    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lastThird, lineup, bands, rows, home: { ...homeRec, logit: homeEdge(homeRec.w, homeRec.n) } };
+    return { n: rows.length, bones, bonesNoHome, pd: pdOnly, blend: w, later, lastThird, lineup, bands, rows, restLogit, home: { ...homeRec, logit: homeEdge(homeRec.w, homeRec.n) } };
   }
 
   // A tape's lineup stints, compact for the per-game cache: { ids, st: [[home
@@ -717,7 +766,7 @@
   // on) and sb.moussaPicks (MOUSSA).
   // { [eventId]: { side: 'home'|'away', conf, t, home, away (abbrs), late?, fav?, won? } }
   // fav: who was favored, kept only to tell an upset pick apart (never shown).
-  const PICKS_KEYS = { 1: 'sb.bonesPicks', 2: 'sb.moussaPicks' };
+  const PICKS_KEYS = { 1: 'sb.bonesPicks', 2: 'sb.moussaPicks', 3: 'sb.moussa2Picks' }; // 3: MOUSSA V2, since Nov 26
   const KEEP_DAYS = 120;
   function makeStore(key) {
     let picks = {};
@@ -769,7 +818,7 @@
     };
     return store;
   }
-  const stores = { 1: makeStore(PICKS_KEYS[1]), 2: makeStore(PICKS_KEYS[2]) };
+  const stores = { 1: makeStore(PICKS_KEYS[1]), 2: makeStore(PICKS_KEYS[2]), 3: makeStore(PICKS_KEYS[3]) };
 
   // ---------- the injury-report log (since Nov 25, TESTS.md T30) ----------
   // The pregame report as the picks lock: each listed player's status and his usual
@@ -833,17 +882,61 @@
   };
   // picksOf(v): one metric's store. picks: the toggle's metric for reading;
   // settling goes to both (a final settles every pick on the game).
-  const picksOf = (v) => stores[v === 2 ? 2 : 1];
+  const picksOf = (v) => stores[v] || stores[1];
   const pickStore = {
     get: (id) => picksOf(SB.impact.version()).get(id),
     lock: (id, p) => picksOf(SB.impact.version()).lock(id, p),
     settle(id, winner) {
-      stores[1].settle(id, winner);
-      stores[2].settle(id, winner);
+      for (const st of Object.values(stores)) st.settle(id, winner);
     },
     all: () => picksOf(SB.impact.version()).all(),
-    settleOld: () => Promise.all([stores[1].settleOld(), stores[2].settleOld()]),
+    settleOld: () => Promise.all(Object.values(stores).map((st) => st.settleOld())),
   };
 
-  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, model, models, picksOf, buildModel, backtest, stints, teamShots, teamStrength, predict, topPer36, injuries, injuryLog, lineupEdge, picks: pickStore, RECENT };
+  // ---------- a past season, for the backtest (since Nov 26) ----------
+  // pastSeason(2025): the 2025–26 regular season's finished games, with player rows
+  // built from each game's summary exactly as this season's are, but kept in memory
+  // only: nothing is saved (about 1,230 summaries, a few minutes to read; a reload
+  // forgets them). For SB.bones.backtest(games) like this season's, e.g. to fit a
+  // setting on last season and test it on this one.
+  const past = new Map(); // start year -> Promise of games
+  function pastSeason(year, onProgress) {
+    if (past.has(year)) return past.get(year);
+    const p = (async () => {
+      const months = ['10', '11', '12', '01', '02', '03', '04'].map((m) => `${m < '10' ? year + 1 : year}${m}`);
+      const boards = await Promise.all(months.map((m) => SB.api.scoreboardMonth(m, 'nba').catch(() => null)));
+      const games = [];
+      const seen = new Set();
+      for (const b of boards)
+        for (const e of b?.events || []) {
+          if (seen.has(e.id) || e.season?.slug !== 'regular-season' || e.status?.type?.state !== 'post') continue;
+          seen.add(e.id);
+          const score = {};
+          for (const c of e.competitions[0].competitors) score[String(c.team.id)] = Number(c.score) || 0;
+          const side = (h) => String(e.competitions[0].competitors.find((c) => c.homeAway === h)?.team.id);
+          games.push({ id: e.id, t: Date.parse(e.date), score, home: side('home'), away: side('away') });
+        }
+      games.sort((a, b) => a.t - b.t);
+      let done = 0;
+      const queue = games.slice();
+      const worker = async () => {
+        while (queue.length) {
+          const g = queue.shift();
+          try {
+            const s = await SB.api.summary(g.id, 'nba');
+            g.rows = SB.player.rowsFromSummary(s, 'nba').out;
+          } catch (e) {}
+          done++;
+          if (onProgress) onProgress(done, games.length);
+        }
+      };
+      await Promise.all(Array.from({ length: 8 }, worker)); // more at once than the live loader: a one-off read
+      return games.filter((g) => g.rows);
+    })();
+    past.set(year, p);
+    p.catch(() => past.delete(year));
+    return p;
+  }
+
+  SB.bones = { reset, HOME_LOGIT, homeEdge, projectMinutes, seasonGames, pastSeason, model, models, picksOf, buildModel, backtest, stints, teamShots, teamStrength, predict, topPer36, injuries, injuryLog, lineupEdge, picks: pickStore, RECENT };
 })();

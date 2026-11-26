@@ -55,6 +55,7 @@ range for the change; when it includes 0, the change is within noise.
 | T30 | Nov 25 | Day-to-day guess, and minutes averaged over games played | Played-only better for both, within noise; day-to-day needs forward data | **Adopted** (played-only, both); injury log started; **Re-run** |
 | T31 | Nov 26 | Does MOUSSA favor teams that win close over teams that win big? | Team MOUSSA follows Diff (r .98); the pick model under-rates defense-first teams (Boston), but that doesn't predict misses yet | Informational |
 | T32 | Nov 26 | Team defense: players share their opponents' MOUSSA kept below average | Neutral at 10%, worse beyond; second half worse at every share | Rejected; **Re-run** with T17/T18 |
+| T33 | Nov 26 | MOUSSA V2: an outside review's ledger fixes, as a third metric | Last season +0.014 a game beyond noise; this season −0.023 within noise | **Built** beside MOUSSA; **Re-run** |
 | S01 | Nov 25 | Soccer expected goals from the commentary's shot spots | Log-loss −0.281 out of sample vs −0.329 flat; sums to the real goal total | **Adopted** (shown) |
 | S02 | Nov 25 | Soccer live win chances: what moves the scoring rates | Red cards and trailing-side push help on both halves; xG so far hurts in all 24 versions | **Adopted** (reds, trailing push); xG rejected; **Re-run** |
 | S03 | Nov 25 | Soccer win chances: calibration and gain over score + clock | Within ~2 points in every band; better in 92% of resamples, within noise | **Adopted** |
@@ -526,6 +527,64 @@ T31) to help predict.
 **Status.** Rejected for now (`opts.teamDefense` stays as a test setting). **Re-run** with T17 and T18 in
 mid-December: what would change our mind is the second half improving, not just the lineup test.
 
+### T33: MOUSSA V2, an outside review's proposals as a third metric (Nov 26)
+**Basis.** An outside review of our write-up (Gemini, "The Missing Half of the Ledger", T33–T41 in its numbering)
+argued that MOUSSA's two open problems, invisible team defense (Boston 22 points of win chance below its
+differential) and rim-runners ranked over creators, come from the ledger itself: own-team MOUSSA averages +79 a
+game (positive-sum rebounds and defense credited without a matching charge), non-steal turnovers forced by the
+defense credit no one, shot-quality defense is paid at half, a flat 80/20 assist split under-pays playmakers on
+easy shots, and per-minute ratings let pace and blowout leverage tilt a positive-mean stat. The user asked to see
+all of it in action, as its own metric, and to test it on last season too.
+**Procedure.** MOUSSA V2 (`SB.impact` version 3; the V3 block in `viewAt`, rows [8] [9] [10]): MOUSSA's
+score-only swing and leverage weight, plus six credit changes (`SB.impact.V3.on`, each switchable) and two model
+changes:
+- **assist** (review's T39): the passer's share of a make = 20% + 0.6 × (shot_xPTS − average), 5%–50%.
+- **late** (T40): a miss 21s+ into the possession (no shot clock in the feed) split 50% shooter, 50% the other four.
+- **to** (T33): a turnover without a steal that the defense plausibly forced (shot clock, offensive foul or
+  charge, 5/8 seconds, bad pass, lost ball) split 50% committer, 50% the five defenders. Travels, 3 seconds,
+  double dribbles and backcourt stay on the committer.
+- **shotD** (T34): on-court shot defense at 100% of (average − shot_xPTS), not 50%.
+- **rim** (T35): plus 25% of (shot_xPTS − points scored) on rim shots only.
+- **reb** (T36): zero-sum rebounding; the five on the other side are charged what a rebound gains.
+- **Per possession** (T37): a rating is credit ÷ the possessions a player was on the floor for, each weighted by
+  a point's worth then × the leverage weight; expressed in minutes at the league's average rate, so the pick
+  model is unchanged otherwise.
+- **Rest** (T41): a back-to-back logit, fit after the slope.
+
+Backtested on this season (192 graded games) and on last season's regular season (1,213 games, 1,130 graded;
+`SB.bones.pastSeason(2025)`, read into memory only, nothing saved), against MOUSSA; each change alone, then
+together. 90% ranges by bootstrapping games.
+**Result.** All changes off reproduces MOUSSA exactly. Log-loss change per game against MOUSSA (+ is better):
+
+| Change | Last season (1,130) | This season (192) |
+|---|---|---|
+| Assist by difficulty | +0.0018 [+0.0005, +0.0031] | −0.0010 |
+| Late-clock miss sharing | +0.0018 [+0.0008, +0.0028] | +0.0004 |
+| Forced turnovers | +0.0011 [−0.0009, +0.0033] | **−0.0123 [−0.0214, −0.0027]** |
+| Shot defense at 100% | +0.0036 [+0.0014, +0.0059] | −0.0007 |
+| Rim-only results | +0.0021 [+0.0008, +0.0034] | 0.0000 |
+| Zero-sum rebounding | +0.0032 [−0.0035, +0.0094] | −0.0126 [−0.0316, +0.0074] |
+| Per possession alone | +0.0037 [−0.0035, +0.0105] | +0.0051 [−0.0132, +0.0241] |
+| **MOUSSA V2, all of it** | **+0.0139 [+0.0038, +0.0230]** (99%) | **−0.0234 [−0.0509, +0.0034]** (8%) |
+
+Last season: MOUSSA V2 69.1% of winners against MOUSSA's 67.3% (BONES 67.1%), log-loss −0.5952 against −0.6091,
+lineup r .076 against .072. This season: 132/192 against 135, −0.6010 against −0.5777. The rest term fits to
+almost nothing in both (−0.08 last season, −0.04 this; on MOUSSA, +0.0001 a game). The pick model's gap from point
+differential (win chance against an average team): Boston −22 → −10, Golden State −11 → +5, Minnesota −10 → −4,
+Philadelphia +15 → −1, Denver +12 → −3; its overall fit to differential r .872 → .852. Rankings shift partly the way
+the review predicted: Tatum #62 → #32, Jokić #11 → #7, Sabonis #8 → #11, Kessler #10 → #14; Gobert #71 → #104
+(zero-sum rebounding charges his teams' offensive-rebounds allowed).
+Two of the review's premises didn't hold: the offensive-rebound clock "bug" was already fixed (an offensive
+rebound resets the possession clock to 10 seconds in, the 14-second reset), and back-to-backs carry no fitted
+value. Note on samples: the expected-points table is built from this season's first 205 games (through Nov 16), so last
+season is out of sample for every shot-quality piece and this season mostly in sample. The larger, cleaner test is
+last season's.
+**Status.** **Built as its own metric**, MOUSSA V2, beside BONES and MOUSSA (settings toggle, rankings, drawers,
+Standings, the Bone Zone's picks, check and best bet, the morning recap); MOUSSA itself is unchanged. The two
+seasons disagree: 1,130 games say V2 is better beyond noise, 192 say worse within noise (forced turnovers worse
+beyond noise this season). **Re-run** mid-December on both seasons; what would decide it is this season's half
+agreeing with last season's.
+
 ## Watch index
 
 ### I01: The NFL against the NBA and NHL at equal game states (Nov 23)
@@ -660,6 +719,7 @@ players' BONES or xBONES predict its next results beyond the odds?) needs more m
 | T03 | A couple more weeks of games | A blend weight that holds steady from one stretch to the next |
 | T23 | Mid-season (shooters at 300+ shots) | Removing the non-skill part of shooting stops hurting the backtest |
 | I04 | A few soccer weekends | Live soccer readings run well above the other sports' live readings at equal stakes |
+| T33 | Mid-December (both seasons) | This season's half agrees with last season's on MOUSSA V2 against MOUSSA |
 | T30 | Early December (two weeks of injury logs) | Day-to-day players lose a share of their minutes far from 30%: set `OUT_SHARE` from the log. Mid-December: played-only minutes still ahead of counting zeros |
 | T28 | 15 more nights (from Nov 26) | The 50% cap keeps beating the uncapped best bet on new nights only |
 | T26 | Mid-December, with T24 | The measured recovery rate (uniform or by cell) beats the flat 27% on log-loss beyond noise |

@@ -298,7 +298,8 @@
       const who = !done ? 'not graded yet' : m.won ? `MOUSSA ✓ (BONES had ${esc(b[b.side])})` : `BONES ✓ (MOUSSA had ${esc(m[m.side])})`;
       return `<li class="${!done ? '' : 'hit'}"><b>${esc(b.away)} @ ${esc(b.home)}</b> <span>${who}</span></li>`;
     };
-    const vs = `<p class="rc-vs"><b>BONES ${rec(pb)}</b> · <b>MOUSSA ${rec(pm)}</b>${splits.length ? `` : ' <small>· same picks all night</small>'}</p>${
+    const pv = of(3); // MOUSSA V2, since Nov 26
+    const vs = `<p class="rc-vs"><b>BONES ${rec(pb)}</b> · <b>MOUSSA ${rec(pm)}</b>${pv.size ? ` · <b>MOUSSA V2 ${rec(pv)}</b>` : ''}${splits.length ? `` : ' <small>· same picks all night</small>'}</p>${
       splits.length ? `<h4>Where they split</h4><ul class="rc-picks rc-splits">${splits.map(splitRow).join('')}</ul>` : ''
     }`;
     const done = night.filter((p) => p.won != null);
