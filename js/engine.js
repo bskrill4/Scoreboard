@@ -245,6 +245,13 @@
     assistMax: 0.5,
     lateShooter: 0.5,
     toDefShare: 0.5,
+    // Which turnovers without a steal count as forced (T34, Nov 27): offensive fouls
+    // and charges the defense drew. Out-of-bounds bad passes, lost balls and steps
+    // (mostly unforced) are left with the committer; the first version credited them
+    // too and was worse beyond noise this season.
+    toRe: /offensive foul|offensive charge|charge/i,
+    toNotRe: /3 second|three second|double dribble|backcourt|travel|kicked|lane|discontinue|palming|carry|goaltending/i,
+    toTeamRe: /shot clock|8 second|eight second|5 second|five second/i,
     shotD: 1,
     rimMake: 0.25,
     perPossession: true, // T37: ratings per weighted possession (bones.js)
@@ -1026,14 +1033,20 @@
             const w = Math.abs(pvAt(p.home - p.away)) * wN;
             for (const tid of [homeId, awayId]) for (const id of five(tid)) players.get(id).wPoss3 += w;
           }
+          // A team turnover the defense forced (a shot-clock or 8/5-second call, filed
+          // with no player): no one on offense is charged in MOUSSA, so MOUSSA V2
+          // credits the defense its share (toTeamRe; since Nov 27, T34).
+          if (on.to && D && !p.p0 && p.teamId && C.toTeamRe && C.toTeamRe.test(`${p.type} ${p.text}`)) {
+            const defs = five(p.teamId === homeId ? awayId : homeId);
+            for (const id of defs) add(id, (sideOf(id) * D * C.toDefShare * wN) / defs.length, true);
+          }
           if (D && p.credits.length) {
             const tt = `${p.type} ${p.text}`;
             const defReb = p.isRebound && /defensive/i.test(tt);
             const offReb = p.isRebound && !defReb && /offensive/i.test(tt);
             const forced =
               on.to && !p.fga && !p.stealBy && /turnover|offensive foul|offensive charge|shot clock|second violation|bad pass|lost ball/i.test(tt) &&
-              /shot clock|offensive foul|offensive charge|charge|5 second|8 second|five second|eight second|bad pass|lost ball|out of bounds/i.test(tt) &&
-              !/3 second|three second|double dribble|backcourt|travel|kicked|lane|discontinue|palming|carry/i.test(tt);
+              C.toRe.test(tt) && !C.toNotRe.test(tt);
             const blocked = p.blockBy && p.blockBy !== p.p0;
             const lateMiss = on.late && p.fga && !p.scoring && !blocked && p.shot?.clk === 'late';
             const assisted = on.assist && p.fga && p.scoring && p.isAssist && p.p1 && players.get(p.p1);

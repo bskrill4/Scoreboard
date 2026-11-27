@@ -2602,3 +2602,7 @@ html.a11y-contrast .ptable td { border-top-color: var(--line); }
 .md-tl em small { display: block; font-weight: 600; }
 .md-tl .due { color: var(--yellow); }
 .md-tl.wait em { white-space: normal; max-width: 160px; color: var(--dim); font-weight: 600; font-size: 11px; }
+/* Models: last season, read on request (since Nov 27). */
+.md-btn { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); color: var(--text); font-weight: 800; cursor: pointer; }
+.md-btn:hover, .md-btn:focus-visible { background: color-mix(in srgb, var(--yellow) 24%, transparent); }
+.md-past { grid-column: span 12; }

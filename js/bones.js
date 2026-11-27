@@ -188,9 +188,14 @@
         const min = r[3][1] || 0;
         const imp = SB.impact.rowImpact(r) * 100; // BONES as shown (with the game floor if it's on)
         team[tid] = (team[tid] || 0) + imp;
-        const p = players.get(pid) || { name: r[3][7], team: tid, t: 0, imp: 0, min: 0 };
+        const p = players.get(pid) || { name: r[3][7], team: tid, t: 0, imp: 0, min: 0, rateMin: 0 };
         p.imp += imp;
-        p.min += effMin(r, scale); // MOUSSA V2: weighted possessions, in minutes
+        // min: real minutes, for everything that groups players (250+ minutes, the
+        // top-injury and drawer cutoffs). rateMin: the rating's denominator, which for
+        // MOUSSA V2 is weighted possessions expressed in minutes (T37); the same as
+        // min for BONES and MOUSSA (since Nov 27: V2 had used it for both).
+        p.min += min;
+        p.rateMin += effMin(r, scale);
         if (g.t >= p.t) [p.t, p.team, p.name] = [g.t, tid, r[3][7] || p.name];
         players.set(pid, p);
         mins.get(tid)?.set(pid, min);
@@ -208,7 +213,7 @@
     }
     const avgRate = leagueMin ? leagueImp / leagueMin : 0;
     const target = avgRate * SHRINK_TO;
-    for (const p of players.values()) p.rate = (p.imp + target * SHRINK_MIN) / (p.min + SHRINK_MIN);
+    for (const p of players.values()) p.rate = (p.imp + target * SHRINK_MIN) / (p.rateMin + SHRINK_MIN);
 
     // The logistic slope that best fits this season's games (a coarse search is plenty).
     let k = 0.05;

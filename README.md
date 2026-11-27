@@ -377,12 +377,17 @@ v2: Towns 51.0 (7 of 9, offensive rebounds +18.3, assists +9.1) and Brunson 27.7
 from an outside review of the metrics. MOUSSA's score-only swing and leverage weight with different credit rules
 (`SB.impact.V3`, each switchable for tests): the passer's share of a make grows with how easy the shot was
 (5%–50%); a miss 21s+ into a possession is split with the other four; a turnover the defense forced without a
-steal is split 50/50 with the five defenders; shot defense at full value plus a quarter of rim results; zero-sum
-rebounding. Ratings are per weighted possession on the floor (row [10]), not per minute, and the backtest fits a
+steal (since Nov 27, T34: offensive fouls and charges, split 50/50 with the five defenders; shot-clock and 8/5-second
+violations, filed with no player, credit the five defenders their half) counts for the defense; shot defense at full value plus a quarter of rim results; zero-sum
+rebounding. Ratings are per weighted possession on the floor (row [10]), not per minute (only the rating's
+denominator: since Nov 27 every grouping, such as 250+ minutes or the top-injury cutoff, uses real minutes), and the backtest fits a
 back-to-back term (`predict(..., ctx)`; it fits to about zero). Rows carry [8] [9] [10] since cache version 33.
 It has its own picks store (`sb.moussa2Picks`), Bone Zone check and best bet, a column in the drawers, and the
 first xW column on Standings while it's on. `SB.bones.pastSeason(2025)` reads last season's games into memory
-(nothing saved) for backtests. Last season it beat MOUSSA beyond noise; this season it trails within noise.
+(nothing saved) for backtests. Last season it beat MOUSSA beyond noise; this season it trails within noise. The **Models** page reads last
+season on request (a button; in memory only) and grades all three on it, with V2 against MOUSSA's 90% range.
+Its best-bet ledger lists the latest capped and uncapped bets for both MOUSSAs (an uncapped bet shown when it differs
+from the capped one).
 **Where it comes from** (since Nov 26, `js/breakdown.js`): a section in a basketball player's drawer that splits his
 MOUSSA or MOUSSA V2 (its own switch, starting on the one in settings) over the drawer's games into the kinds of play
 that earned it: made twos and threes, free-throw trips, missed shots, assists, turnovers, offensive and defensive

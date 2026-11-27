@@ -56,6 +56,7 @@ range for the change; when it includes 0, the change is within noise.
 | T31 | Nov 26 | Does MOUSSA favor teams that win close over teams that win big? | Team MOUSSA follows Diff (r .98); the pick model under-rates defense-first teams (Boston), but that doesn't predict misses yet | Informational |
 | T32 | Nov 26 | Team defense: players share their opponents' MOUSSA kept below average | Neutral at 10%, worse beyond; second half worse at every share | Rejected; **Re-run** with T17/T18 |
 | T33 | Nov 26 | MOUSSA V2: an outside review's ledger fixes, as a third metric | Last season +0.014 a game beyond noise; this season −0.023 within noise | **Built** beside MOUSSA; **Re-run** |
+| T34 | Nov 27 | Which turnovers V2 credits to the defense | Charges/offensive fouls + shot-clock calls beat the old list on both seasons; charges split the seasons | **Adopted** (V2); **Re-run** with T33 |
 | S01 | Nov 25 | Soccer expected goals from the commentary's shot spots | Log-loss −0.281 out of sample vs −0.329 flat; sums to the real goal total | **Adopted** (shown) |
 | S02 | Nov 25 | Soccer live win chances: what moves the scoring rates | Red cards and trailing-side push help on both halves; xG so far hurts in all 24 versions | **Adopted** (reds, trailing push); xG rejected; **Re-run** |
 | S03 | Nov 25 | Soccer win chances: calibration and gain over score + clock | Within ~2 points in every band; better in 92% of resamples, within noise | **Adopted** |
@@ -584,6 +585,34 @@ Standings, the Bone Zone's picks, check and best bet, the morning recap); MOUSSA
 seasons disagree: 1,130 games say V2 is better beyond noise, 192 say worse within noise (forced turnovers worse
 beyond noise this season). **Re-run** mid-December on both seasons; what would decide it is this season's half
 agreeing with last season's.
+
+### T34: Which turnovers MOUSSA V2 should credit to the defense (Nov 27)
+**Basis.** T33: MOUSSA V2's forced-turnover credit was the one change worse beyond noise this season (−0.0123 a
+game). What does its text match actually catch?
+**Procedure.** Every turnover row this season by ESPN's type, and which ones the rule credited. Then four lists,
+each alone (on MOUSSA) and inside MOUSSA V2, on both seasons: **old** (the T33 list); **fouls** (offensive fouls
+and charges only, the ones the defense draws); **team** (shot-clock, 8- and 5-second violations, which the feed
+files with no player, so the old rule never reached them: `toTeamRe`, the five defenders get the share); **fouls +
+team**.
+**Result.** Of about 3,000 turnovers the old rule credited this season, 1,642 were out of bounds (984 bad passes,
+459 lost balls, 199 steps out), mostly unforced, and 1,280 offensive fouls and charges; the 409 shot-clock
+violations were never credited (no player). Log-loss per game against MOUSSA:
+
+| List | Alone, last season | Alone, this season | In MOUSSA V2, last season | In MOUSSA V2, this season |
+|---|---|---|---|---|
+| Old (T33) | +0.0011 [−0.0011, +0.0034] | −0.0123 [−0.0217, −0.0031] | +0.0138 | −0.0234 |
+| Fouls | +0.0030 [+0.0016, +0.0043] | −0.0103 [−0.0160, −0.0048] | – | −0.0239 |
+| Team | +0.0005 [+0.0001, +0.0009] | +0.0002 [−0.0016, +0.0020] | +0.0121 | −0.0151 |
+| **Fouls + team** | **+0.0035 [+0.0021, +0.0048]** | −0.0101 [−0.0162, −0.0040] | **+0.0148 [+0.0048, +0.0241]** | −0.0238 |
+| None (V2 without it) | | | +0.0112 | |
+
+Fouls + team beats the old list on both seasons. The out-of-bounds turnovers weren't the problem; charges and
+offensive fouls split the seasons (better beyond noise last season, worse beyond noise this one). The team
+turnovers are neutral to slightly better on both.
+**Status.** **Adopted for MOUSSA V2** (`V3.toRe` offensive fouls and charges, `V3.toTeamRe` shot clock and 8/5
+seconds); MOUSSA unchanged. MOUSSA V2 on last season: +0.0148 a game against MOUSSA (Models page, read on
+request: +0.0150 [+0.0057, +0.0248]). **Re-run** with T33 in mid-December: if this season keeps disagreeing on
+charges, drop them and keep the team turnovers.
 
 ## Watch index
 

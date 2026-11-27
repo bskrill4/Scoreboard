@@ -29,7 +29,7 @@
       a: `<p>A third metric, added Nov 26: MOUSSA rebuilt on the changes an outside review (Gemini) proposed after reading our write-up. Same score-only win probability, same leverage weight; different rules for who gets the credit:</p>
         <ul>
           <li><b>Zero-sum rebounding</b>: when a team grabs a rebound, the five on the other side are charged what it gained, so boxing out (and failing to) finally shows on both ledgers.</li>
-          <li><b>Forced turnovers</b>: a shot-clock violation, offensive foul, 5- or 8-second call, bad pass or lost ball without a steal is split 50/50 between the player who lost it and the five defenders, like a steal.</li>
+          <li><b>Forced turnovers</b>: an offensive foul or charge is split 50/50 between the player who committed it and the five defenders, like a steal, and a shot-clock or 8-second violation credits the defenders their half (balls thrown out of bounds stay with whoever threw them: mostly unforced).</li>
           <li><b>Shot defense at full value</b>: defenders get all, not half, of the shot quality they allow, plus a quarter of the result on shots at the rim, where stopping makes is a repeatable skill.</li>
           <li><b>Assists by difficulty</b>: the passer's share of a make grows with how easy the shot was (5% to 50%, not a flat 20%), so a lob creator gets more and a tough shot-maker keeps more.</li>
           <li><b>Late-clock misses</b>: a miss deep into the possession is split between the shooter and his four teammates, who left him the bailout.</li>

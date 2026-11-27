@@ -15,6 +15,9 @@
 //   - Best-bet ledger: every tracked best bet (MOUSSA, MOUSSA V2), units won.
 //     Tonight's own bet stays in the Bone Zone.
 //   - Test schedule: TESTS.md's re-run queue, read live, dated tests counting down.
+//   - Last season (since Nov 27): on request, last season's regular season read
+//     into memory (SB.bones.pastSeason, nothing saved) and backtested for all
+//     three, with MOUSSA V2 against MOUSSA game by game (a 90% range).
 // Everything is read from what the app already keeps: the season's games and
 // models (SB.bones.models), the pick stores, the Bone Zone's bet tracker and
 // TESTS.md. Nothing new is saved.
@@ -32,7 +35,76 @@
 
   let root = null;
   let started = false;
-  const state = { models: null, progress: null, error: null, loading: false, tests: null, race: 'backtest', pair: 'all', teams: new Map() };
+  const state = { models: null, progress: null, error: null, loading: false, tests: null, race: 'backtest', pair: 'all', teams: new Map(), past: null };
+
+  // ---------- last season, on request (since Nov 27) ----------
+  // About 1,200 games: read once into memory when asked (nothing is saved, a reload
+  // forgets it), then each model's backtest on them, and MOUSSA V2 against MOUSSA
+  // game by game with a bootstrap range (2,000 resamples).
+  const lastSeasonYear = () => {
+    const now = new Date();
+    return (now.getMonth() >= 9 ? now.getFullYear() : now.getFullYear() - 1) - 1;
+  };
+  async function loadPast() {
+    if (state.past) return;
+    const year = lastSeasonYear();
+    state.past = { year, progress: [0, 0] };
+    draw();
+    try {
+      const games = await SB.bones.pastSeason(year, (done, total) => {
+        state.past.progress = [done, total];
+        draw();
+      });
+      await new Promise((r) => setTimeout(r)); // let the progress paint before the backtests
+      const bt = Object.fromEntries(V.map((v) => [v, SB.impact.withVersion(v, () => SB.bones.backtest(games))]));
+      const ll = (b) => new Map(b.rows.map((r) => [r.id, Math.log(r.win ? sig(b.bones.k * r.b + r.hl) : 1 - sig(b.bones.k * r.b + r.hl))]));
+      const [m2, m3] = [ll(bt[2]), ll(bt[3])];
+      const d = [...m2.keys()].filter((id) => m3.has(id)).map((id) => m3.get(id) - m2.get(id));
+      const mean = d.reduce((s, x) => s + x, 0) / d.length;
+      const boots = [];
+      for (let i = 0; i < 2000; i++) {
+        let t = 0;
+        for (let j = 0; j < d.length; j++) t += d[Math.floor(Math.random() * d.length)];
+        boots.push(t / d.length);
+      }
+      boots.sort((a, b) => a - b);
+      state.past = { year, games: games.length, bt, diff: { mean, lo: boots[100], hi: boots[1900], better: boots.filter((x) => x > 0).length / boots.length } };
+    } catch (e) {
+      state.past = { year, error: true };
+    }
+    draw();
+  }
+  function pastHTML() {
+    const P = state.past;
+    const season = `${lastSeasonYear()}–${String(lastSeasonYear() + 1).slice(2)}`;
+    if (!P || (!P.bt && !P.error)) {
+      const prog = P?.progress?.[1] ? `Reading last season… ${P.progress[0]} of ${P.progress[1]} games` : P ? 'Reading last season…' : '';
+      return card(
+        'md-past',
+        `Last season (${season})`,
+        'the bigger test: about 1,200 games',
+        P ? `<p class="md-load">${prog}</p>` : `<p class="md-fine">This season's ${state.models?.[2]?.backtest?.n || '…'} games are a small sample. Last season's regular season is read on request, held in memory only (nothing is saved; a reload forgets it), and backtested the same way. Takes about a minute.</p><button type="button" class="md-btn" data-mdpast>Read last season</button>`
+      );
+    }
+    if (P.error) return card('md-past', `Last season (${season})`, '', `<p class="md-fine">Couldn't read last season. Try again after a reload.</p>`);
+    const rows = V.map((v) => {
+      const b = P.bt[v];
+      return `<tr><th style="--c:${COLOR[v]}">${NAME[v]}</th><td>${pct(b.bones.acc)}</td><td>${ll3(b.bones.ll)}</td><td>${pct(b.later.bones.acc)}</td><td>${ll3(b.later.bones.ll)}</td><td>${b.lineup?.r != null ? b.lineup.r.toFixed(3) : '–'}</td></tr>`;
+    }).join('');
+    const pd = P.bt[2];
+    const D = P.diff;
+    const sign = (x) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(4)}`;
+    const verdict = D.lo > 0 ? 'better beyond noise' : D.hi < 0 ? 'worse beyond noise' : 'within noise';
+    return card(
+      'md-past',
+      `Last season (${season})`,
+      `${P.games.toLocaleString()} games, ${pd.bones.n.toLocaleString()} graded`,
+      `<div class="md-scroll"><table class="md-t">
+        <thead><tr><th></th><th>Right</th><th>Log-loss</th><th>2nd half right</th><th>2nd half log-loss</th><th title="How well the two fives' rating gap predicts the score while they're on the floor">Lineup r</th></tr></thead>
+        <tbody>${rows}<tr class="md-base"><th>Point differential</th><td>${pct(pd.pd.acc)}</td><td>${ll3(pd.pd.ll)}</td><td>${pct(pd.later.pd.acc)}</td><td>${ll3(pd.later.pd.ll)}</td><td>–</td></tr></tbody></table></div>
+      <p class="md-fine"><b>MOUSSA V2 against MOUSSA</b>, log-loss per game: ${sign(D.mean)} (90% range ${sign(D.lo)} to ${sign(D.hi)}; better in ${Math.round(D.better * 100)}% of resamples): ${verdict}. Held in memory only; a reload forgets it.</p>`
+    );
+  }
 
   // ---------- loading ----------
   async function load() {
@@ -390,13 +462,18 @@
         return `<tr><th style="--c:${COLOR[v]}">${NAME[v]}</th>${cells.join('')}</tr>`;
       })
       .join('');
+    // Since Nov 27: the uncapped bet too, on nights it differs from the capped one
+    // (an edge over the cap), so both ledgers can be followed bet by bet.
+    const twin = (x, tag) => all.find((y) => y.tag === tag && y.v === x.v && y.night === x.night);
+    const sameBet = (x, y) => !!x && !!y && x.id === y.id && x.side === y.side;
     const recent = all
-      .filter((b) => b.tag === 'c')
-      .sort((a, b) => b.t - a.t)
-      .slice(0, 8)
-      .map(
-        (b) => `<tr><td>${dayLabel(b.t)}</td><th style="--c:${COLOR[b.v]}">${NAME[b.v]}</th><td>${esc(b.abbr)} ${ml(b.ml)}</td><td>${Math.round(b.p * 100)}%</td><td>+$${b.ev}</td><td class="${b.won == null ? '' : b.won ? 'pos' : 'neg'}">${b.won == null ? 'open' : b.won ? `+${Z.profit(b.ml).toFixed(2)}u` : '−1u'}</td></tr>`
-      )
+      .filter((b) => (b.v === 2 || b.v === 3) && (b.tag === 'c' || !sameBet(b, twin(b, 'c')))) // the two MOUSSAs (BONES left the Bone Zone Nov 26)
+      .sort((a, b) => b.t - a.t || a.v - b.v || (a.tag === 'c' ? -1 : 1))
+      .slice(0, 12)
+      .map((b) => {
+        const kind = b.tag === 'u' ? 'uncapped' : !twin(b, 'u') || sameBet(b, twin(b, 'u')) ? 'both' : 'capped';
+        return `<tr><td>${dayLabel(b.t)}</td><th style="--c:${COLOR[b.v]}">${NAME[b.v]}</th><td>${kind}</td><td>${esc(b.abbr)} ${ml(b.ml)}</td><td>${Math.round(b.p * 100)}%</td><td>+$${b.ev}</td><td class="${b.won == null ? '' : b.won ? 'pos' : 'neg'}">${b.won == null ? 'open' : b.won ? `+${Z.profit(b.ml).toFixed(2)}u` : '−1u'}</td></tr>`;
+      })
       .join('');
     return card(
       'md-bets',
@@ -404,7 +481,7 @@
       `tracked since Nov 25 · 1 unit a bet`,
       all.length
         ? `<table class="md-t"><thead><tr><th></th><th>Capped at $${Z.EDGE_CAP}</th><th>Uncapped</th></tr></thead><tbody>${sum}</tbody></table>
-          ${recent ? `<h4 class="md-h4">Latest capped bets</h4><table class="md-t md-ledger"><thead><tr><th>Night</th><th>Model</th><th>Bet</th><th>Chance</th><th>Edge</th><th>Result</th></tr></thead><tbody>${recent}</tbody></table>` : ''}
+          ${recent ? `<h4 class="md-h4">Latest bets</h4><table class="md-t md-ledger"><thead><tr><th>Night</th><th>Model</th><th title="Capped: the night's best bet at or under the edge cap. Uncapped: the biggest edge, when it's over the cap. Both: the same bet">Ledger</th><th>Bet</th><th>Chance</th><th>Edge</th><th>Result</th></tr></thead><tbody>${recent}</tbody></table>` : ''}
           <p class="md-fine">Each night’s highest expected return on the moneyline per model, frozen at tip-off. Tonight’s bets are in the <a href="#bonezone">Bone Zone</a>.</p>`
         : `<p class="md-empty">No best bets tracked in this browser yet: they’re recorded when the <a href="#bonezone">Bone Zone</a> reads a night’s lines.</p>`
     );
@@ -477,7 +554,7 @@
     const html = `<div class="players-head md-head"><div><h2>Models</h2><p>BONES, MOUSSA and MOUSSA V2, graded on the same games</p></div></div>
       ${loading}
       <div class="md-grid">
-        ${trackingHTML()}${tableHTML()}${raceHTML()}${calibrationHTML()}${disagreeHTML()}${playersHTML()}${betsHTML()}${testsHTML()}
+        ${trackingHTML()}${tableHTML()}${pastHTML()}${raceHTML()}${calibrationHTML()}${disagreeHTML()}${playersHTML()}${betsHTML()}${testsHTML()}
       </div>`;
     if (html !== root._html) {
       root._html = html;
@@ -495,6 +572,7 @@
           state.race = r.dataset.mdrace;
           return draw();
         }
+        if (e.target.closest('[data-mdpast]')) return loadPast();
         const pr = e.target.closest('[data-mdpair]');
         if (pr) {
           state.pair = pr.dataset.mdpair;

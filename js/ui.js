@@ -199,7 +199,7 @@
       ${headshot(top, 'sm')}
       <span class="who tlink" ${playerAttrs(g, top, topTeam)}>${esc(top.last)}</span>
       <span class="line">${esc(shortStat(top))}</span>
-      <span class="wpa ${val(top) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(top))}<small>${metricShort()}</small></span>
+      <span class="wpa ${val(top) >= 0 ? 'pos' : 'neg'}">${fmtWPA(val(top))}<small>${swingLabel(g)}</small></span>
     </div>`;
   }
 
@@ -328,7 +328,7 @@
       under: `<g class="mom-ticks">${ticks}</g>`,
       over: '',
       html: dots,
-      cap: `<span class="focus-cap"><b>${name}</b> ${plays} · <em class="${cls(val(p))}">${fmtWPA(val(p))} ${metricShort()}</em></span>`,
+      cap: `<span class="focus-cap"><b>${name}</b> ${plays} · <em class="${cls(val(p))}">${fmtWPA(val(p))} ${swingLabel(g)}</em></span>`,
     };
   }
 
@@ -621,7 +621,7 @@
         .slice(0, slots);
       const rows = top.map(
         (m) => `<div class="swing ${m[key] >= 0 ? 'pos' : 'neg'}">
-            <b>${fmtWPA(m[key])} ${N()}</b>
+            <b>${fmtWPA(m[key])} ${swingLabel(g)}</b>
             <span>${esc(playWhen(g, m.play))} · <em class="sc">${esc(scoreAt(g, m.play))}</em> · ${esc(m.play.text)}</span>
           </div>`
       );
@@ -1443,10 +1443,17 @@
           <td class="rk">${i + 1}</td>
           <td class="pl">${face(p, team, 'sm')}<span><b>${p.star ? '★ ' : ''}${esc(p.name)}${prospectTag(p, true)}</b><small>${lgName(g)} · ${esc(team.abbr)}</small></span></td>
           <td class="gm">${gameLabel(g)}</td>
-          <td${col('imp')}><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
+          <td${col('imp')} title="${swingLabel(g)}"><span class="${(p.imp || 0) >= 0 ? 'pos' : 'neg'}">${fmtWPA(p.imp || 0)}</span></td>
           <td${relCol}><span class="${rel({ p, g }) >= 0 ? 'pos' : 'neg'}">${fmtWPA(rel({ p, g }))}</span></td>
           <td class="ln">${statLine(p)}</td>
         </tr>`;
+    // The value column mixes sports: with a MOUSSA on, basketball rows are that
+    // MOUSSA and football, hockey and soccer rows are BONES (the MOUSSAs are
+    // basketball only), so the header says both when both are listed (since Nov 27).
+    const mixed = SB.impact.scoreOnly() && rows.some((r) => !hasMoussa(r.g)) && rows.some((r) => hasMoussa(r.g));
+    const valHead = mixed
+      ? { text: `${bonesLabel()} / BONES`, tip: `${bonesLabel()} for basketball; BONES for football, hockey and soccer (${bonesLabel()} is basketball only)` }
+      : { text: rows.length && rows.every((r) => !hasMoussa(r.g)) ? 'BONES' : bonesLabel(), tip: '' };
     const body = top.map((r, i) => rowHTML(r, i)).join('');
     // Bottom five: the lowest on the same metric, with their overall rank,
     // only from players the top list doesn't already show.
@@ -1454,14 +1461,14 @@
     const bottom = nBottom > 0 ? rows.slice(-nBottom).reverse() : [];
     const bottomHTML = bottom.length
       ? `<h3 class="ptable-sub">Bottom five</h3><div class="ptable-wrap"><table class="ptable bottom">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}${valHead.tip ? ` title="${esc(valHead.tip)}"` : ''}>${valHead.text}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${bottom.map((r, k) => rowHTML(r, rows.length - 1 - k)).join('')}</tbody>
           </table></div>`
       : '';
     return `${filters}${soccerSw}${crownHTML}${
       top.length
         ? `<div class="ptable-wrap"><table class="ptable">
-            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}>${bonesLabel()}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
+            <thead><tr><th>#</th><th>Player</th><th>Game</th><th${col('imp')}${valHead.tip ? ` title="${esc(valHead.tip)}"` : ''}>${valHead.text}</th><th${relCol} title="Where the player ranks among that sport's regulars today, read off the same place among all sports' regulars together: BONES on one scale across sports">Sport-adj.</th><th>Line</th></tr></thead>
             <tbody>${body}</tbody>
           </table></div>${bottomHTML}`
         : '<div class="empty-note">No games with play-by-play yet today.</div>'
